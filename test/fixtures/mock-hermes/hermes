@@ -1,0 +1,201 @@
+#!/usr/bin/env node
+'use strict';
+// A fake `hermes` CLI covering only the surface Circe drives. Behaviour is
+// selected by MOCK_HERMES_SCENARIO; profile state lives under MOCK_HERMES_HOME.
+const fs = require('fs');
+const path = require('path');
+
+const VERSION = process.env.MOCK_HERMES_VERSION || '0.14.0';
+const HOME = process.env.MOCK_HERMES_HOME || path.join(require('os').tmpdir(), 'mock-hermes-home');
+const SCENARIO = process.env.MOCK_HERMES_SCENARIO || 'stream';
+
+const argv = process.argv.slice(2);
+
+// Strip the global `-p <profile>` flag, which precedes the subcommand.
+let profile = 'default';
+const pIdx = argv.indexOf('-p');
+if (pIdx >= 0) {
+  profile = argv[pIdx + 1];
+  argv.splice(pIdx, 2);
+}
+
+if (argv.includes('--version') && argv[0] !== 'acp') {
+  process.stdout.write(`Hermes Agent v${VERSION} (2026.5.16)\n`);
+  process.exit(0);
+}
+
+function profileDir(id) {
+  return id === 'default' ? HOME : path.join(HOME, 'profiles', id);
+}
+
+if (argv[0] === 'profile' && argv[1] === 'create') {
+  const name = argv[2];
+  if (!/^[a-z0-9][a-z0-9_-]*$/.test(name || '')) {
+    process.stderr.write(`invalid profile name: ${name}\n`);
+    process.exit(2);
+  }
+  const dir = profileDir(name);
+  if (fs.existsSync(dir)) {
+    process.stderr.write(`profile already exists: ${name}\n`);
+    process.exit(1);
+  }
+  fs.mkdirSync(dir, { recursive: true });
+  // Hermes seeds a scaffold SOUL.md with no Markdown heading (§5.4).
+  fs.writeFileSync(
+    path.join(dir, 'SOUL.md'),
+    'You are Hermes Agent, an intelligent AI assistant created by Nous Research.\n',
+  );
+  process.stdout.write(`Created profile: ${name}\n`);
+  process.exit(0);
+}
+
+if (argv[0] === 'profile' && argv[1] === 'show') {
+  const id = argv[2];
+  const dir = profileDir(id);
+  if (!fs.existsSync(dir)) {
+    process.stderr.write(`no such profile: ${id}\n`);
+    process.exit(1);
+  }
+  process.stdout.write(
+    `\nProfile: ${id}\nPath:    ${dir}\nModel:   claude-opus-4-7 (anthropic)\n` +
+      `Gateway: stopped\nSkills:  0\n.env:    exists\nSOUL.md: exists\n`,
+  );
+  process.exit(0);
+}
+
+if (argv[0] === 'status') {
+  process.stdout.write(`Provider: anthropic\nAuth: ok\n`);
+  process.exit(0);
+}
+
+if (argv[0] !== 'acp') {
+  process.stderr.write(`unknown command: ${argv.join(' ')}\n`);
+  process.exit(64);
+}
+
+if (argv.includes('--version')) {
+  process.stdout.write(`${VERSION}\n`);
+  process.exit(0);
+}
+
+// ---- ACP mode ----------------------------------------------------------
+
+if (SCENARIO === 'crash') {
+  process.stderr.write('mock hermes: simulated crash\n');
+  process.exit(3);
+}
+
+let nextServerId = 1000;
+const write = (obj) => process.stdout.write(JSON.stringify(obj) + '\n');
+const reply = (id, result) => write({ jsonrpc: '2.0', id, result });
+const update = (sessionId, u) =>
+  write({ jsonrpc: '2.0', method: 'session/update', params: { sessionId, update: u } });
+
+const CHUNK_DELAY = SCENARIO === 'slow' ? 25 : 1;
+
+function streamReply(sessionId, done) {
+  const words = (process.env.MOCK_HERMES_REPLY || 'Hello from the mock agent.').split(' ');
+  let i = 0;
+  const tick = () => {
+    if (i >= words.length) return done();
+    update(sessionId, {
+      sessionUpdate: 'agent_message_chunk',
+      content: { type: 'text', text: (i === 0 ? '' : ' ') + words[i] },
+    });
+    i += 1;
+    setTimeout(tick, CHUNK_DELAY);
+  };
+  tick();
+}
+
+function requestPermission(sessionId, then) {
+  const id = nextServerId++;
+  pendingPermission = { id, then };
+  write({
+    jsonrpc: '2.0',
+    id,
+    method: 'session/request_permission',
+    params: {
+      sessionId,
+      toolCall: { toolCallId: 'tc1', title: 'write_file', kind: 'edit' },
+      options: [
+        { optionId: 'allow-once', name: 'Allow once', kind: 'allow_once' },
+        { optionId: 'allow-always', name: 'Allow always', kind: 'allow_always' },
+        { optionId: 'reject-once', name: 'Reject', kind: 'reject_once' },
+        { optionId: 'reject-always', name: 'Reject always', kind: 'reject_always' },
+      ],
+    },
+  });
+}
+
+let pendingPermission = null;
+let buf = '';
+
+process.stdin.on('data', (b) => {
+  buf += b.toString();
+  let i;
+  while ((i = buf.indexOf('\n')) >= 0) {
+    const line = buf.slice(0, i).trim();
+    buf = buf.slice(i + 1);
+    if (!line) continue;
+    let msg;
+    try {
+      msg = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    handle(msg);
+  }
+});
+
+function handle(msg) {
+  // A response to one of our own server-initiated requests.
+  if (msg.id !== undefined && msg.method === undefined) {
+    if (pendingPermission && msg.id === pendingPermission.id) {
+      const { then } = pendingPermission;
+      pendingPermission = null;
+      then(msg.result && msg.result.outcome);
+    }
+    return;
+  }
+
+  switch (msg.method) {
+    case 'initialize':
+      reply(msg.id, { protocolVersion: 1, agentCapabilities: { loadSession: true } });
+      return;
+    case 'session/new':
+      reply(msg.id, { sessionId: 's1' });
+      return;
+    case 'session/load':
+      reply(msg.id, {});
+      return;
+    case 'session/cancel':
+      reply(msg.id, {});
+      return;
+    case 'session/prompt': {
+      const sid = msg.params.sessionId;
+      if (SCENARIO === 'permission') {
+        // Announce the tool call, then ask for permission, then report the outcome.
+        update(sid, { sessionUpdate: 'tool_call', toolCallId: 'tc1', title: 'write_file', status: 'pending' });
+        requestPermission(sid, (outcome) => {
+          const denied =
+            !outcome ||
+            outcome.outcome === 'cancelled' ||
+            String(outcome.optionId || '').startsWith('reject');
+          update(sid, {
+            sessionUpdate: 'tool_call_update',
+            toolCallId: 'tc1',
+            title: 'write_file',
+            status: denied ? 'failed' : 'completed',
+          });
+          reply(msg.id, { stopReason: 'end_turn' });
+        });
+        return;
+      }
+      streamReply(sid, () => reply(msg.id, { stopReason: 'end_turn' }));
+      return;
+    }
+    default:
+      write({ jsonrpc: '2.0', id: msg.id, error: { code: -32601, message: 'not implemented' } });
+  }
+}
