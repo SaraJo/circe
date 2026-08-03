@@ -1,0 +1,28 @@
+{
+  "name": "circe",
+  "productName": "Circe",
+  "version": "0.1.0",
+  "description": "Circe — a fleet of Hermes agents as themed, side-by-side chat tiles on macOS",
+  "license": "MIT",
+  "main": "out/main/index.js",
+  "scripts": {
+    "start": "electron-vite preview",
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^22.20.1",
+    "electron": "^32.3.3",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.21",
+    "vitest": "^2.1.9"
+  },
+  "dependencies": {
+    "marked": "^18.0.7"
+  }
+}
