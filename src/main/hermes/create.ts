@@ -1,10 +1,11 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile, writeFile } from 'node:fs/promises';
-import { join, delimiter } from 'node:path';
+import { join } from 'node:path';
 import type { HermesProfile, SoulHeading } from '../../shared/types';
 import { withSoulHeading } from './soul';
 import { enumerateProfiles } from './profiles';
+import { execEnvFor } from './locate';
 
 const run = promisify(execFile);
 
@@ -52,21 +53,10 @@ export interface CreateProfileOptions {
 export async function createProfile(opts: CreateProfileOptions): Promise<HermesProfile> {
   const { hermesBin, hermesHome, id, heading, persona } = opts;
 
-  // execFile's `env` option replaces the child's entire environment rather than
-  // merging with it. `hermesBin` may be a shebang script (as the mock fixture
-  // is, and as some real installs are), whose interpreter is resolved via PATH.
-  // A caller who passes no `env` is the production case: run with `process.env`
-  // untouched. A caller who deliberately passes a restricted `env` — to sandbox
-  // what the subprocess sees, as the tests do — gets exactly that env, with
-  // only the ambient PATH appended (not the whole ambient environment merged on
-  // top) so the shebang can still resolve its interpreter. See locate.ts for
-  // the same pattern.
-  const execEnv: NodeJS.ProcessEnv = opts.env
-    ? {
-        ...opts.env,
-        PATH: [opts.env.PATH, process.env.PATH].filter(Boolean).join(delimiter) || undefined,
-      }
-    : process.env;
+  // See execEnvFor in locate.ts: execFile's `env` option replaces rather than
+  // merges, so a caller-supplied `env` needs the ambient PATH topped up to
+  // keep resolving a shebang interpreter.
+  const execEnv = execEnvFor(opts.env);
 
   const existing = await enumerateProfiles(hermesHome);
   const check = validateProfileId(id, existing.map((p) => p.id));

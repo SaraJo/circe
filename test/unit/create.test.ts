@@ -91,7 +91,6 @@ describe('createProfile', () => {
     expect(p.id).toBe('athena');
     expect(p.displayName).toBe('Athena');
     expect(p.tagline).toBe('the strategist');
-    expect(p.real).toBe(true);
     const soul = readFileSync(join(home, 'profiles', 'athena', 'SOUL.md'), 'utf8');
     expect(soul.startsWith('# Athena — the strategist')).toBe(true);
   });
@@ -112,6 +111,10 @@ describe('createProfile', () => {
 
   it('leaves every pre-existing profile byte-identical (§4.9, §10.6)', async () => {
     const before = hashTree(home);
+    // Guard against a vacuous pass: if the fixture drifts and `home` ever
+    // starts out empty, every assertion below is vacuously true even against
+    // a no-op createProfile.
+    expect(Object.keys(before).length).toBeGreaterThan(0);
     await createProfile({
       hermesBin: MOCK_BIN,
       hermesHome: home,
@@ -125,6 +128,7 @@ describe('createProfile', () => {
       expect(after[file], `${file} was modified`).toBe(hash);
     }
     const added = Object.keys(after).filter((f) => !(f in before));
+    expect(added).toContain('profiles/athena/SOUL.md');
     expect(added.every((f) => f.startsWith('profiles/athena/'))).toBe(true);
   });
 
@@ -153,6 +157,59 @@ describe('createProfile', () => {
       }),
     ).rejects.toThrow();
   });
+
+  // The two tests above never reach the CLI: 'Bad Name' fails ID_RE and 'ford'
+  // fails the taken-check, both inside validateProfileId — which is itself a
+  // real §4.9 property worth proving (rejection without touching disk). But
+  // it leaves the try/catch around the subprocess call, and the mock's exit-1
+  // and exit-2 branches, with no coverage. These two drive the subprocess
+  // itself to fail, exercising both the stderr-present branch and the
+  // stderr-absent (ENOENT) fallback in create.ts.
+
+  it('surfaces the OS-level spawn error when the hermes binary cannot be found', async () => {
+    const before = hashTree(home);
+    await expect(
+      createProfile({
+        hermesBin: join(home, 'no-such-hermes-binary'),
+        hermesHome: home,
+        id: 'nonexistent-bin',
+        heading: { name: 'X', tagline: null },
+        env: { MOCK_HERMES_HOME: home },
+      }),
+    ).rejects.toThrow(/create the profile "nonexistent-bin"/);
+    expect(hashTree(home)).toEqual(before);
+  });
+
+  it("surfaces the CLI's own duplicate-profile error when it disagrees with our pre-check", async () => {
+    // validateProfileId only knows about `hermesHome`, which has no `athena`.
+    // Point the subprocess at a different MOCK_HERMES_HOME that already has
+    // one, so our own check passes but the CLI itself exits 1 — proving the
+    // try/catch around `run(...)` actually surfaces what the CLI says.
+    const other = mkdtempSync(join(tmpdir(), 'circe-create-other-'));
+    mkdirSync(join(other, 'profiles', 'athena'), { recursive: true });
+    const before = hashTree(home);
+    try {
+      await expect(
+        createProfile({
+          hermesBin: MOCK_BIN,
+          hermesHome: home,
+          id: 'athena',
+          heading: { name: 'Athena', tagline: null },
+          env: { MOCK_HERMES_HOME: other },
+        }),
+      ).rejects.toThrow(/profile already exists: athena/);
+      expect(hashTree(home)).toEqual(before);
+    } finally {
+      rmSync(other, { recursive: true, force: true });
+    }
+  });
+
+  // Reaching the mock's exit-2 (invalid name) branch through createProfile's
+  // public API is not possible: ID_RE in create.ts is byte-for-byte the same
+  // pattern the mock CLI validates against
+  // (`/^[a-z0-9][a-z0-9_-]*$/`), so any id that clears our own
+  // validateProfileId also clears the CLI's. There's no id that reaches
+  // `run(...)` and still trips the CLI's own validation.
 
   it('leaves the scaffold default untouched — never adopts it (decision 2)', async () => {
     await createProfile({

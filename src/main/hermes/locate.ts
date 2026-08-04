@@ -55,6 +55,34 @@ function findOnPath(env: NodeJS.ProcessEnv, home: string): string | null {
   return existsSync(fallback) ? fallback : null;
 }
 
+/**
+ * Resolves the environment a Hermes child process should actually run with.
+ *
+ * execFile's `env` option replaces the child's entire environment rather than
+ * merging with it. The Hermes binary may be a shebang script (as the mock
+ * fixture is, and as some real installs are), so its interpreter is resolved
+ * via PATH too — and a real GUI app's inherited PATH is already minimal (see
+ * the ~/.local/bin fallback above `findOnPath`).
+ *
+ * A caller who passes no `env` is the production case: run with
+ * `process.env` untouched. A caller who deliberately passes a restricted
+ * `env` — to sandbox what the subprocess sees, as tests do — gets exactly
+ * that env, with only the ambient PATH appended (not the whole ambient
+ * environment merged on top) so the shebang can still resolve its
+ * interpreter. This keeps the `env` option able to actually restrict what
+ * the subprocess sees. Shared by every call site that spawns Hermes
+ * (`locateHermes` here, `createProfile` in create.ts, and the ACP session
+ * launch in Task 7) so the policy lives in exactly one place.
+ */
+export function execEnvFor(callerEnv?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return callerEnv
+    ? {
+        ...callerEnv,
+        PATH: [callerEnv.PATH, process.env.PATH].filter(Boolean).join(delimiter) || undefined,
+      }
+    : process.env;
+}
+
 export async function locateHermes(
   opts: { env?: NodeJS.ProcessEnv; home?: string } = {},
 ): Promise<HermesLocation> {
@@ -72,25 +100,7 @@ export async function locateHermes(
     };
   }
 
-  // execFile's `env` option replaces the child's entire environment rather than
-  // merging with it. `bin` is already an absolute path, so the child doesn't
-  // need PATH to find *itself* — but if it's a shebang script (as the mock
-  // fixture is, and as some real installs are), its interpreter is resolved
-  // via PATH too, and a real GUI app's inherited PATH is already minimal
-  // (see the ~/.local/bin fallback above).
-  //
-  // A caller who passes no `env` is the production case: run with
-  // `process.env` untouched. A caller who deliberately passes a restricted
-  // `env` — to sandbox what the subprocess sees — gets exactly that env,
-  // with only the ambient PATH appended (not the whole ambient environment
-  // merged on top) so the shebang can still resolve its interpreter. This
-  // keeps the `env` option able to actually restrict what the subprocess sees.
-  const execEnv: NodeJS.ProcessEnv = opts.env
-    ? {
-        ...opts.env,
-        PATH: [opts.env.PATH, process.env.PATH].filter(Boolean).join(delimiter) || undefined,
-      }
-    : env;
+  const execEnv = execEnvFor(opts.env);
 
   let stdout: string;
   try {
