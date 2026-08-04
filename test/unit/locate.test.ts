@@ -23,6 +23,14 @@ describe('parseVersion', () => {
   it('returns null for unrecognised output', () => {
     expect(parseVersion('command not found')).toBeNull();
   });
+
+  it('does not mistake the build-date parenthetical for the version', () => {
+    expect(parseVersion('Hermes Agent vnot-a-version (2026.5.16)')).toBeNull();
+  });
+
+  it('does not read a version out of unrelated banner text', () => {
+    expect(parseVersion('Loaded 3 plugins from 2 sources\nno version here\n')).toBeNull();
+  });
 });
 
 describe('compareVersions', () => {
@@ -75,5 +83,15 @@ describe('locateHermes', () => {
   it('accepts a version above the minimum — never fail closed on newer (§8.1)', async () => {
     const r = await locateHermes({ env: { PATH: MOCK_DIR, MOCK_HERMES_VERSION: '99.0.0' } });
     expect(r.ok).toBe(true);
+  });
+
+  it('reports unreadable-version when the binary prints something unparseable', async () => {
+    const r = await locateHermes({ env: { PATH: MOCK_DIR, MOCK_HERMES_VERSION: 'not-a-version' } });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.reason).toBe('unreadable-version');
+      expect(r.message).toContain(MIN_HERMES_VERSION);
+      expect(r.message).not.toMatch(/Error:|at Object|\bstack\b/);
+    }
   });
 });

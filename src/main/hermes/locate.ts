@@ -19,11 +19,18 @@ export type HermesLocation =
       message: string;
     };
 
-const VERSION_RE = /(?:Hermes Agent v)?(\d+\.\d+(?:\.\d+)?)/;
+// Anchored deliberately. An unanchored `(\d+\.\d+...)` matches the first
+// number-shaped token *anywhere* in the output, so a banner like
+// `Hermes Agent vnot-a-version (2026.5.16)` reports the build date as the
+// version and we accept a binary whose version we never actually read. Only
+// two shapes count: the `Hermes Agent v<semver>` banner, or a line that is
+// nothing but a version.
+const VERSION_RE = /^(?:Hermes Agent v(\d+\.\d+(?:\.\d+)?)\b|(\d+\.\d+(?:\.\d+)?)\s*$)/m;
 
 export function parseVersion(stdout: string): string | null {
   const m = VERSION_RE.exec(stdout.trim());
-  return m ? m[1]! : null;
+  if (!m) return null;
+  return m[1] ?? m[2]!;
 }
 
 export function compareVersions(a: string, b: string): number {
@@ -70,14 +77,20 @@ export async function locateHermes(
   // need PATH to find *itself* — but if it's a shebang script (as the mock
   // fixture is, and as some real installs are), its interpreter is resolved
   // via PATH too, and a real GUI app's inherited PATH is already minimal
-  // (see the ~/.local/bin fallback above). So the exec environment inherits
-  // the real process environment and layers the caller's overrides on top,
-  // appending rather than replacing PATH, instead of using the caller's env
-  // (which exists to steer *lookup*, i.e. findOnPath) verbatim.
-  const execEnv: NodeJS.ProcessEnv = { ...process.env, ...env };
-  if (env.PATH) {
-    execEnv.PATH = process.env.PATH ? `${process.env.PATH}${delimiter}${env.PATH}` : env.PATH;
-  }
+  // (see the ~/.local/bin fallback above).
+  //
+  // A caller who passes no `env` is the production case: run with
+  // `process.env` untouched. A caller who deliberately passes a restricted
+  // `env` — to sandbox what the subprocess sees — gets exactly that env,
+  // with only the ambient PATH appended (not the whole ambient environment
+  // merged on top) so the shebang can still resolve its interpreter. This
+  // keeps the `env` option able to actually restrict what the subprocess sees.
+  const execEnv: NodeJS.ProcessEnv = opts.env
+    ? {
+        ...opts.env,
+        PATH: [opts.env.PATH, process.env.PATH].filter(Boolean).join(delimiter) || undefined,
+      }
+    : env;
 
   let stdout: string;
   try {
