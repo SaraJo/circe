@@ -113,4 +113,19 @@ describe('inferCodingProfile (§5.5 fallback)', () => {
   it('does not match an unrelated persona', () => {
     expect(inferCodingProfile('# Random — Family\n\nFamily life and logistics.')).toBe(false);
   });
+
+  // Regression: observed on the real ~/.hermes, where a podcast profile was
+  // classified as a coding profile because its brief mentions the kind of thing
+  // the show covers. One keyword in the body is subject matter, not a role.
+  it('does not match a single passing keyword in the body', () => {
+    const eddie =
+      '# Eddie — Chaos Agents Podcast Sub-Agent\n\n' +
+      'One cool thing built recently — a project, demo, repo, weird hack. ' +
+      'Something that would make a listener go "wait, what?"\n';
+    expect(inferCodingProfile(eddie)).toBe(false);
+  });
+
+  it('still matches a heading keyword even with a body that says nothing else', () => {
+    expect(inferCodingProfile('# Zaphod, shell wrangler\n\nHe does things.\n')).toBe(true);
+  });
 });

@@ -18,14 +18,29 @@ export function isRealProfile(p: { isDefault: boolean; soulMarkdown: string | nu
   return parseSoulHeading(p.soulMarkdown) !== null;
 }
 
-const CODING_RE = /\b(cod(e|ing)|engineer|developer|repo|git|filesystem|shell)\b/i;
+const CODING_RE = /\b(cod(e|ing)|engineer|developer|repo|git|filesystem|shell)\b/gi;
+
+function codingTokens(text: string): Set<string> {
+  return new Set((text.match(CODING_RE) ?? []).map((t) => t.toLowerCase()));
+}
 
 /**
  * §5.5 fallback, used only for pre-existing profiles Circe found on disk that
  * never went through the Screen 5 walkthrough. An explicit role pick always wins.
+ *
+ * A keyword in the heading is decisive — that line is where someone states what
+ * a profile IS. In the body it takes two distinct keywords, because a SOUL body
+ * is prose that may discuss coding without describing a coding agent: a podcast
+ * profile on the real machine matched on the lone word "repo" inside a list of
+ * things the show covers. Two distinct terms ("the git repo") reads as a role;
+ * one reads as a topic. Biased toward false negatives on purpose — this only
+ * pre-checks a box the user can set themselves, so a miss costs one click while
+ * a false positive silently mislabels a profile.
  */
 export function inferCodingProfile(soulMarkdown: string): boolean {
-  return CODING_RE.test(soulMarkdown);
+  const heading = parseSoulHeading(soulMarkdown);
+  if (heading && codingTokens(`${heading.name} ${heading.tagline ?? ''}`).size > 0) return true;
+  return codingTokens(soulMarkdown).size >= 2;
 }
 
 async function readSoul(soulPath: string): Promise<string | null> {
