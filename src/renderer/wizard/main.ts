@@ -227,6 +227,25 @@ const SCREENS: Record<string, () => void | Promise<void>> = {
       detail,
     ]);
   },
+
+  async ready() {
+    render([el('h1', undefined, 'Circe'), el('p', undefined, 'Launching your fleet…')]);
+    const { launched } = await window.wizard.launchFleet();
+
+    // Decision 1 — never close the wizard on an empty fleet, or the user is
+    // left with no window and no way back in.
+    if (launched === 0) {
+      render([
+        el('h1', undefined, 'No agents to launch'),
+        el('p', undefined, 'Nothing is set to open as a tile.'),
+        actions(
+          button('Add an agent', () => go('walkthrough'), 'primary'),
+          button('Back', () => window.wizard.back().then(boot), 'quiet'),
+        ),
+      ]);
+    }
+    // On success the main process closes this window once tiles are up.
+  },
 };
 
 async function go(screen: string) {
