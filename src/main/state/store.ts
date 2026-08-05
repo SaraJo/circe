@@ -89,6 +89,15 @@ export class StateStore {
     return this.enqueue();
   }
 
+  /**
+   * Resolves once every queued write has hit disk. Callers that fire a write
+   * without awaiting it — `closeTile` persists bounds from a window-close
+   * handler — need this to know the state file is durable before quitting.
+   */
+  whenIdle(): Promise<void> {
+    return this.queue;
+  }
+
   private enqueue(): Promise<void> {
     this.queue = this.queue.then(() => this.flush());
     return this.queue;

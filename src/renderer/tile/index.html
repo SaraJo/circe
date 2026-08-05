@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+    <link rel="stylesheet" href="../ui/base.css" />
+    <link rel="stylesheet" href="./tile.css" />
+  </head>
+  <body>
+    <header id="header">
+      <div id="avatar" class="avatar"></div>
+      <div id="identity">
+        <div id="name"></div>
+        <div id="model"></div>
+      </div>
+      <button id="gate" class="btn btn--quiet" title="Cycle permission gate"></button>
+    </header>
+    <hr class="hairline" />
+    <main id="transcript"></main>
+    <footer id="composer">
+      <input id="input" type="text" placeholder="Message" autocomplete="off" />
+      <button id="send" class="btn btn--primary">Send</button>
+    </footer>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
