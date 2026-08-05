@@ -1,7 +1,25 @@
+import { readFile } from 'node:fs/promises';
 import { createProfile } from '../hermes/create';
+import { enumerateProfiles, inferCodingProfile } from '../hermes/profiles';
 import { findCast } from '../../shared/casts';
 import { DEFAULT_PALETTE, type HermesProfile, type Palette, type TileState } from '../../shared/types';
 import type { StateStore } from '../state/store';
+
+/** A fresh tile: one empty tab, fallback bounds, coding profiles gated (§6.4). */
+function newTileState(profileId: string, palette: Palette, isCodingProfile: boolean): TileState {
+  const tabId = `t${Date.now().toString(36)}`;
+  return {
+    profileId,
+    // Screen 7 lays tiles out; this is the fallback size from §6.3.1.
+    bounds: { x: 0, y: 0, width: 500, height: 600 },
+    gateMode: isCodingProfile ? 'locked' : 'unlocked',
+    palette,
+    tabs: [{ id: tabId, title: 'New tab', sessionId: null, messages: [] }],
+    activeTabId: tabId,
+    tiled: true,
+    isCodingProfile,
+  };
+}
 
 // Defined in shared/casts so the wizard renderer can import it without pulling
 // this module's node:child_process dependency into a browser bundle.
@@ -50,19 +68,7 @@ export class AgentBuilder {
       env: this.deps.env,
     });
 
-    const tabId = `t${Date.now().toString(36)}`;
-    const tile: TileState = {
-      profileId: id,
-      // Screen 7 lays tiles out; this is the fallback size from §6.3.1.
-      bounds: { x: 0, y: 0, width: 500, height: 600 },
-      // New profiles open unlocked, except coding profiles (§6.4).
-      gateMode: opts.isCodingProfile ? 'locked' : 'unlocked',
-      palette,
-      tabs: [{ id: tabId, title: 'New tab', sessionId: null, messages: [] }],
-      activeTabId: tabId,
-      tiled: true,
-      isCodingProfile: opts.isCodingProfile ?? false,
-    };
+    const tile = newTileState(id, palette, opts.isCodingProfile ?? false);
 
     const state = this.deps.store.get();
     state.tiles[id] = tile;
@@ -72,5 +78,33 @@ export class AgentBuilder {
     await this.deps.store.save(state);
 
     return profile;
+  }
+
+  /**
+   * Screen 4b. Gives every real profile already on disk a tile so the fleet can
+   * launch it — without this the wizard discovers profiles, continues, and
+   * Fleet.plan() finds nothing to open.
+   *
+   * §10.6: this writes only Circe's own state file. It never touches a profile
+   * directory, and it never overwrites tile state that already exists, so a
+   * second pass is a no-op rather than a reset.
+   */
+  async adoptProfiles(): Promise<string[]> {
+    const profiles = (await enumerateProfiles(this.deps.hermesHome)).filter((p) => p.real);
+    const state = this.deps.store.get();
+    const adopted: string[] = [];
+
+    for (const profile of profiles) {
+      if (state.tiles[profile.id]) continue;
+      // §5.5 — imported profiles get their role inferred from SOUL.md, since
+      // nobody walked them through the Screen 5 role picker.
+      const soul = await readFile(profile.soulPath, 'utf8').catch(() => '');
+      state.tiles[profile.id] = newTileState(profile.id, DEFAULT_PALETTE, inferCodingProfile(soul));
+      adopted.push(profile.id);
+    }
+
+    if (!state.mainOperatorId && adopted[0]) state.mainOperatorId = adopted[0];
+    await this.deps.store.save(state);
+    return adopted;
   }
 }

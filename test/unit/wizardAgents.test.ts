@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -131,6 +131,74 @@ describe('AgentBuilder', () => {
 
   it('leaves the scaffold default untouched (decision 2)', async () => {
     await makeBuilder().createFromCharacter({ castId: 'greek', characterName: 'Athena' });
+    expect(readFileSync(join(home, 'SOUL.md'), 'utf8')).toBe(SCAFFOLD);
+  });
+});
+
+describe('AgentBuilder.adoptProfiles', () => {
+  function seed(id: string, soul: string) {
+    mkdirSync(join(home, 'profiles', id), { recursive: true });
+    writeFileSync(join(home, 'profiles', id, 'SOUL.md'), soul);
+  }
+
+  it('gives every real profile a tile so the fleet can launch it', async () => {
+    seed('athena', '# Athena — the strategist\n');
+    seed('ford', '# Ford — Career\n');
+
+    expect((await makeBuilder().adoptProfiles()).sort()).toEqual(['athena', 'ford']);
+    expect(Object.keys(store.get().tiles).sort()).toEqual(['athena', 'ford']);
+  });
+
+  it('marks adopted tiles tiled, with one empty tab', async () => {
+    seed('athena', '# Athena — the strategist\n');
+    await makeBuilder().adoptProfiles();
+
+    const tile = store.get().tiles['athena']!;
+    expect(tile.tiled).toBe(true);
+    expect(tile.tabs).toHaveLength(1);
+    expect(tile.tabs[0]!.messages).toEqual([]);
+    expect(tile.activeTabId).toBe(tile.tabs[0]!.id);
+  });
+
+  it('infers the §5.5 role and gates coding profiles locked (§6.4)', async () => {
+    seed('locutus', '# Locutus — coding agent\n\nYou manage the git repo.\n');
+    seed('ford', '# Ford — Career\n\nCareer planning and logistics.\n');
+    await makeBuilder().adoptProfiles();
+
+    expect(store.get().tiles['locutus']!.isCodingProfile).toBe(true);
+    expect(store.get().tiles['locutus']!.gateMode).toBe('locked');
+    expect(store.get().tiles['ford']!.isCodingProfile).toBe(false);
+    expect(store.get().tiles['ford']!.gateMode).toBe('unlocked');
+  });
+
+  it('ignores the unconfigured scaffold default (§5.4)', async () => {
+    seed('athena', '# Athena — the strategist\n');
+    await makeBuilder().adoptProfiles();
+    expect(Object.keys(store.get().tiles)).toEqual(['athena']);
+  });
+
+  it('never overwrites tile state that already exists', async () => {
+    seed('athena', '# Athena — the strategist\n');
+    await makeBuilder().adoptProfiles();
+    await store.updateTile('athena', { gateMode: 'locked' });
+
+    // A second pass must be a no-op, not a reset to defaults.
+    expect(await makeBuilder().adoptProfiles()).toEqual([]);
+    expect(store.get().tiles['athena']!.gateMode).toBe('locked');
+  });
+
+  it('claims main operator only when nothing else has', async () => {
+    seed('athena', '# Athena — the strategist\n');
+    await makeBuilder().adoptProfiles();
+    expect(store.get().mainOperatorId).toBe('athena');
+  });
+
+  it('writes only Circe state, never a profile directory (§10.6)', async () => {
+    const soul = '# Athena — the strategist\n\noriginal body\n';
+    seed('athena', soul);
+    await makeBuilder().adoptProfiles();
+
+    expect(readFileSync(join(home, 'profiles', 'athena', 'SOUL.md'), 'utf8')).toBe(soul);
     expect(readFileSync(join(home, 'SOUL.md'), 'utf8')).toBe(SCAFFOLD);
   });
 });

@@ -9,6 +9,7 @@ declare global {
       detectRuntime(): Promise<{ installed: boolean; version: string | null; message: string }>;
       detectProfiles(): Promise<{ next: string; profiles: any[] }>;
       createAgent(payload: unknown): Promise<any>;
+      adoptProfiles(): Promise<string[]>;
       listProviders(): Promise<{ id: string; label: string }[]>;
       loginProvider(provider: string): Promise<{ ok: boolean; message: string }>;
       launchFleet(): Promise<{ launched: number }>;
@@ -78,7 +79,18 @@ const SCREENS: Record<string, () => void | Promise<void>> = {
       el('h1', undefined, 'Existing agents'),
       el('p', undefined, `Found ${real.length}. Circe will use them as they are.`),
       ...real.map((p: any) => el('div', 'row', `${p.displayName}${p.tagline ? ` — ${p.tagline}` : ''}`)),
-      actions(button('Continue', () => go('provider'), 'primary')),
+      // Adopting gives each discovered profile a tile so Screen 7 has something
+      // to launch. It writes Circe state only — the profiles are not touched.
+      actions(
+        button(
+          'Continue',
+          async () => {
+            await window.wizard.adoptProfiles();
+            await go('provider');
+          },
+          'primary',
+        ),
+      ),
     ]);
   },
 

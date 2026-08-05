@@ -40,14 +40,53 @@ function createTileWindow(profileId: string): TileWindow {
       additionalArguments: [`--profile-id=${profileId}`],
     },
   });
+  // spawnTile sends `tile:init` immediately after this factory returns, but
+  // loadFile is async — the renderer has not registered its ipcRenderer.on
+  // handlers yet, so an unbuffered send is dropped and the tile renders blank.
+  let loaded = false;
+  const pending: { channel: string; payload: unknown }[] = [];
+  win.webContents.on('did-finish-load', () => {
+    loaded = true;
+    for (const m of pending) win.webContents.send(m.channel, m.payload);
+    pending.length = 0;
+  });
+
   void win.loadFile(join(__dirname, '../renderer/tile/index.html'));
 
   return {
-    send: (channel, payload) => win.webContents.send(channel, payload),
+    send: (channel, payload) => {
+      if (win.isDestroyed()) return;
+      if (loaded) win.webContents.send(channel, payload);
+      else pending.push({ channel, payload });
+    },
     getBounds: () => win.getBounds(),
     close: () => win.close(),
     isDestroyed: () => win.isDestroyed(),
   };
+}
+
+/**
+ * Screen 7 lays the fleet out across the primary display. Only tiles still at
+ * the (0,0) fallback are moved, so a position the user chose is never
+ * overwritten — that is what makes bounds survive a relaunch (§10.5).
+ *
+ * Both the wizard launch and the onboarded boot go through here. When only the
+ * boot path laid tiles out, a freshly-onboarded fleet opened every tile stacked
+ * at (0,0) and got silently rearranged on the next launch.
+ */
+async function layoutUnpositionedTiles(): Promise<void> {
+  const { launchable } = await fleet.plan();
+  const primary = screen.getPrimaryDisplay().workAreaSize;
+  const boxes = fleet.layout(launchable.length, primary);
+  const state = store.get();
+
+  launchable.forEach((profileId, i) => {
+    const tile = state.tiles[profileId];
+    if (tile && tile.bounds.x === 0 && tile.bounds.y === 0 && boxes[i]) {
+      tile.bounds = boxes[i]!;
+    }
+  });
+  await store.save(state);
 }
 
 app.on('window-all-closed', () => app.quit());
@@ -72,6 +111,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('wizard:detect-runtime', () => wizard.detectRuntime());
   ipcMain.handle('wizard:detect-profiles', () => wizard.detectProfiles());
   ipcMain.handle('wizard:create-agent', (_e, payload) => builder.createFromCharacter(payload));
+  ipcMain.handle('wizard:adopt-profiles', () => builder.adoptProfiles());
   ipcMain.handle('wizard:list-providers', () => PROVIDERS);
   ipcMain.handle('wizard:login-provider', async (_e, provider: string) => {
     const login = new ProviderLogin({
@@ -82,6 +122,7 @@ app.whenReady().then(async () => {
     return login.run();
   });
   ipcMain.handle('wizard:launch-fleet', async () => {
+    await layoutUnpositionedTiles();
     const result = await fleet.launch();
     if (result.launched > 0) {
       const state = store.get();
@@ -108,17 +149,7 @@ app.whenReady().then(async () => {
   // ---- boot ----
   const state = store.get();
   if (state.onboarded) {
-    // Lay out any tile that has never been positioned.
-    const { launchable } = await fleet.plan();
-    const primary = screen.getPrimaryDisplay().workAreaSize;
-    const boxes = fleet.layout(launchable.length, primary);
-    launchable.forEach((profileId, i) => {
-      const tile = state.tiles[profileId];
-      if (tile && tile.bounds.x === 0 && tile.bounds.y === 0 && boxes[i]) {
-        tile.bounds = boxes[i]!;
-      }
-    });
-    await store.save(state);
+    await layoutUnpositionedTiles();
 
     const result = await fleet.launch();
     // Decision 1 — an empty fleet at boot reopens the wizard rather than
