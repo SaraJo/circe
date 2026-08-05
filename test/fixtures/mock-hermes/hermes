@@ -63,9 +63,52 @@ if (argv[0] === 'profile' && argv[1] === 'show') {
   process.exit(0);
 }
 
+// Records invocations so a test can assert what Circe actually ran. Off unless
+// MOCK_HERMES_TRACE=1, so existing tests see no extra files in their home dir.
+function trace(name, data) {
+  if (process.env.MOCK_HERMES_TRACE !== '1') return;
+  fs.mkdirSync(HOME, { recursive: true });
+  fs.appendFileSync(path.join(HOME, `${name}.log`), JSON.stringify(data) + '\n');
+}
+
 if (argv[0] === 'status') {
+  trace('status', { argv });
+  const statusExit = Number(process.env.MOCK_HERMES_STATUS_EXIT || '0');
+  if (statusExit !== 0) {
+    process.stderr.write('not authenticated\n');
+    process.exit(statusExit);
+  }
   process.stdout.write(`Provider: anthropic\nAuth: ok\n`);
   process.exit(0);
+}
+
+// `hermes login --provider <p> --no-browser` — the §5.2 device-authorization
+// flow. MOCK_HERMES_LOGIN_MODE picks the shape of the output, and
+// MOCK_HERMES_LOGIN_EXIT the exit code.
+if (argv[0] === 'login') {
+  trace('login', { argv });
+  const mode = process.env.MOCK_HERMES_LOGIN_MODE || 'prompt';
+  const loginExit = Number(process.env.MOCK_HERMES_LOGIN_EXIT || '0');
+
+  if (mode === 'hang') {
+    // Never exits on its own — the test drives cancel().
+    process.stdout.write('Starting device authorization…\n');
+    setInterval(() => {}, 1000);
+  } else if (mode === 'silent') {
+    // No parseable URL/code: the COMPAT fallback path.
+    process.stdout.write('Starting device authorization…\n');
+    setTimeout(() => process.exit(loginExit), 5);
+  } else {
+    // The URL and the code arrive in separate writes on purpose, so the client
+    // has to parse its accumulated buffer rather than one chunk.
+    process.stdout.write('Starting device authorization…\n');
+    process.stdout.write('Visit https://portal.nousresearch.com/device to continue.\n');
+    setTimeout(() => {
+      process.stdout.write('Enter code: ABCD-1234\n');
+      setTimeout(() => process.exit(loginExit), 5);
+    }, 5);
+  }
+  return;
 }
 
 if (argv[0] !== 'acp') {
