@@ -49,6 +49,7 @@ export function migrate(raw: unknown): CirceState {
     onboarded: raw.onboarded === true,
     mainOperatorId: typeof raw.mainOperatorId === 'string' ? raw.mainOperatorId : null,
     tiles,
+    wizardScreen: typeof raw.wizardScreen === 'string' ? raw.wizardScreen : null,
   };
 }
 

@@ -65,6 +65,8 @@ export interface CirceState {
   onboarded: boolean;
   mainOperatorId: string | null;
   tiles: Record<string, TileState>;
+  /** Where the wizard left off, so §8.2 can resume instead of restarting. */
+  wizardScreen: string | null;
 }
 
 export const DEFAULT_PALETTE: Palette = {
@@ -73,5 +75,5 @@ export const DEFAULT_PALETTE: Palette = {
 };
 
 export function emptyState(): CirceState {
-  return { version: 1, onboarded: false, mainOperatorId: null, tiles: {} };
+  return { version: 1, onboarded: false, mainOperatorId: null, tiles: {}, wizardScreen: null };
 }

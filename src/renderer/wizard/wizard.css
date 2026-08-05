@@ -1,0 +1,15 @@
+body {
+  height: 100vh;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(30px);
+  border-radius: var(--radius);
+}
+#screen { height: 100%; display: flex; flex-direction: column; justify-content: center; padding: 40px 56px; gap: 18px; }
+h1 { font-size: 22px; font-weight: 600; margin: 0; }
+p { margin: 0; color: var(--fg-dim); line-height: 1.5; }
+.actions { display: flex; gap: 9px; margin-top: 6px; }
+.log { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;
+  color: var(--fg-dim); max-height: 140px; overflow-y: auto; white-space: pre-wrap; }
+.row { display: flex; align-items: center; gap: 10px; }
+.code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 18px;
+  letter-spacing: 2px; color: var(--fg); }

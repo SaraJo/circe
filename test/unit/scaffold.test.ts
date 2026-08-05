@@ -12,6 +12,7 @@ describe('shared types', () => {
       onboarded: false,
       mainOperatorId: null,
       tiles: {},
+      wizardScreen: null,
     });
   });
 
