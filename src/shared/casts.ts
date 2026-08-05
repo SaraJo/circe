@@ -88,3 +88,17 @@ export function findCast(id: string): Cast | undefined {
 export function initialFor(name: string): string {
   return name.trim().charAt(0).toUpperCase() || '•';
 }
+
+/**
+ * Screen 4a suggests the first character of the cast that isn't already used.
+ *
+ * Lives here rather than beside AgentBuilder because the renderer needs it:
+ * anything the wizard UI imports must stay free of Node built-ins, and
+ * `src/main/wizard/agents.ts` reaches node:child_process through createProfile.
+ * It is re-exported from there so main-process callers keep one import site.
+ */
+export function suggestCharacter(castId: string, taken: string[]): Character | null {
+  const cast = findCast(castId);
+  if (!cast) return null;
+  return cast.characters.find((c) => !taken.includes(c.suggestedId)) ?? null;
+}

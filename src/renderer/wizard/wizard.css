@@ -13,3 +13,6 @@ p { margin: 0; color: var(--fg-dim); line-height: 1.5; }
 .row { display: flex; align-items: center; gap: 10px; }
 .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 18px;
   letter-spacing: 2px; color: var(--fg); }
+.input { padding: 8px 11px; border-radius: 8px; border: 1px solid var(--hairline);
+  background: rgba(255,255,255,0.05); color: var(--fg); font: inherit; outline: none; }
+.input:focus { border-color: var(--accent); }
