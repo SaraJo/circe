@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import type { GateMode } from '../../shared/types';
+import { isAllowOption, isRejectOption } from '../../shared/gate';
 
 export interface PermissionOption {
   optionId?: string;
@@ -74,6 +75,9 @@ export class AcpClient {
   private nextId = 1;
   private pending = new Map<number, Pending>();
   private buf = '';
+  /** Requests parked awaiting the user in ask mode. */
+  private pendingPermissions = new Map<string, { rpcId: number; options: PermissionOption[] }>();
+  private nextPermKey = 1;
 
   constructor(opts: AcpClientOptions) {
     this.hermesBin = opts.hermesBin;
@@ -147,6 +151,43 @@ export class AcpClient {
       this.child = null;
     }
     this.ready = null;
+  }
+
+  get pendingPermissionCount(): number {
+    return this.pendingPermissions.size;
+  }
+
+  /**
+   * Takes effect on the next inbound request — no session or turn boundary
+   * (§10.4). Leaving `ask` resolves every parked card as cancelled so the agent
+   * is not left waiting on a prompt the user has abandoned (§6.4).
+   */
+  setGateMode(mode: GateMode): void {
+    const previous = this.gateMode;
+    this.gateMode = mode;
+    if (previous === 'ask' && mode !== 'ask') this.cancelPendingPermissions();
+  }
+
+  resolvePermission(requestKey: string, optionId: string | null): boolean {
+    const entry = this.pendingPermissions.get(requestKey);
+    if (!entry) return false;
+    this.pendingPermissions.delete(requestKey);
+    if (optionId) {
+      const match = entry.options.find((o) => (o.optionId ?? o.name) === optionId);
+      this.reply(entry.rpcId, {
+        outcome: { outcome: 'selected', optionId: match?.optionId ?? match?.name ?? optionId },
+      });
+    } else {
+      this.reply(entry.rpcId, { outcome: { outcome: 'cancelled' } });
+    }
+    return true;
+  }
+
+  cancelPendingPermissions(): void {
+    for (const [key, entry] of this.pendingPermissions) {
+      this.reply(entry.rpcId, { outcome: { outcome: 'cancelled' } });
+      this.pendingPermissions.delete(key);
+    }
   }
 
   /** Test seam so the line framer can be exercised without a subprocess. */
@@ -223,11 +264,7 @@ export class AcpClient {
 
   protected handleServerRequest(id: number, method: string, params: any): void {
     if (method === 'session/request_permission') {
-      // Task 8 replaces this with the real three-state gate.
-      const allow = (params?.options ?? []).find((o: PermissionOption) => o.kind?.startsWith('allow'));
-      this.reply(id, {
-        outcome: { outcome: 'selected', optionId: allow?.optionId ?? allow?.name ?? 'allow' },
-      });
+      this.handlePermissionRequest(id, params);
       return;
     }
     if (method === 'fs/read_text_file') {
@@ -245,5 +282,44 @@ export class AcpClient {
       return;
     }
     this.replyError(id, -32601, `method not implemented: ${method}`);
+  }
+
+  private handlePermissionRequest(rpcId: number, params: any): void {
+    const options: PermissionOption[] = params?.options ?? [];
+    const toolCall: ToolCallRef | null = params?.toolCall ?? null;
+
+    if (this.gateMode === 'unlocked') {
+      const allow = options.find(isAllowOption) ?? options[0];
+      this.reply(rpcId, {
+        outcome: { outcome: 'selected', optionId: allow?.optionId ?? allow?.name ?? 'allow' },
+      });
+      return;
+    }
+
+    if (this.gateMode === 'locked') {
+      const reject = options.find(isRejectOption);
+      if (reject) {
+        this.reply(rpcId, {
+          outcome: { outcome: 'selected', optionId: reject.optionId ?? reject.name },
+        });
+      } else {
+        this.reply(rpcId, { outcome: { outcome: 'cancelled' } });
+      }
+      // Still surface it, already resolved, so the transcript can render a card
+      // showing what was denied — the user must be able to see the agent tried.
+      this.onPermission({ requestKey: null, resolved: 'locked', toolCall, options });
+      return;
+    }
+
+    // ask — park it and wait for resolvePermission().
+    const requestKey = `p${this.nextPermKey++}`;
+    this.pendingPermissions.set(requestKey, { rpcId, options });
+    try {
+      this.onPermission({ requestKey, resolved: null, toolCall, options });
+    } catch {
+      // If the UI could not take the handoff, do not leave Hermes hanging.
+      this.pendingPermissions.delete(requestKey);
+      this.reply(rpcId, { outcome: { outcome: 'cancelled' } });
+    }
   }
 }
