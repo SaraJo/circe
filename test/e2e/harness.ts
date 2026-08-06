@@ -13,6 +13,11 @@ export interface LaunchOptions {
   home?: string;
   scenario?: string;
   seed?: (home: string) => void;
+  /**
+   * Extra environment for the mock CLI — e.g. MOCK_HERMES_REPLY to lengthen the
+   * canned stream. Applied last, so a test can override any default set below.
+   */
+  env?: Record<string, string>;
 }
 
 export async function launchCirce(opts: LaunchOptions = {}) {
@@ -35,6 +40,13 @@ export async function launchCirce(opts: LaunchOptions = {}) {
       // Put the mock first so locateHermes() finds it instead of a real install.
       PATH: `${MOCK_DIR}:${process.env.PATH ?? ''}`,
       CIRCE_E2E: '1',
+      // A crashed run leaves macOS saved state behind, and every later launch
+      // then stops to ask whether to reopen windows — which blocks startup and
+      // fails whichever test happens to run next. Scoped to the harness so the
+      // developer's own Electron behaviour is untouched. See the teardown
+      // segfault recorded in the SDD ledger.
+      ApplePersistenceIgnoreState: 'YES',
+      ...opts.env,
     },
   });
 
