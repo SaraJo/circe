@@ -9,6 +9,7 @@ import { Fleet } from './fleet';
 import { locateHermes } from './hermes/locate';
 import { PROVIDERS, ProviderLogin } from './hermes/provider';
 import { createWizardWindow } from './wizard/window';
+import { installQuitHandler } from './lifecycle';
 import { IPC_TO_MAIN } from '../shared/ipc';
 
 const HERMES_HOME = process.env.HERMES_HOME ?? join(homedir(), '.hermes');
@@ -90,7 +91,15 @@ async function layoutUnpositionedTiles(): Promise<void> {
 }
 
 app.on('window-all-closed', () => app.quit());
-app.on('before-quit', () => void tiles?.shutdown());
+
+// Teardown is async — closing tiles persists their bounds, and the state file
+// is written with three fs hops. `installQuitHandler` holds the quit open until
+// all of that is durable, so no continuation is left to resume on a disposed
+// V8 isolate. See docs/adr/0012-async-teardown-on-quit.md.
+installQuitHandler(app, async () => {
+  await tiles?.shutdown();
+  await store.whenIdle();
+});
 
 app.whenReady().then(async () => {
   await store.load();

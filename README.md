@@ -80,12 +80,6 @@ spawn a tile for a missing or malformed profile and leaves the others alone.
 start with an empty fleet, because closing the last tile quits the app. Use *Add an
 agent* or *Back*.
 
-## Known issues
-
-Quitting with several tiles open can crash the main process during teardown. The
-crash is in the quit path, so state is already saved; relaunching restores the fleet.
-Tracked for Phase 1 exit.
-
 ## Privacy
 
 Circe's own process makes zero telemetry, analytics, or crash-reporting calls, and

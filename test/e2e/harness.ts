@@ -40,11 +40,11 @@ export async function launchCirce(opts: LaunchOptions = {}) {
       // Put the mock first so locateHermes() finds it instead of a real install.
       PATH: `${MOCK_DIR}:${process.env.PATH ?? ''}`,
       CIRCE_E2E: '1',
-      // A crashed run leaves macOS saved state behind, and every later launch
-      // then stops to ask whether to reopen windows — which blocks startup and
-      // fails whichever test happens to run next. Scoped to the harness so the
-      // developer's own Electron behaviour is untouched. See the teardown
-      // segfault recorded in the SDD ledger.
+      // Keeps runs hermetic: any run that dies without a clean quit leaves
+      // macOS saved state behind, and every later launch then stops to ask
+      // whether to reopen windows, blocking startup and failing whichever test
+      // runs next. Scoped to the harness so the developer's own Electron
+      // behaviour is untouched.
       ApplePersistenceIgnoreState: 'YES',
       ...opts.env,
     },

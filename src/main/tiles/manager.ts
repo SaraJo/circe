@@ -123,9 +123,18 @@ export class TileManager {
     this.tiles.delete(profileId);
   }
 
+  /**
+   * Closes every tile and leaves the state file durable.
+   *
+   * `closeTile` persists bounds with an unawaited write, so saving is not
+   * enough on its own — `whenIdle` is what guarantees those queued writes have
+   * reached disk. Anything that quits the app MUST await this before letting
+   * Electron tear the process down; see `installQuitHandler`.
+   */
   async shutdown(): Promise<void> {
     for (const id of [...this.tiles.keys()]) this.closeTile(id);
     await this.deps.store.save(this.deps.store.get());
+    await this.deps.store.whenIdle();
   }
 
   private onUpdate(profileId: string, update: SessionUpdate): void {
