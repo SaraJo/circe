@@ -17,8 +17,6 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      # Expected to fail until Task 16 adds playwright.config.ts and the E2E
-      # suite — Task 16 will remove this comment once that lands.
       - run: npm run test:e2e
         env:
           CIRCE_E2E: '1'
