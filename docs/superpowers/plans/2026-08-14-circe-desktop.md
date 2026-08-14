@@ -600,6 +600,14 @@ git commit -m "feat: project scaffold and the single hermes seam"
 
 ## Task 2: The scaffold-vs-real profile heuristic
 
+> **Amended 2026-08-14 during execution (ledger ruling T2-a).** The rule below inspects only the
+> *first non-blank line*, which makes it return `false` for a setext heading (`Trillian\n========`)
+> and for YAML front matter followed by an H1 — both personas a user could plausibly write. That is a
+> false negative in the destructive direction: `writeSoul` would take no backup and the wizard would
+> never show its confirm screen. The shipped code widens the rule to "any ATX H1 anywhere, or a setext
+> H1, after skipping front matter", which still classifies Hermes's heading-less scaffold correctly.
+> Read the committed `src/main/profiles.ts` as authoritative over the listing here.
+
 Spec §5.4 needs an exact rule for "has this user actually configured this profile". The rule is ported from `circe-app`, where it was validated against real Hermes scaffold output: **Hermes's scaffold persona is bare prose with no heading, so the presence of an H1 is the realness signal.** This task also unblocks Task 1's test.
 
 **Files:**
@@ -741,6 +749,12 @@ git commit -m "feat: the scaffold-vs-real profile heuristic"
 ---
 
 ## Task 3: SOUL.md parsing, rendering, and non-destructive writes
+
+> **Amended 2026-08-14 during execution (ledger ruling T2-b).** Two constraints from Task 2's ruling
+> bind this task. (1) `parseSoulHeading` must select the *same* heading line `displayNameFor` selects,
+> or the accepted duplication between the two modules becomes a real divergence. (2) `withSoulHeading`
+> replaces the first non-empty line, which would corrupt a file that opens with YAML front matter — it
+> has no caller in this plan's wizard flow, so confirm it is needed before building it out.
 
 Ported from `circe-app/src/main/hermes/soul.ts`, which is proven, plus the backup behavior that Global Constraint 4 requires and the previous attempt did not have.
 
