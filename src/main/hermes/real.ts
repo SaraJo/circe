@@ -4,7 +4,6 @@ import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import type { HermesProfile } from '../../shared/types';
 import { hermesPaths, soulPath, type HermesPaths, type HermesRuntime } from './runtime';
-import { displayNameFor, isRealSoul } from '../profiles';
 
 const run = promisify(execFile);
 
@@ -13,6 +12,45 @@ const VERSION = /Hermes Agent v(\d+\.\d+\.\d+)/;
 
 /** A `hermes profile list` row: an optional bullet, the id, then the model. */
 const PROFILE_ROW = /^\s*[◆◇•]?\s*([a-z0-9][a-z0-9_-]*)\s+(\S+)/;
+
+/**
+ * Parses `hermes profile list` output into id -> model. Reports only what
+ * the table actually contains — including omitting `default` entirely when
+ * the table doesn't list it. Injecting a fallback for a missing `default` is
+ * the caller's job (`RealHermes.listProfiles`), not this parser's.
+ */
+export function parseProfileRows(stdout: string): Map<string, string> {
+  const seen = new Map<string, string>();
+  for (const raw of stdout.split('\n')) {
+    // Strip ANSI colour before matching — `profile list` is a styled table.
+    const line = raw.replace(/\x1b\[[0-9;]*m/g, '');
+    const m = PROFILE_ROW.exec(line);
+    if (!m) continue;
+    const id = m[1]!;
+    if (id === 'profile' || id === 'name') continue;
+    seen.set(id, m[2]!);
+  }
+  return seen;
+}
+
+/** `Provider:` values `hermes status` prints when nothing is configured. */
+const NO_PROVIDER = /^(none|not set|-)$/i;
+
+/**
+ * Extracts the active provider from `hermes status`'s human-readable
+ * `Environment` block. Returns null when there is no `Provider:` line, or
+ * when its value is one of Hermes's "nothing configured" placeholders.
+ *
+ * This parses human-readable CLI output, not a stable machine format — if
+ * Hermes ever reformats `status` and this stops matching, the fallback is
+ * `hermes auth status <provider>` once per known provider instead.
+ */
+export function parseProviderFromStatus(stdout: string): string | null {
+  const m = /^\s*Provider:\s*(\S.*?)\s*$/m.exec(stdout);
+  if (!m) return null;
+  const value = m[1]!;
+  return NO_PROVIDER.test(value) ? null : value;
+}
 
 export class RealHermes implements HermesRuntime {
   private readonly p: HermesPaths;
@@ -44,8 +82,8 @@ export class RealHermes implements HermesRuntime {
 
   async hasProvider(): Promise<boolean> {
     try {
-      const out = await this.exec(['auth', 'status'], 15_000);
-      return !/no (provider|credentials)/i.test(out);
+      const out = await this.exec(['status'], 15_000);
+      return parseProviderFromStatus(out) !== null;
     } catch {
       return false;
     }
@@ -58,18 +96,12 @@ export class RealHermes implements HermesRuntime {
     } catch {
       return [];
     }
-    const seen = new Map<string, string>();
-    for (const raw of stdout.split('\n')) {
-      // Strip ANSI colour before matching — `profile list` is a styled table.
-      const line = raw.replace(/\[[0-9;]*m/g, '');
-      const m = PROFILE_ROW.exec(line);
-      if (!m) continue;
-      const id = m[1]!;
-      if (id === 'profile' || id === 'name') continue;
-      seen.set(id, m[2]!);
-    }
+    const seen = parseProfileRows(stdout);
     if (!seen.has('default')) seen.set('default', 'unknown');
 
+    // Dynamic import: keeps this module loadable (and its pure parsers
+    // testable) before `../profiles` exists — mirrors `test/fake/hermes.ts`.
+    const { displayNameFor, isRealSoul } = await import('../profiles');
     const out: HermesProfile[] = [];
     for (const [id, model] of seen) {
       const soul = await this.readFileOrNull(soulPath(this.p.home, id));
