@@ -1,4 +1,4 @@
-import type { HermesProfile } from '../shared/types';
+import type { HermesProfile, SoulHeading } from '../shared/types';
 
 /**
  * Hermes's scaffold persona is bare prose. A user who has configured a profile
@@ -18,44 +18,76 @@ import type { HermesProfile } from '../shared/types';
 const ATX_H1 = /^#[ \t]+(\S.*)$/;
 const SETEXT_UNDERLINE = /^=+[ \t]*$/;
 const FRONT_MATTER_DELIM = /^---[ \t]*$/;
+/** Real personas on disk use an em dash, en dash, hyphen, or comma. */
+const HEADING_SEPARATOR = /\s+—\s+|\s+–\s+|\s+-\s+|,\s+/;
 
 function stripBom(text: string): string {
   return text.replace(/^﻿/, '');
 }
 
 /**
- * Drops a leading `---`-delimited YAML front-matter block. If there is no
- * closing `---`, the file is treated as having no front matter at all —
- * heading detection then runs over the untouched original text — rather than
- * swallowing the whole document as "front matter" with nothing after it.
+ * Index of the line where the document body starts: right after a leading
+ * `---`-delimited YAML front-matter block, or `0` when there is none. If
+ * there is no closing `---`, the file is treated as having no front matter
+ * at all — heading detection then runs over the untouched original text —
+ * rather than swallowing the whole document as "front matter" with nothing
+ * after it.
  */
-function stripLeadingFrontMatter(text: string): string {
-  const lines = text.split(/\r?\n/);
-  if (lines.length === 0 || !FRONT_MATTER_DELIM.test(lines[0]!)) return text;
+function frontMatterBodyStart(lines: string[]): number {
+  if (lines.length === 0 || !FRONT_MATTER_DELIM.test(lines[0]!)) return 0;
   for (let i = 1; i < lines.length; i++) {
-    if (FRONT_MATTER_DELIM.test(lines[i]!)) return lines.slice(i + 1).join('\n');
+    if (FRONT_MATTER_DELIM.test(lines[i]!)) return i + 1;
   }
-  return text;
+  return 0;
+}
+
+export type HeadingStyle = 'atx' | 'setext';
+
+/**
+ * A heading found in a document: its text, which line it occupies, and
+ * whether it was written ATX (`# Heading`) or setext (`Heading\n===`) style.
+ * `lineIndex` is an index into `markdown.split(/\r?\n/)` on the *original*
+ * text passed to `findH1` — stripping a leading BOM never changes line
+ * positions, so callers can splice the original line array directly.
+ */
+export interface FoundHeading {
+  text: string;
+  lineIndex: number;
+  style: HeadingStyle;
 }
 
 /**
  * The document's first H1 — ATX or setext — after stripping a BOM and any
- * leading front matter, or null when there isn't one. Both `isRealSoul` and
- * `displayNameFor` read from this single scan so they always agree on which
- * heading (if any) makes the profile real.
+ * leading front matter, or null when there isn't one. `isRealSoul`,
+ * `displayNameFor`, and `soul.ts`'s `parseSoulHeading`/`withSoulHeading` all
+ * read from this single scan so they always agree on which heading (if any)
+ * makes the profile real, and on exactly which line it lives on.
  */
-function findH1(soul: string): string | null {
-  const lines = stripLeadingFrontMatter(stripBom(soul)).split(/\r?\n/);
-  for (let i = 0; i < lines.length; i++) {
+export function findH1(soul: string): FoundHeading | null {
+  const lines = stripBom(soul).split(/\r?\n/);
+  const start = frontMatterBodyStart(lines);
+  for (let i = start; i < lines.length; i++) {
     const line = lines[i]!;
     const atx = ATX_H1.exec(line);
-    if (atx) return atx[1]!.trim();
+    if (atx) return { text: atx[1]!.trim(), lineIndex: i, style: 'atx' };
     if (line.trim() !== '' && !line.startsWith('#')) {
       const next = lines[i + 1];
-      if (next !== undefined && SETEXT_UNDERLINE.test(next)) return line.trim();
+      if (next !== undefined && SETEXT_UNDERLINE.test(next)) {
+        return { text: line.trim(), lineIndex: i, style: 'setext' };
+      }
     }
   }
   return null;
+}
+
+/** Splits a heading's text into a name and an optional tagline. */
+export function splitHeading(text: string): SoulHeading {
+  const split = HEADING_SEPARATOR.exec(text);
+  if (!split || split.index === 0) return { name: text, tagline: null };
+  return {
+    name: text.slice(0, split.index).trim(),
+    tagline: text.slice(split.index + split[0].length).trim() || null,
+  };
 }
 
 export function isRealSoul(soul: string | null): boolean {
@@ -65,11 +97,9 @@ export function isRealSoul(soul: string | null): boolean {
 
 /** The heading's name when there is one, otherwise the on-disk id. */
 export function displayNameFor(id: string, soul: string | null): string {
-  const heading = soul === null ? null : findH1(soul);
-  if (heading === null) return id;
-  const split = /\s+—\s+|\s+–\s+|\s+-\s+|,\s+/.exec(heading);
-  if (!split || split.index === 0) return heading;
-  return heading.slice(0, split.index).trim();
+  const found = soul === null ? null : findH1(soul);
+  if (found === null) return id;
+  return splitHeading(found.text).name;
 }
 
 /**
