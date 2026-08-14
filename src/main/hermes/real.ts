@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import type { HermesProfile } from '../../shared/types';
+import { displayNameFor, isRealSoul } from '../profiles';
 import { hermesPaths, soulPath, type HermesPaths, type HermesRuntime } from './runtime';
 
 const run = promisify(execFile);
@@ -99,9 +100,6 @@ export class RealHermes implements HermesRuntime {
     const seen = parseProfileRows(stdout);
     if (!seen.has('default')) seen.set('default', 'unknown');
 
-    // Dynamic import: keeps this module loadable (and its pure parsers
-    // testable) before `../profiles` exists — mirrors `test/fake/hermes.ts`.
-    const { displayNameFor, isRealSoul } = await import('../profiles');
     const out: HermesProfile[] = [];
     for (const [id, model] of seen) {
       const soul = await this.readFileOrNull(soulPath(this.p.home, id));
