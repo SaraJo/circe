@@ -22,6 +22,40 @@ describe('isRealSoul', () => {
   it('does not count an H2 as a heading', () => {
     expect(isRealSoul('## Notes\n\nsome prose\n')).toBe(false);
   });
+
+  it('treats a setext heading as real', () => {
+    expect(isRealSoul('Trillian\n========\n\nYou are Trillian.\n')).toBe(true);
+  });
+
+  it('treats an H1 after leading YAML front matter as real', () => {
+    expect(
+      isRealSoul('---\ntitle: Trillian\n---\n# Trillian — Central Coordinator\n\nprose\n'),
+    ).toBe(true);
+  });
+
+  it('treats unclosed front matter with no heading as not real', () => {
+    expect(isRealSoul('---\ntitle: Trillian\nno closing delimiter\nsome prose\n')).toBe(false);
+  });
+
+  it('treats an H1 appearing after a paragraph of prose as real', () => {
+    expect(isRealSoul('Some scaffold prose here.\n\n# Trillian\n')).toBe(true);
+  });
+
+  it('treats a document whose only heading is an H2 as not real', () => {
+    expect(isRealSoul('## Notes\n\nsome prose\n\nmore prose\n')).toBe(false);
+  });
+
+  it('treats a CRLF ATX heading as real', () => {
+    expect(isRealSoul('# Trillian\r\n\r\nYou are Trillian.\r\n')).toBe(true);
+  });
+
+  it('treats a CRLF setext heading as real', () => {
+    expect(isRealSoul('Trillian\r\n========\r\n\r\nYou are Trillian.\r\n')).toBe(true);
+  });
+
+  it('treats a leading BOM before an H1 as real', () => {
+    expect(isRealSoul('﻿# Trillian\n\nYou are Trillian.\n')).toBe(true);
+  });
 });
 
 describe('displayNameFor', () => {
@@ -35,6 +69,16 @@ describe('displayNameFor', () => {
 
   it('handles a heading with no tagline', () => {
     expect(displayNameFor('zaphod', '# Zaphod\n')).toBe('Zaphod');
+  });
+
+  it('reads the name out of a setext heading', () => {
+    expect(displayNameFor('default', 'Trillian\n========\n')).toBe('Trillian');
+  });
+
+  it('reads the name out of an H1 that follows front matter', () => {
+    expect(
+      displayNameFor('default', '---\ntitle: Trillian\n---\n# Trillian — Central Coordinator\n'),
+    ).toBe('Trillian');
   });
 });
 
