@@ -99,4 +99,52 @@ describe('writeSoul', () => {
     });
     expect(result.backedUpTo).toBeNull();
   });
+
+  it('disambiguates when a backup for the same second already exists', async () => {
+    const h = new FakeHermes(INSTALLED_WITH_AGENTS);
+    const original = await h.readHomeFile('SOUL.md');
+    const now = new Date('2026-08-14T09:30:00Z');
+
+    const first = await writeSoul({
+      hermes: h,
+      profileId: 'default',
+      contents: '# Athena — coordinator\n',
+      now,
+    });
+    const second = await writeSoul({
+      hermes: h,
+      profileId: 'default',
+      contents: '# Zaphod — coordinator\n',
+      now,
+    });
+
+    expect(first.backedUpTo).toBe('SOUL.md.bak-20260814-093000');
+    expect(second.backedUpTo).toBe('SOUL.md.bak-20260814-093000-2');
+    // The first backup still holds the user's original hand-written persona,
+    // byte-for-byte — the second write must not have clobbered it.
+    expect(await h.readHomeFile('SOUL.md.bak-20260814-093000')).toBe(original);
+    expect(await h.readHomeFile('SOUL.md.bak-20260814-093000-2')).toBe(
+      '# Athena — coordinator\n',
+    );
+    expect(await h.readHomeFile('SOUL.md')).toBe('# Zaphod — coordinator\n');
+  });
+
+  it('keeps climbing the counter on a third collision in the same second', async () => {
+    const h = new FakeHermes(INSTALLED_WITH_AGENTS);
+    const now = new Date('2026-08-14T09:30:00Z');
+
+    await writeSoul({ hermes: h, profileId: 'default', contents: '# Athena — coordinator\n', now });
+    await writeSoul({ hermes: h, profileId: 'default', contents: '# Zaphod — coordinator\n', now });
+    const third = await writeSoul({
+      hermes: h,
+      profileId: 'default',
+      contents: '# Ford — coordinator\n',
+      now,
+    });
+
+    expect(third.backedUpTo).toBe('SOUL.md.bak-20260814-093000-3');
+    expect(await h.readHomeFile('SOUL.md.bak-20260814-093000-3')).toBe(
+      '# Zaphod — coordinator\n',
+    );
+  });
 });

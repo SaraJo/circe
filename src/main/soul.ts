@@ -66,6 +66,23 @@ export interface WriteSoulResult {
 }
 
 /**
+ * `backupSuffix` has one-second resolution, so two writes inside the same
+ * UTC second want the same backup path. Never overwrite an existing backup:
+ * append `-2`, `-3`, ... until a free path is found. Bounded so a
+ * pathological case throws instead of silently destroying a backup.
+ */
+const MAX_BACKUP_ATTEMPTS = 1000;
+
+async function freeBackupPath(hermes: HermesRuntime, base: string): Promise<string> {
+  if ((await hermes.readHomeFile(base)) === null) return base;
+  for (let n = 2; n <= MAX_BACKUP_ATTEMPTS; n++) {
+    const candidate = `${base}-${n}`;
+    if ((await hermes.readHomeFile(candidate)) === null) return candidate;
+  }
+  throw new Error(`writeSoul: could not find a free backup path for ${base}`);
+}
+
+/**
  * Writes a persona, preserving anything the user wrote first (Global Constraint 4).
  * An untouched scaffold is not worth preserving and is overwritten silently.
  */
@@ -77,7 +94,8 @@ export async function writeSoul(opts: WriteSoulOptions): Promise<WriteSoulResult
   const existing = await hermes.readHomeFile(rel);
   let backedUpTo: string | null = null;
   if (isRealSoul(existing)) {
-    backedUpTo = `${rel}.${backupSuffix(now)}`;
+    const base = `${rel}.${backupSuffix(now)}`;
+    backedUpTo = await freeBackupPath(hermes, base);
     await hermes.writeHomeFile(backedUpTo, existing!);
   }
 
