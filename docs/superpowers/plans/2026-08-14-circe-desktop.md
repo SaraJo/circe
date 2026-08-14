@@ -522,9 +522,14 @@ export class RealHermes implements HermesRuntime {
   }
 
   async hasProvider(): Promise<boolean> {
+    // Corrected 2026-08-14 (ledger ruling T1-a). The original plan called
+    // `hermes auth status`, which takes a REQUIRED provider positional and so
+    // exits non-zero with a usage error, making this return false on every
+    // machine. `hermes status` prints `Provider:     Anthropic` in its
+    // Environment block; that is what we parse.
     try {
-      const out = await this.exec(['auth', 'status'], 15_000);
-      return !/no (provider|credentials)/i.test(out);
+      const provider = parseProviderFromStatus(await this.exec(['status'], 15_000));
+      return provider !== null;
     } catch {
       return false;
     }
@@ -540,7 +545,9 @@ export class RealHermes implements HermesRuntime {
     const seen = new Map<string, string>();
     for (const raw of stdout.split('\n')) {
       // Strip ANSI colour before matching — `profile list` is a styled table.
-      const line = raw.replace(/\[[0-9;]*m/g, '');
+      // The ESC byte is load-bearing: without it the sequence's ESC survives,
+      // `^` no longer matches, and the row is silently dropped. (Ruling T1-b.)
+      const line = raw.replace(/\x1b\[[0-9;]*m/g, '');
       const m = PROFILE_ROW.exec(line);
       if (!m) continue;
       const id = m[1]!;
