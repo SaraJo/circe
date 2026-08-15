@@ -20,9 +20,9 @@ const FANDOM_ENTRY_STATES = new Set<WizardStep['kind']>(['fandom', 'derive-faile
  * in-flight derivation, or either of the two character-holding review
  * screens. Deliberately not the same set as `FANDOM_ENTRY_STATES` —
  * `retryDerivation` legitimately runs from `meet`/`claim-default`, which
- * `submitFandom` must not, and must NOT run from `launching`, where a
- * lingering `this.character` would otherwise let it fire a real derivation
- * over a write already in progress.
+ * `submitFandom` must not, and must NOT run from `saving`/`write-failed`/
+ * `launching`, where a lingering `this.character` would otherwise let it fire
+ * a real derivation over a write already in progress or awaiting a retry.
  */
 const RETRY_ENTRY_STATES = new Set<WizardStep['kind']>([
   'derive-failed',
@@ -130,9 +130,17 @@ export class Wizard {
       return;
     }
     if (gen !== this.generation) return;
-    this.character = character;
 
     const profiles = await this.hermes.listProfiles();
+    // Re-checked *after* the await, not just before it: `listProfiles` shells
+    // out to `hermes profile list`, and a newer derivation issued during that
+    // round trip has already claimed the generation. Without this second
+    // check a superseded run would still push its own `meet`/`claim-default`
+    // — and in the worst interleaving overwrite `launching`, re-opening
+    // `accept()`'s guard for a second write.
+    if (gen !== this.generation) return;
+    this.character = character;
+
     if (hasConfiguredDefault(profiles)) {
       const existing = profiles.find((p) => p.id === 'default')!;
       this.set({ kind: 'claim-default', character, existingName: existing.displayName });
@@ -155,35 +163,63 @@ export class Wizard {
   }
 
   /**
-   * Writes the persona and the skill. Refuses to start once already done
-   * (`launching`) and refuses to run directly from `claim-default` — that
-   * screen's explicit confirm (`confirmClaimDefault`) is the only sanctioned
-   * route out of it, so a future renderer can't wire a button straight to
-   * `accept()` and skip the confirm step.
+   * Writes the persona and the skill. Refuses to start once a write is
+   * underway or done (`saving`, `launching`) and refuses to run directly
+   * from `claim-default` — that screen's explicit confirm
+   * (`confirmClaimDefault`) is the only sanctioned route out of it, so a
+   * future renderer can't wire a button straight to `accept()` and skip the
+   * confirm step.
+   *
+   * `write-failed` is deliberately *not* in the refusal set: that is the
+   * retry path, and it is only ever reached after a `meet` accept or a
+   * `claim-default` confirm has already happened, so retrying from it can't
+   * launder a confirm the user never gave.
    */
   async accept(): Promise<void> {
-    if (this.state.kind === 'launching' || this.state.kind === 'claim-default') return;
+    const k = this.state.kind;
+    if (k === 'saving' || k === 'launching' || k === 'claim-default') return;
     await this.commitAccept();
   }
 
   /**
    * `writeSoul` handles backing up anything the user wrote, so the
-   * claim-default screen is a courtesy, not the guard. The transition to
-   * `launching` happens *before* any `await`, synchronously, so a second
-   * call issued before this one's first await settles sees `launching`
-   * already and bails via `accept()`'s guard — the re-entrancy guard is the
-   * state transition itself, not a separate flag. `this.character` is
-   * cleared once consumed: the `launching` state already carries its own
-   * copy of the character, so the field is genuinely spent, and clearing it
-   * closes off `retryDerivation` finding a stale one to fire from.
+   * claim-default screen is a courtesy, not the guard.
+   *
+   * Ordering is load-bearing. `set()` notifies its listeners *synchronously*,
+   * and `src/main/index.ts` reacts to `launching` by spawning
+   * `hermes -p default acp` — which reads `SOUL.md` at startup. Announcing
+   * `launching` before the writes therefore raced the agent's own read
+   * against them, and the user could meet the scaffold Hermes instead of
+   * their character. So both writes complete first, and `launching` is the
+   * last thing that happens. `saving` exists purely to give the UI something
+   * to show in the meantime without reusing the state that means "spawn now".
+   *
+   * `saving` is entered synchronously, before the first `await`, so it is
+   * still the re-entrancy guard: a second call issued before this one settles
+   * sees it and bails in `accept()`. `this.character` is cleared only once
+   * the writes have actually succeeded — the failure path keeps it so the
+   * user can retry.
    */
   private async commitAccept(): Promise<void> {
     const character = this.character;
     if (!character) return;
-    this.set({ kind: 'launching', character, profileId: 'default' });
-    const soul = renderOrchestratorSoul(character, await loadTemplate());
-    await writeSoul({ hermes: this.hermes, profileId: 'default', contents: soul });
-    await installOrchestratorSkill(this.hermes, 'default');
+    this.set({ kind: 'saving', character });
+    try {
+      const soul = renderOrchestratorSoul(character, await loadTemplate());
+      await writeSoul({ hermes: this.hermes, profileId: 'default', contents: soul });
+      await installOrchestratorSkill(this.hermes, 'default');
+    } catch (err) {
+      // Nothing is launched: a tile in front of an agent with no persona is
+      // worse than an honest error, and an unhandled rejection here used to
+      // leave the wizard stuck on "Starting…" forever.
+      this.set({
+        kind: 'write-failed',
+        character,
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return;
+    }
     this.character = null;
+    this.set({ kind: 'launching', character, profileId: 'default' });
   }
 }

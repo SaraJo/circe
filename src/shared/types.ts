@@ -50,4 +50,12 @@ export type WizardStep =
   /** The default profile already holds a persona the user wrote. */
   | { kind: 'claim-default'; character: Character; existingName: string }
   | { kind: 'meet'; character: Character }
+  /**
+   * The persona and skill are being written. Distinct from `launching`
+   * precisely so the writes can finish *before* anything spawns an agent
+   * against them — see `Wizard.commitAccept`.
+   */
+  | { kind: 'saving'; character: Character }
+  /** A write failed. Nothing has been launched; the user can retry. */
+  | { kind: 'write-failed'; character: Character; message: string }
   | { kind: 'launching'; character: Character; profileId: string };

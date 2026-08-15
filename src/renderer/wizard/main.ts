@@ -191,6 +191,39 @@ function render(step: WizardStep): void {
       screenEl.append(renderCharacter(step.character));
       break;
 
+    case 'saving': {
+      const node = el(`
+        <section class="screen">
+          <h1>Setting <span class="name"></span> up…</h1>
+          <p class="lead">Writing the persona and installing the skill.</p>
+          <div class="spinner"></div>
+        </section>
+      `);
+      node.querySelector('.name')!.textContent = step.character.name;
+      screenEl.append(node);
+      break;
+    }
+
+    case 'write-failed': {
+      const node = el(`
+        <section class="screen">
+          <h1>Couldn't finish the setup</h1>
+          <p class="lead"></p>
+          <p class="status"></p>
+          <div class="actions">
+            <button class="primary" id="retry-write">Try again</button>
+          </div>
+        </section>
+      `);
+      node.querySelector('.lead')!.textContent =
+        `Something went wrong writing ${step.character.name} to your Hermes home, so ` +
+        `nothing was changed and no agent was started. Your existing setup is untouched.`;
+      node.querySelector('.status')!.textContent = step.message;
+      node.querySelector('#retry-write')!.addEventListener('click', () => window.circe.accept());
+      screenEl.append(node);
+      break;
+    }
+
     case 'launching': {
       const node = el(`
         <section class="screen">

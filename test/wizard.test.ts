@@ -268,3 +268,192 @@ describe('retryDerivation entry guard', () => {
     expect(w.state).toMatchObject({ kind: 'claim-default', existingName: 'Trillian' });
   });
 });
+
+describe('write ordering', () => {
+  // The defect this covers: `commitAccept` used to announce `launching`
+  // *before* the writes. `set()` notifies synchronously and `index.ts` reacts
+  // to `launching` by spawning `hermes -p default acp`, which reads SOUL.md at
+  // startup — so the agent raced the write that gives it its persona, and the
+  // user could meet the scaffold Hermes instead of their character.
+  it('has both files on disk before it announces launching', async () => {
+    const { hermes, w } = await toMeet(INSTALLED_EMPTY);
+
+    const soulsAtEachStep: Array<{ kind: string; soul: string | null; skill: string | null }> = [];
+    w.onChange((s) => {
+      soulsAtEachStep.push({
+        kind: s.kind,
+        soul: hermes.files.get('SOUL.md') ?? null,
+        skill: hermes.files.get('skills/circe-orchestrator/SKILL.md') ?? null,
+      });
+    });
+
+    await w.accept();
+
+    const launching = soulsAtEachStep.find((s) => s.kind === 'launching')!;
+    expect(launching).toBeDefined();
+    expect(launching.soul).toContain('# Trillian — the one who keeps the plot');
+    expect(launching.skill).toContain('Growing the network');
+  });
+
+  it('shows a distinct saving state while the writes are in flight', async () => {
+    const { w } = await toMeet(INSTALLED_EMPTY);
+    const kinds: string[] = [];
+    w.onChange((s) => kinds.push(s.kind));
+
+    await w.accept();
+
+    expect(kinds).toEqual(['saving', 'launching']);
+  });
+
+  it('still refuses a second accept issued before the first settles', async () => {
+    const { hermes, w } = await toMeet(INSTALLED_EMPTY);
+    hermes.files.set('SOUL.md', '# Someone Else — an existing persona\n\nHand-written.\n');
+
+    const p1 = w.accept();
+    const p2 = w.accept();
+    await Promise.all([p1, p2]);
+
+    expect(w.state.kind).toBe('launching');
+    const backups = [...hermes.files.keys()].filter((k) => k.startsWith('SOUL.md.bak-'));
+    expect(backups).toHaveLength(1);
+    expect(hermes.files.get(backups[0]!)).toContain('Someone Else');
+  });
+});
+
+describe('a write that fails', () => {
+  function failingOnWrite(base: Scenario, message: string) {
+    const hermes = new FakeHermes(scenario(base));
+    hermes.writeHomeFile = async () => {
+      throw new Error(message);
+    };
+    return hermes;
+  }
+
+  it('lands on write-failed with the underlying error, and launches nothing', async () => {
+    const hermes = failingOnWrite(INSTALLED_EMPTY, 'EACCES: permission denied');
+    const w = new Wizard(hermes);
+    await w.start();
+    await w.submitFandom("Hitchhiker's Guide to the Galaxy");
+
+    await w.accept();
+
+    expect(w.state).toMatchObject({
+      kind: 'write-failed',
+      character: { name: 'Trillian' },
+      message: expect.stringContaining('EACCES'),
+    });
+  });
+
+  it('does not reject: an unhandled rejection is what left the wizard stuck', async () => {
+    const hermes = failingOnWrite(INSTALLED_EMPTY, 'disk full');
+    const w = new Wizard(hermes);
+    await w.start();
+    await w.submitFandom("Hitchhiker's Guide to the Galaxy");
+
+    await expect(w.accept()).resolves.toBeUndefined();
+  });
+
+  it('refuses to write at all when the existing persona cannot be read', async () => {
+    // Finding 4's path: a SOUL.md that exists but can't be read must never be
+    // silently overwritten. There is nothing to back up with — the bytes were
+    // refused — so the only non-destructive outcome is to refuse the write.
+    const hermes = new FakeHermes(scenario(INSTALLED_WITH_AGENTS));
+    const written: string[] = [];
+    const realWrite = hermes.writeHomeFile.bind(hermes);
+    hermes.writeHomeFile = async (rel: string, contents: string) => {
+      written.push(rel);
+      return realWrite(rel, contents);
+    };
+    hermes.readHomeFile = async (rel: string) => {
+      if (rel === 'SOUL.md') throw new Error('Cannot read /fake/home/SOUL.md (EACCES)');
+      return hermes.files.get(rel) ?? null;
+    };
+    const w = new Wizard(hermes);
+    await w.start();
+    await w.submitFandom("Hitchhiker's Guide to the Galaxy");
+    expect(w.state.kind).toBe('claim-default');
+
+    await w.confirmClaimDefault();
+
+    expect(w.state).toMatchObject({
+      kind: 'write-failed',
+      message: expect.stringContaining('Refusing to overwrite SOUL.md'),
+    });
+    expect(written).toEqual([]);
+    expect(hermes.files.get('SOUL.md')).toContain('Central Coordinator');
+  });
+
+  it('can be retried, and succeeds once the write works', async () => {
+    const hermes = new FakeHermes(scenario(INSTALLED_EMPTY));
+    const realWrite = hermes.writeHomeFile.bind(hermes);
+    let failing = true;
+    hermes.writeHomeFile = async (rel: string, contents: string) => {
+      if (failing) throw new Error('transient');
+      return realWrite(rel, contents);
+    };
+    const w = new Wizard(hermes);
+    await w.start();
+    await w.submitFandom("Hitchhiker's Guide to the Galaxy");
+    await w.accept();
+    expect(w.state.kind).toBe('write-failed');
+
+    failing = false;
+    await w.accept();
+
+    expect(w.state).toMatchObject({ kind: 'launching', profileId: 'default' });
+    expect(hermes.files.get('SOUL.md')).toContain('# Trillian — the one who keeps the plot');
+  });
+});
+
+describe('a derivation superseded during the profile listing', () => {
+  // The window this closes: `runDerivation` re-checked its generation token
+  // before `listProfiles()` but not after, so a run superseded during that
+  // round trip still pushed its own meet/claim-default — and could overwrite
+  // `launching`, re-opening accept()'s guard for a second write.
+  it('drops its result rather than pushing a screen over a newer run', async () => {
+    const hermes = new FakeHermes(scenario(INSTALLED_EMPTY));
+    const w = new Wizard(hermes);
+    await w.start();
+
+    // Hold listProfiles open so the test controls when the first derivation
+    // resumes — that is the exact await the stale check was missing.
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let announceEntry!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      announceEntry = resolve;
+    });
+    let held = true;
+    const realList = hermes.listProfiles.bind(hermes);
+    hermes.listProfiles = async () => {
+      if (held) {
+        held = false;
+        announceEntry();
+        await gate;
+      }
+      return realList();
+    };
+
+    const first = w.submitFandom('Star Trek');
+    // Wait until the first run is genuinely parked inside listProfiles — the
+    // generation bump has to land *during* that await, or the pre-await check
+    // catches it and this proves nothing.
+    await entered;
+
+    const second = w.submitFandom("Hitchhiker's Guide to the Galaxy");
+    await second;
+    expect(w.state.kind).toBe('meet');
+
+    // The user accepts, and the write completes: state is `launching`.
+    await w.accept();
+    expect(w.state.kind).toBe('launching');
+
+    // Only now does the stale run resume.
+    release();
+    await first;
+
+    expect(w.state).toMatchObject({ kind: 'launching', character: { name: 'Trillian' } });
+  });
+});
