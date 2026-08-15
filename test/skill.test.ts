@@ -1,0 +1,39 @@
+import { readFile } from 'node:fs/promises';
+import { describe, expect, it } from 'vitest';
+import { SKILL_NAME, SKILL_SOURCE_PATH, installOrchestratorSkill } from '../src/main/orchestrator/skill';
+import { FakeHermes, INSTALLED_EMPTY } from './fake/hermes';
+
+describe('the circe-orchestrator skill file', () => {
+  it('has frontmatter Hermes can index', async () => {
+    const text = await readFile(SKILL_SOURCE_PATH, 'utf8');
+    expect(text.startsWith('---\n')).toBe(true);
+    expect(text).toContain(`name: ${SKILL_NAME}`);
+    expect(text).toMatch(/^description: .{40,}$/m);
+  });
+
+  it('forbids creating in the turn that proposed', async () => {
+    const text = await readFile(SKILL_SOURCE_PATH, 'utf8');
+    expect(text).toContain('Wait for a reply');
+    expect(text).toContain('Do not create an agent in the same turn you proposed it');
+  });
+
+  it('requires pruning a new profile', async () => {
+    const text = await readFile(SKILL_SOURCE_PATH, 'utf8');
+    expect(text.indexOf('hermes skills config')).toBeLessThan(text.indexOf('hermes tools'));
+  });
+});
+
+describe('installOrchestratorSkill', () => {
+  it('writes the skill into the default profile', async () => {
+    const h = new FakeHermes(INSTALLED_EMPTY);
+    const written = await installOrchestratorSkill(h, 'default');
+    expect(written).toBe('skills/circe-orchestrator/SKILL.md');
+    expect(await h.readHomeFile(written)).toContain('# Growing the network');
+  });
+
+  it('writes into a named profile when given one', async () => {
+    const h = new FakeHermes(INSTALLED_EMPTY);
+    const written = await installOrchestratorSkill(h, 'trillian');
+    expect(written).toBe('profiles/trillian/skills/circe-orchestrator/SKILL.md');
+  });
+});
