@@ -36,7 +36,11 @@ function openExternalSafely(url: string): void {
 
 /**
  * Opens the tile and starts the ACP session behind it. Wired to the wizard's
- * `launching` step (Task 9's placeholder), so it runs exactly once per app run.
+ * `launching` step (Task 9's placeholder). `wizard.ts` only reaches
+ * `launching` once per run today (`accept()` bails when already launching,
+ * and `retryDerivation` is blocked from `launching`), but that's an
+ * assumption about a module this function doesn't own — the guard below
+ * makes a second call a safe no-op instead of a silent double-registration.
  *
  * `start()` can reject — most likely the 30s handshake timeout in acp.ts. That
  * rejection does *not* kill the child process, so a caller that doesn't also
@@ -52,6 +56,8 @@ function openExternalSafely(url: string): void {
  * is no useful "back to the wizard" once the character has been handed off.
  */
 async function launchTile(character: Character, profileId: string): Promise<void> {
+  if (tileWin) return; // already launched; see the guard note above.
+
   tileWin = createTileWindow(character, profileId);
 
   // `did-finish-load` fires only after the renderer's module script has run
@@ -84,6 +90,21 @@ async function launchTile(character: Character, profileId: string): Promise<void
   ipcMain.on('tile:close', () => {
     acp?.stop();
     tileWin?.close();
+  });
+
+  // `tile:close` (the in-app `×` button) already calls `stop()` above, but
+  // the native close button, Cmd+W, and `app.quit()` all bypass it entirely
+  // and go straight to `close()`/`closed` — that's the far more instinctive
+  // way to dismiss a floating window, and until now nothing on that path
+  // stopped the client, leaking a `hermes acp` process per close (Amendment
+  // 1's leak, reached a different way). `closed` fires on every close path
+  // including the `×` button's, so `stop()` must tolerate a second call:
+  // it does (a no-op `child?.kill()` on an already-null child, an
+  // already-empty `pending` map to reject), so no dedup is needed here.
+  tileWin.on('closed', () => {
+    acp?.stop();
+    acp = null;
+    tileWin = null;
   });
 
   try {

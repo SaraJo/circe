@@ -51,26 +51,26 @@ const input = document.getElementById('input') as HTMLTextAreaElement;
 let streaming: HTMLElement | null = null;
 
 /**
- * `agent` text is Markdown from the model and goes through `marked` into
- * `innerHTML` (Amendment 3) — contained by the tile's CSP (no
- * `script-src 'unsafe-inline'`), so injected markup can't execute. `user` and
- * `error` text is plain and always goes through `textContent`.
+ * Plain-text bubble. Used for the user's own messages, the opening handoff
+ * message and Amendment 1's connection-failure notices (both of which are
+ * Circe's own prose — two string interpolations and no Markdown, see
+ * `openingMessage`), and the malformed-character notice. Always `textContent`,
+ * never `innerHTML` — there is no Markdown to render here, so there is no
+ * reason to route any of it through `marked`. The `.msg` rule's
+ * `white-space: pre-wrap` (tile.css) preserves the opening message's hard
+ * newlines without needing `<br>`.
  */
-function append(role: 'user' | 'agent' | 'error', text: string): HTMLElement {
+function appendText(role: 'user' | 'agent' | 'error', text: string): HTMLElement {
   const node = document.createElement('div');
   node.className = `msg ${role}`;
-  if (role === 'agent') {
-    node.innerHTML = marked.parse(text) as string;
-  } else {
-    node.textContent = text;
-  }
+  node.textContent = text;
   log.append(node);
   log.scrollTop = log.scrollHeight;
   return node;
 }
 
 if (!character) {
-  append(
+  appendText(
     'error',
     "This tile couldn't read its agent's details, so it's showing default colours. " +
       'Close it and start over from the wizard.',
@@ -78,19 +78,23 @@ if (!character) {
 }
 
 circe.onOpening((text) => {
-  append('agent', text);
+  appendText('agent', text);
 });
 
 circe.onUpdate((update) => {
   const u = update as { sessionUpdate?: string; content?: { text?: string } };
   if (u.sessionUpdate === 'agent_message_chunk' && u.content?.text) {
-    if (!streaming) streaming = append('agent', '');
+    if (!streaming) streaming = appendText('agent', '');
     streaming.textContent = (streaming.textContent ?? '') + u.content.text;
     log.scrollTop = log.scrollHeight;
   }
   if (u.sessionUpdate === 'agent_message_complete' && streaming) {
+    // The only place model output reaches `innerHTML` (Amendment 3) — a
+    // completed agent reply, converted from the plain text it streamed in
+    // as. Contained by the tile's CSP (no `script-src 'unsafe-inline'`).
     streaming.innerHTML = marked.parse(streaming.textContent ?? '') as string;
     streaming = null;
+    log.scrollTop = log.scrollHeight; // Markdown formatting can change the bubble's height.
   }
 });
 
@@ -99,7 +103,7 @@ input.addEventListener('keydown', (e) => {
   e.preventDefault();
   const text = input.value.trim();
   if (!text) return;
-  append('user', text);
+  appendText('user', text);
   circe.send(text);
   input.value = '';
 });

@@ -113,4 +113,19 @@ describe('AcpClient.stop', () => {
 
     expect(withBuffer.buffer).toBe('');
   });
+
+  // Task 11's tile close-handler calls stop() unconditionally on every close
+  // path (the in-app button and the native close/Cmd+W/quit path both reach
+  // it), so a second call landing on an already-stopped client has to be
+  // harmless — not throw, and not re-reject a request that already settled.
+  it('is idempotent: a second call is a harmless no-op', async () => {
+    const client = new AcpClient({ profileId: 'test', onUpdate: () => {}, onExit: () => {} });
+    const request = (client as unknown as WithRequest).request.bind(client);
+    const pending = request('session/prompt', {});
+
+    client.stop();
+    await expect(pending).rejects.toThrow('ACP client stopped');
+
+    expect(() => client.stop()).not.toThrow();
+  });
 });
