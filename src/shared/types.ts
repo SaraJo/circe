@@ -38,3 +38,16 @@ export interface HermesProfile {
   /** False for an untouched Hermes scaffold. See `profiles.ts`. */
   isReal: boolean;
 }
+
+export type WizardStep =
+  | { kind: 'welcome' }
+  | { kind: 'runtime-checking' }
+  | { kind: 'runtime-missing' }
+  | { kind: 'provider-missing' }
+  | { kind: 'fandom' }
+  | { kind: 'deriving'; fandom: string }
+  | { kind: 'derive-failed'; fandom: string; message: string }
+  /** The default profile already holds a persona the user wrote. */
+  | { kind: 'claim-default'; character: Character; existingName: string }
+  | { kind: 'meet'; character: Character }
+  | { kind: 'launching'; character: Character; profileId: string };
