@@ -31,17 +31,32 @@ export function parseFrames(buffer: string): { frames: unknown[]; rest: string }
   return { frames, rest };
 }
 
+/** initialize / session/new should answer quickly; a stall there is unambiguous. */
+const HANDSHAKE_TIMEOUT_MS = 30_000;
+
 export class AcpClient {
   private child: ChildProcess | null = null;
   private buffer = '';
   private nextId = 1;
   private pending = new Map<number, { resolve(v: unknown): void; reject(e: Error): void }>();
   private sessionId: string | null = null;
+  private startPromise: Promise<void> | null = null;
 
   constructor(private opts: AcpOptions) {}
 
-  /** Spawns `hermes -p <profile> acp` and completes the ACP handshake. */
-  async start(): Promise<void> {
+  /**
+   * Spawns `hermes -p <profile> acp` and completes the ACP handshake. Idempotent:
+   * a second call while starting (or already started) returns the same promise
+   * rather than spawning a second child that would share this instance's request-id
+   * space and get its `exit` handler reject the live session's pending requests
+   * (ported from acpClient.js:115's `if (this._child) return this._ready;` guard).
+   */
+  start(): Promise<void> {
+    if (!this.startPromise) this.startPromise = this.doStart();
+    return this.startPromise;
+  }
+
+  private async doStart(): Promise<void> {
     const { bin } = hermesPaths();
     this.child = spawn(bin, ['-p', this.opts.profileId, 'acp', '--accept-hooks'], {
       cwd: this.opts.cwd ?? homedir(),
@@ -59,17 +74,28 @@ export class AcpClient {
       this.opts.onExit(code);
     });
 
-    await this.request('initialize', {
-      protocolVersion: 1,
-      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false } },
-    });
-    const session = (await this.request('session/new', {
-      cwd: this.opts.cwd ?? homedir(),
-      mcpServers: [],
-    })) as { sessionId: string };
+    await this.request(
+      'initialize',
+      {
+        protocolVersion: 1,
+        clientCapabilities: { fs: { readTextFile: false, writeTextFile: false } },
+      },
+      HANDSHAKE_TIMEOUT_MS,
+    );
+    const session = (await this.request(
+      'session/new',
+      { cwd: this.opts.cwd ?? homedir(), mcpServers: [] },
+      HANDSHAKE_TIMEOUT_MS,
+    )) as { sessionId: string };
     this.sessionId = session.sessionId;
   }
 
+  // No timeout on session/prompt: a real agent turn can legitimately run for
+  // minutes (reasoning, tool calls, network round-trips). Any timeout short enough
+  // to be useful would abort real work, and any value long enough to be safe
+  // wouldn't catch anything — killing a working agent mid-thought is worse than
+  // the hang it would prevent. If the process actually dies, the `exit` handler
+  // above still rejects every pending request, prompt included.
   async prompt(text: string): Promise<void> {
     if (!this.sessionId) throw new Error('ACP session not started');
     await this.request('session/prompt', {
@@ -113,16 +139,36 @@ export class AcpClient {
         jsonrpc: '2.0',
         id: msg.id,
         result: allow
-          ? { outcome: { outcome: 'selected', optionId: allow.optionId } }
+          ? { outcome: { outcome: 'selected', optionId: allow.optionId || allow.name } }
           : { outcome: { outcome: 'cancelled' } },
       });
     }
   }
 
-  private request(method: string, params: unknown): Promise<unknown> {
+  /**
+   * `timeoutMs` is only passed by the handshake (`initialize`, `session/new`) —
+   * see the comment on `prompt()` for why `session/prompt` deliberately omits it.
+   */
+  private request(method: string, params: unknown, timeoutMs?: number): Promise<unknown> {
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      if (timeoutMs !== undefined) {
+        timer = setTimeout(() => {
+          this.pending.delete(id);
+          reject(new Error(`hermes acp handshake timed out waiting for ${method}`));
+        }, timeoutMs);
+      }
+      this.pending.set(id, {
+        resolve: (v) => {
+          if (timer) clearTimeout(timer);
+          resolve(v);
+        },
+        reject: (e) => {
+          if (timer) clearTimeout(timer);
+          reject(e);
+        },
+      });
       this.send({ jsonrpc: '2.0', id, method, params });
     });
   }
