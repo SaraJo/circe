@@ -118,3 +118,93 @@ describe('no provider', () => {
     expect(w.state.kind).toBe('provider-missing');
   });
 });
+
+describe('overlapping derivations', () => {
+  it('drops a stale derivation once a newer submission has already resolved', async () => {
+    const hermes = new FakeHermes(INSTALLED_EMPTY);
+    const w = new Wizard(hermes);
+    await w.start();
+
+    // Replace `query` with one we resolve by hand, so the test controls
+    // exactly which of two in-flight derivations settles first — no
+    // reliance on real timing.
+    const pending: Array<{ prompt: string; resolve: (reply: string) => void }> = [];
+    hermes.query = (_profileId: string, prompt: string) =>
+      new Promise<string>((resolve) => {
+        pending.push({ prompt, resolve });
+      });
+
+    const first = w.submitFandom('Star Trek');
+    const second = w.submitFandom("Hitchhiker's Guide to the Galaxy");
+    expect(pending).toHaveLength(2);
+
+    const picardReply = JSON.stringify({
+      name: 'Picard',
+      tagline: 'the one who keeps the peace',
+      palette: { bg: '#1a1a2e', border: '#cccccc', accent: '#e5c07b' },
+      why: 'He commands the ship.',
+    });
+
+    // The *second* submission (Hitchhiker's) resolves first...
+    pending[1]!.resolve(REPLY);
+    await second;
+    // ...and the *first* (Star Trek) resolves last, and stale.
+    pending[0]!.resolve(picardReply);
+    await first;
+
+    // The state must reflect the last-issued submission, not the
+    // last-resolved one.
+    expect(w.state).toMatchObject({ kind: 'meet', character: { name: 'Trillian' } });
+  });
+
+  it('refuses to run from a state where a fandom submission makes no sense', async () => {
+    const hermes = new FakeHermes({ ...INSTALLED_EMPTY, hasProvider: false });
+    const w = new Wizard(hermes);
+    await w.start();
+    expect(w.state.kind).toBe('provider-missing');
+
+    await w.submitFandom('anything');
+
+    expect(w.state.kind).toBe('provider-missing');
+    expect(hermes.queries).toEqual([]);
+  });
+});
+
+describe('double-clicked accept', () => {
+  it('does not double-run accept when called twice before the first settles', async () => {
+    const { hermes, w } = await toMeet(INSTALLED_EMPTY);
+    // Simulate a real persona already sitting at SOUL.md — the exact
+    // condition under which a second, unguarded accept() would back up
+    // Circe's own freshly-written persona instead of the user's.
+    hermes.files.set('SOUL.md', '# Someone Else — an existing persona\n\nHand-written.\n');
+
+    const p1 = w.accept();
+    const p2 = w.accept();
+    await Promise.all([p1, p2]);
+
+    expect(w.state.kind).toBe('launching');
+    const backups = [...hermes.files.keys()].filter((k) => k.startsWith('SOUL.md.bak-'));
+    expect(backups).toHaveLength(1);
+    expect(hermes.files.get(backups[0]!)).toContain('Someone Else');
+    expect(hermes.files.get(backups[0]!)).not.toContain('Trillian');
+    const soul = await hermes.readHomeFile('SOUL.md');
+    expect(soul).toContain('# Trillian — the one who keeps the plot');
+  });
+
+  it('refuses to run directly from claim-default, but confirmClaimDefault still works', async () => {
+    const { hermes, w } = await toMeet(INSTALLED_WITH_AGENTS);
+    expect(w.state.kind).toBe('claim-default');
+    const snapshot = new Map(hermes.files);
+
+    await w.accept();
+
+    expect(w.state.kind).toBe('claim-default');
+    expect(hermes.files).toEqual(snapshot);
+
+    await w.confirmClaimDefault();
+
+    expect(w.state.kind).toBe('launching');
+    const soul = await hermes.readHomeFile('SOUL.md');
+    expect(soul).toContain('# Trillian — the one who keeps the plot');
+  });
+});
