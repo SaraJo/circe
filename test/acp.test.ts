@@ -10,6 +10,10 @@ type WithRequest = {
   request(method: string, params: unknown, timeoutMs?: number): Promise<unknown>;
 };
 
+// Same pattern, reaching at the private `buffer` field directly rather than
+// through a subprocess's stdout stream.
+type WithBuffer = { buffer: string };
+
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -86,5 +90,27 @@ describe('AcpClient handshake timeout', () => {
     await vi.advanceTimersByTimeAsync(60_000);
 
     expect(settled).toBe(false);
+  });
+});
+
+describe('AcpClient.stop', () => {
+  it('rejects a pending request with an error distinct from the handshake timeout', async () => {
+    const client = new AcpClient({ profileId: 'test', onUpdate: () => {}, onExit: () => {} });
+    const request = (client as unknown as WithRequest).request.bind(client);
+
+    const pending = request('session/prompt', {});
+    client.stop();
+
+    await expect(pending).rejects.toThrow('ACP client stopped');
+  });
+
+  it('resets buffer so a partial line from a previous session cannot contaminate the next', () => {
+    const client = new AcpClient({ profileId: 'test', onUpdate: () => {}, onExit: () => {} });
+    const withBuffer = client as unknown as WithBuffer;
+    withBuffer.buffer = '{"partial trailing line from the old child":';
+
+    client.stop();
+
+    expect(withBuffer.buffer).toBe('');
   });
 });

@@ -64,17 +64,25 @@ export class AcpClient {
 
   private async doStart(): Promise<void> {
     const { bin } = hermesPaths();
-    this.child = spawn(bin, ['-p', this.opts.profileId, 'acp', '--accept-hooks'], {
+    // Captured locally so the `exit` closure below can tell whether it belongs
+    // to the child that's still current by the time it fires. `kill()` is
+    // asynchronous, so a superseded child's `exit` can arrive after a restart
+    // has already assigned `this.child` to a new process — without this check
+    // it would reject the new child's in-flight requests and report a false
+    // `onExit` for a session that's actually running fine.
+    const child = spawn(bin, ['-p', this.opts.profileId, 'acp', '--accept-hooks'], {
       cwd: this.opts.cwd ?? homedir(),
       env: { ...process.env, HERMES_ACCEPT_HOOKS: '1' },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
+    this.child = child;
 
-    this.child.stdout!.on('data', (b: Buffer) => this.onData(b.toString()));
-    this.child.stderr!.on('data', (b: Buffer) =>
+    child.stdout!.on('data', (b: Buffer) => this.onData(b.toString()));
+    child.stderr!.on('data', (b: Buffer) =>
       process.stderr.write(`[acp:${this.opts.profileId}] ${b}`),
     );
-    this.child.on('exit', (code) => {
+    child.on('exit', (code) => {
+      if (this.child !== child) return; // belongs to a superseded child
       for (const p of this.pending.values()) p.reject(new Error(`hermes acp exited (${code})`));
       this.pending.clear();
       this.opts.onExit(code);
@@ -110,16 +118,24 @@ export class AcpClient {
     });
   }
 
-  // Returns the client to a genuinely restartable state: clearing only `child`
-  // would leave `startPromise` cached (so a later start() replays the stale
-  // settled promise instead of spawning) and `sessionId` set (so prompt() would
-  // pass its own guard and write to a null child, hanging with no exit event to
-  // ever reject it). All three must go together.
+  // Returns the client to a genuinely restartable state and leaves nothing behind
+  // for a killed child to act on later. Clearing only `child` would leave
+  // `startPromise` cached (so a later start() replays the stale settled promise
+  // instead of spawning), `sessionId` set (so prompt() would pass its own guard
+  // and write to a null child), `pending` requests waiting on an `exit` event that
+  // may arrive late or never (the exit-identity check above would in fact ignore
+  // it, since `this.child` is about to become a different process or null), and a
+  // trailing partial line in `buffer` that would otherwise get concatenated onto
+  // the next child's first stdout chunk. `nextId` is left alone: monotonic ids
+  // across restarts are harmless and avoid any chance of id reuse.
   stop(): void {
     this.child?.kill();
     this.child = null;
     this.startPromise = null;
     this.sessionId = null;
+    this.buffer = '';
+    for (const p of this.pending.values()) p.reject(new Error('ACP client stopped'));
+    this.pending.clear();
   }
 
   private onData(chunk: string): void {
