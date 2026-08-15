@@ -1,5 +1,18 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AcpClient, parseFrames } from '../src/main/acp';
+
+// Reaches into the private `request` method the same way the idempotence test
+// below reaches into `doStart`: no subprocess, no faked ACP traffic. `request`'s
+// only touch on the child is `this.child?.stdin?.write(...)`, optional-chained,
+// so calling it on a never-started client exercises the real timeout/timer logic
+// with nothing to fake.
+type WithRequest = {
+  request(method: string, params: unknown, timeoutMs?: number): Promise<unknown>;
+};
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('parseFrames', () => {
   it('reads one complete line as one frame', () => {
@@ -42,5 +55,36 @@ describe('AcpClient.start', () => {
 
     expect(second).toBe(first);
     expect(doStart).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('AcpClient handshake timeout', () => {
+  it('rejects with a message naming the stalled method once the timeout elapses', async () => {
+    vi.useFakeTimers();
+    const client = new AcpClient({ profileId: 'test', onUpdate: () => {}, onExit: () => {} });
+    const request = (client as unknown as WithRequest).request.bind(client);
+
+    const pending = request('initialize', {}, 30_000);
+    const assertion = expect(pending).rejects.toThrow(
+      'hermes acp handshake timed out waiting for initialize',
+    );
+    await vi.advanceTimersByTimeAsync(30_000);
+    await assertion;
+  });
+
+  it('arms no timer when timeoutMs is omitted: the request stays pending past 30s', async () => {
+    vi.useFakeTimers();
+    const client = new AcpClient({ profileId: 'test', onUpdate: () => {}, onExit: () => {} });
+    const request = (client as unknown as WithRequest).request.bind(client);
+
+    let settled = false;
+    request('session/prompt', {}).then(
+      () => (settled = true),
+      () => (settled = true),
+    );
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(settled).toBe(false);
   });
 });

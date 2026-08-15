@@ -50,6 +50,12 @@ export class AcpClient {
    * rather than spawning a second child that would share this instance's request-id
    * space and get its `exit` handler reject the live session's pending requests
    * (ported from acpClient.js:115's `if (this._child) return this._ready;` guard).
+   *
+   * A failed start stays cached as a rejection: repeated calls keep returning the
+   * same rejected promise until `stop()` is called. This is deliberate, not
+   * inherited — it matches the prototype's shape, and an explicit stop()-then-
+   * start() to retry is more predictable than a silent auto-respawn on every call
+   * to a client that's failing to start.
    */
   start(): Promise<void> {
     if (!this.startPromise) this.startPromise = this.doStart();
@@ -104,9 +110,16 @@ export class AcpClient {
     });
   }
 
+  // Returns the client to a genuinely restartable state: clearing only `child`
+  // would leave `startPromise` cached (so a later start() replays the stale
+  // settled promise instead of spawning) and `sessionId` set (so prompt() would
+  // pass its own guard and write to a null child, hanging with no exit event to
+  // ever reject it). All three must go together.
   stop(): void {
     this.child?.kill();
     this.child = null;
+    this.startPromise = null;
+    this.sessionId = null;
   }
 
   private onData(chunk: string): void {
