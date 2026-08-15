@@ -60,6 +60,11 @@ npm run dist
 Note: `resources/icon.png` is a placeholder solid-colour image and should be
 replaced with real artwork before release.
 
+Note: the build is unsigned and unnotarised, so macOS quarantines a downloaded
+`.dmg` — Gatekeeper refuses it on a double-click. Right-click the app and choose
+**Open** the first time, then confirm. Signing and notarising the release
+removes the step.
+
 ## What has not been verified
 
 The onboarding wizard and tile have not been visually confirmed in an automated
