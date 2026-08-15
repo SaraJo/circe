@@ -1,0 +1,22 @@
+appId: com.circe.desktop
+productName: Circe
+directories:
+  output: dist
+  buildResources: resources
+files:
+  - out/**/*
+  - package.json
+extraResources:
+  - from: out/resources
+    to: resources
+mac:
+  category: public.app-category.productivity
+  target: [dmg]
+  icon: resources/icon.png
+  identity: null
+win:
+  target: [nsis]
+  icon: resources/icon.png
+linux:
+  target: [AppImage]
+  category: Utility

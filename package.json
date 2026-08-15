@@ -5,16 +5,20 @@
   "description": "Onboards one Hermes orchestrator agent and gives it a tile",
   "license": "MIT",
   "main": "out/main/index.js",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "dist": "npm run build && electron-builder"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
     "electron": "^32.3.3",
+    "electron-builder": "^25.1.8",
     "electron-vite": "^2.3.0",
     "typescript": "^5.9.3",
     "vite": "^5.4.21",
