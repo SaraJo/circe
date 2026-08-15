@@ -14,6 +14,11 @@ type WithRequest = {
 // through a subprocess's stdout stream.
 type WithBuffer = { buffer: string };
 
+// And again for the frame dispatcher, so a real `session/update` notification
+// can be fed in exactly as it arrives off the wire — no subprocess needed,
+// since `handle` is pure dispatch over a parsed frame.
+type WithHandle = { handle(msg: Record<string, unknown>): void };
+
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -39,6 +44,58 @@ describe('parseFrames', () => {
   it('ignores blank lines', () => {
     const { frames } = parseFrames('\n\n{"a":1}\n\n');
     expect(frames).toEqual([{ a: 1 }]);
+  });
+});
+
+describe('session/update forwarding', () => {
+  // The shape is from the working prototype, which runs against the real
+  // runtime: acpClient.js:339 forwards `msg.params`, and renderer.js:372/377
+  // then reads `params.update` and `update.sessionUpdate`. Forwarding
+  // `params` here instead of `params.update` meant `sessionUpdate` was always
+  // undefined in the tile and no reply could ever be displayed.
+  function collect(): { client: AcpClient; seen: Array<Record<string, unknown>> } {
+    const seen: Array<Record<string, unknown>> = [];
+    const client = new AcpClient({
+      profileId: 'test',
+      onUpdate: (u) => seen.push(u as Record<string, unknown>),
+      onExit: () => {},
+    });
+    return { client, seen };
+  }
+
+  it('hands the renderer the inner update object, not the params wrapper', () => {
+    const { client, seen } = collect();
+    (client as unknown as WithHandle).handle({
+      jsonrpc: '2.0',
+      method: 'session/update',
+      params: {
+        sessionId: 'sess-1',
+        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'hi' } },
+      },
+    });
+
+    expect(seen).toEqual([
+      { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'hi' } },
+    ]);
+    expect(seen[0]!.sessionUpdate).toBe('agent_message_chunk');
+  });
+
+  it('forwards a tool_call update the same way', () => {
+    const { client, seen } = collect();
+    (client as unknown as WithHandle).handle({
+      method: 'session/update',
+      params: { sessionId: 's', update: { sessionUpdate: 'tool_call', title: 'read_file' } },
+    });
+
+    expect(seen).toEqual([{ sessionUpdate: 'tool_call', title: 'read_file' }]);
+  });
+
+  it('drops a notification with no update object rather than forwarding a wrapper', () => {
+    const { client, seen } = collect();
+    (client as unknown as WithHandle).handle({ method: 'session/update', params: { sessionId: 's' } });
+    (client as unknown as WithHandle).handle({ method: 'session/update' });
+
+    expect(seen).toEqual([]);
   });
 });
 

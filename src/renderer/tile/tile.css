@@ -34,10 +34,54 @@ body {
 }
 
 #log { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
-.msg { padding: 9px 12px; border-radius: 10px; white-space: pre-wrap; max-width: 88%; }
+.msg { padding: 9px 12px; border-radius: 10px; max-width: 88%; overflow-wrap: anywhere; }
 .msg.user { background: var(--user-bg); align-self: flex-end; }
 .msg.agent { background: var(--agent-bg); align-self: flex-start; }
 .msg.error { background: var(--agent-bg); align-self: flex-start; color: var(--muted); font-style: italic; }
+.msg.tool {
+  background: none; align-self: flex-start; padding: 0 2px;
+  color: var(--muted); font-size: 12px; opacity: 0.8;
+}
+
+/* Only bubbles that are literally plain text keep their newlines this way.
+   Applying it to the Markdown-rendered bubble too would render the newlines
+   *between* block elements as blank lines on top of the elements' own
+   margins. */
+.msg.plain { white-space: pre-wrap; }
+
+/* The rendered agent reply. `marked` emits real block elements, so they need
+   real block styling — margins collapsed at the bubble's edges so a
+   single-paragraph reply is the same height it was as plain text. */
+.msg.md > :first-child { margin-top: 0; }
+.msg.md > :last-child { margin-bottom: 0; }
+.msg.md p, .msg.md ul, .msg.md ol, .msg.md pre, .msg.md blockquote { margin: 0 0 8px; }
+.msg.md ul, .msg.md ol { padding-left: 20px; }
+.msg.md li { margin: 2px 0; }
+.msg.md h1, .msg.md h2, .msg.md h3, .msg.md h4 {
+  margin: 12px 0 6px; font-size: 14px; font-weight: 600; color: var(--accent);
+}
+.msg.md a { color: var(--accent); }
+.msg.md blockquote {
+  padding-left: 10px; border-left: 2px solid var(--tile-border); color: var(--muted);
+}
+.msg.md blockquote > :last-child, .msg.md li > :last-child { margin-bottom: 0; }
+.msg.md hr { border: none; border-top: 1px solid var(--tile-border); margin: 10px 0; }
+.msg.md code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+}
+.msg.md :not(pre) > code {
+  background: rgba(255, 255, 255, 0.12); padding: 1px 4px; border-radius: 4px;
+}
+/* The tile is 430px wide and never resizes: anything wider scrolls inside its
+   own bubble rather than pushing the layout out. */
+.msg.md pre {
+  background: rgba(0, 0, 0, 0.28); padding: 8px 10px; border-radius: 8px;
+  overflow-x: auto; max-width: 100%;
+}
+.msg.md pre code { white-space: pre; overflow-wrap: normal; }
+.msg.md table { display: block; overflow-x: auto; max-width: 100%; border-collapse: collapse; }
+.msg.md th, .msg.md td { padding: 3px 8px; border: 1px solid var(--tile-border); }
+.msg.md img { max-width: 100%; }
 
 footer { padding: 10px 12px; border-top: 1px solid var(--tile-border); }
 textarea {

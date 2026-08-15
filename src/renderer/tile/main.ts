@@ -14,6 +14,7 @@ interface TileApi {
   onOpening(cb: (text: string) => void): void;
   send(text: string): void;
   close(): void;
+  openExternal(url: string): void;
 }
 const circe = (window as unknown as { circe: TileApi }).circe;
 
@@ -49,6 +50,8 @@ const input = document.getElementById('input') as HTMLTextAreaElement;
 
 /** The element the current streaming reply is accumulating into. */
 let streaming: HTMLElement | null = null;
+/** The single "⚙ …" bubble showing what the agent is doing this turn. */
+let toolBubble: HTMLElement | null = null;
 
 /**
  * Plain-text bubble. Used for the user's own messages, the opening handoff
@@ -56,17 +59,57 @@ let streaming: HTMLElement | null = null;
  * Circe's own prose — two string interpolations and no Markdown, see
  * `openingMessage`), and the malformed-character notice. Always `textContent`,
  * never `innerHTML` — there is no Markdown to render here, so there is no
- * reason to route any of it through `marked`. The `.msg` rule's
- * `white-space: pre-wrap` (tile.css) preserves the opening message's hard
- * newlines without needing `<br>`.
+ * reason to route any of it through `marked`. The `plain` class carries
+ * `white-space: pre-wrap` (tile.css), which preserves the opening message's
+ * hard newlines without needing `<br>`; it is dropped from the streaming
+ * bubble at the end of a turn, when its text becomes rendered Markdown and
+ * `pre-wrap` would turn the newlines *between* block elements into stray
+ * blank lines.
  */
-function appendText(role: 'user' | 'agent' | 'error', text: string): HTMLElement {
+function appendText(role: 'user' | 'agent' | 'error' | 'tool', text: string): HTMLElement {
   const node = document.createElement('div');
-  node.className = `msg ${role}`;
+  node.className = `msg ${role} plain`;
   node.textContent = text;
   log.append(node);
   log.scrollTop = log.scrollHeight;
   return node;
+}
+
+/**
+ * ACP content blocks are `{ type: 'text', text }`, but the field can also
+ * arrive as a bare string or an array of blocks — mirrors the prototype's
+ * `extractText` (renderer.js:356), which is what runs against the real
+ * runtime today.
+ */
+function extractText(content: unknown): string {
+  if (!content) return '';
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) return content.map(extractText).join('');
+  const text = (content as { text?: unknown }).text;
+  return typeof text === 'string' ? text : '';
+}
+
+/**
+ * Ends the current turn: the streamed plain text becomes rendered Markdown,
+ * and the tool bubble stops being the live one. Driven by `session/prompt`
+ * *resolving* in the main process, which is how ACP signals turn completion
+ * (it answers with `{ stopReason }`) — there is no `agent_message_complete`
+ * update kind, and finalizing on one meant every reply concatenated into the
+ * first bubble and the Markdown pass never ran at all.
+ */
+function endTurn(): void {
+  if (streaming) {
+    // The only place model output reaches `innerHTML` (Amendment 3) — a
+    // completed agent reply, converted from the plain text it streamed in
+    // as. Contained by the tile's CSP (no `script-src 'unsafe-inline'`) and
+    // by the navigation guards in `windows.ts`.
+    streaming.innerHTML = marked.parse(streaming.textContent ?? '') as string;
+    streaming.classList.remove('plain');
+    streaming.classList.add('md');
+    streaming = null;
+  }
+  toolBubble = null;
+  log.scrollTop = log.scrollHeight; // Markdown formatting can change the bubble's height.
 }
 
 if (!character) {
@@ -81,21 +124,65 @@ circe.onOpening((text) => {
   appendText('agent', text);
 });
 
+/**
+ * The update kinds this tile acts on. The first three are real ACP
+ * `session/update` kinds and are exactly the ones the working prototype
+ * handles (renderer.js:377-418); the last two are Circe's own lifecycle
+ * events, namespaced so they can't ever collide with a protocol kind.
+ */
 circe.onUpdate((update) => {
-  const u = update as { sessionUpdate?: string; content?: { text?: string } };
-  if (u.sessionUpdate === 'agent_message_chunk' && u.content?.text) {
-    if (!streaming) streaming = appendText('agent', '');
-    streaming.textContent = (streaming.textContent ?? '') + u.content.text;
-    log.scrollTop = log.scrollHeight;
+  const u = update as { sessionUpdate?: string; content?: unknown; title?: string };
+  switch (u.sessionUpdate) {
+    case 'agent_message_chunk': {
+      const piece = extractText(u.content);
+      if (!piece) return;
+      if (!streaming) streaming = appendText('agent', '');
+      streaming.textContent = (streaming.textContent ?? '') + piece;
+      log.scrollTop = log.scrollHeight;
+      return;
+    }
+    // One reused bubble per turn, overwritten as the agent moves between
+    // tools. Without it a long tool-using turn looks like a frozen tile —
+    // nothing streams while the agent is working. Deliberately minimal: a
+    // label, not a tool UI.
+    case 'tool_call':
+    case 'tool_call_update': {
+      const name = u.title ?? (update as { toolCallId?: string }).toolCallId ?? '';
+      if (!name) return;
+      const label = `⚙ ${name}`;
+      if (toolBubble) toolBubble.textContent = label;
+      else toolBubble = appendText('tool', label);
+      log.scrollTop = log.scrollHeight;
+      return;
+    }
+    case 'circe/turn-end':
+      endTurn();
+      return;
+    // The agent process died. Without this the tile just goes quiet forever
+    // and the user has no way to tell a dead agent from a thinking one.
+    case 'circe/exited': {
+      endTurn();
+      const code = (update as { code?: number | null }).code;
+      appendText('error', `The agent stopped (exit code ${code ?? 'unknown'}).`);
+      return;
+    }
   }
-  if (u.sessionUpdate === 'agent_message_complete' && streaming) {
-    // The only place model output reaches `innerHTML` (Amendment 3) — a
-    // completed agent reply, converted from the plain text it streamed in
-    // as. Contained by the tile's CSP (no `script-src 'unsafe-inline'`).
-    streaming.innerHTML = marked.parse(streaming.textContent ?? '') as string;
-    streaming = null;
-    log.scrollTop = log.scrollHeight; // Markdown formatting can change the bubble's height.
-  }
+});
+
+/**
+ * Links in an agent reply open in the user's browser. The tile itself can no
+ * longer navigate (`pinToItsOwnDocument`), and it must not: its preload hands
+ * `window.circe.send()` to whatever document is loaded, so navigating it to a
+ * page the model chose would hand that page the user's agent. `preventDefault`
+ * here means the guard in the main process is never the thing the user
+ * notices; the main process still vets the scheme before the OS sees it.
+ */
+log.addEventListener('click', (e) => {
+  const anchor = (e.target as HTMLElement | null)?.closest?.('a');
+  if (!anchor) return;
+  e.preventDefault();
+  const href = anchor.getAttribute('href');
+  if (href) circe.openExternal(href);
 });
 
 input.addEventListener('keydown', (e) => {
@@ -103,6 +190,11 @@ input.addEventListener('keydown', (e) => {
   e.preventDefault();
   const text = input.value.trim();
   if (!text) return;
+  // A new turn never continues the previous turn's bubbles, even if the last
+  // one ended abnormally (the prototype resets the same state on send,
+  // renderer.js:583).
+  streaming = null;
+  toolBubble = null;
   appendText('user', text);
   circe.send(text);
   input.value = '';

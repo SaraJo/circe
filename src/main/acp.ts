@@ -3,7 +3,10 @@ import { homedir } from 'node:os';
 import { hermesPaths } from './hermes/runtime';
 
 export interface AcpUpdate {
-  /** ACP session/update payload, passed through to the renderer as-is. */
+  /**
+   * The *inner* `update` object of an ACP `session/update` notification —
+   * `{ sessionUpdate, ... }` — passed through to the renderer as-is.
+   */
   [key: string]: unknown;
 }
 
@@ -154,9 +157,20 @@ export class AcpClient {
       else p.resolve(msg.result);
       return;
     }
-    // A streaming update from the agent.
+    // A streaming update from the agent. ACP wraps the interesting part one
+    // level down: params are `{ sessionId, update: { sessionUpdate, ... } }`,
+    // and `sessionUpdate` — the discriminator every consumer branches on —
+    // lives on the inner object, never on `params` itself. Forwarding
+    // `params` handed the renderer an object whose `sessionUpdate` was always
+    // `undefined`, so no branch ever fired and no reply was ever displayed.
+    // The inner object is what goes out; `sessionId` is dropped because this
+    // client owns exactly one session (acpClient.js:339 forwards the whole
+    // params only because the prototype multiplexes tabs over one client, and
+    // renderer.js:372 immediately reaches for `params.update`).
     if (msg.method === 'session/update') {
-      this.opts.onUpdate((msg.params ?? {}) as AcpUpdate);
+      const params = (msg.params ?? {}) as { update?: unknown };
+      const update = params.update;
+      if (update && typeof update === 'object') this.opts.onUpdate(update as AcpUpdate);
       return;
     }
     // A permission request. This slice runs the tile unlocked, so approve the
