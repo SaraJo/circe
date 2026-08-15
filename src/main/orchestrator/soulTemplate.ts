@@ -1,0 +1,31 @@
+import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import type { Character } from '../../shared/types';
+
+/**
+ * In a packaged build electron-vite copies `resources/` next to the compiled
+ * main bundle, so `__dirname/../resources/...` resolves directly. Under
+ * vitest and `electron-vite dev`, `__dirname` is `src/main/orchestrator`
+ * (source, not `out/main`), so that packaged path doesn't exist yet — walk
+ * up to the repo root instead.
+ */
+function resolveTemplate(): string {
+  const packaged = join(__dirname, '../resources/orchestrator/SOUL.template.md');
+  if (existsSync(packaged)) return packaged;
+  // Running from source (vitest, electron-vite dev): walk up to the repo root.
+  return join(__dirname, '../../../resources/orchestrator/SOUL.template.md');
+}
+
+export const ORCHESTRATOR_TEMPLATE_PATH = resolveTemplate();
+
+export async function loadTemplate(): Promise<string> {
+  return readFile(ORCHESTRATOR_TEMPLATE_PATH, 'utf8');
+}
+
+export function renderOrchestratorSoul(c: Character, template: string): string {
+  return template
+    .replaceAll('{{NAME}}', c.name)
+    .replaceAll('{{TAGLINE}}', c.tagline)
+    .replaceAll('{{FANDOM}}', c.fandom);
+}
