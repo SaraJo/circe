@@ -33,7 +33,12 @@ export interface HermesRuntime {
   hasProvider(): Promise<boolean>;
   /** One-shot non-interactive query. Returns the agent's text reply. */
   query(profileId: string, prompt: string): Promise<string>;
-  /** Read a file under the Hermes home. Returns null when absent. */
+  /**
+   * Read a file under the Hermes home. Null means the file is *absent*, and
+   * only that — a file that exists but can't be read rejects, so callers
+   * guarding a destructive write can tell "nothing there" from "couldn't
+   * look". See `RealHermes.readFileOrNull`.
+   */
   readHomeFile(relPath: string): Promise<string | null>;
   /** Write a file under the Hermes home, creating parent directories. */
   writeHomeFile(relPath: string, contents: string): Promise<void>;

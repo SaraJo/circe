@@ -85,13 +85,27 @@ async function freeBackupPath(hermes: HermesRuntime, base: string): Promise<stri
 /**
  * Writes a persona, preserving anything the user wrote first (Global Constraint 4).
  * An untouched scaffold is not worth preserving and is overwritten silently.
+ *
+ * A file that is present but unreadable stops the write dead. Backing it up
+ * would mean copying bytes we were just refused, and `HermesRuntime` has no
+ * copy operation to do that with — so there is no version of "proceed" here
+ * that keeps the user's persona. Refusing is the only outcome that can't
+ * destroy it, and the wizard's `write-failed` screen carries the reason.
  */
 export async function writeSoul(opts: WriteSoulOptions): Promise<WriteSoulResult> {
   const { hermes, profileId, contents, now = new Date() } = opts;
   // soulPath with an empty home yields the home-relative path the runtime wants.
   const rel = soulPath('', profileId).replace(/^\//, '');
 
-  const existing = await hermes.readHomeFile(rel);
+  let existing: string | null;
+  try {
+    existing = await hermes.readHomeFile(rel);
+  } catch (err) {
+    throw new Error(
+      `Refusing to overwrite ${rel}: it exists but couldn't be read, so it can't be ` +
+        `backed up first. Nothing was changed. (${err instanceof Error ? err.message : String(err)})`,
+    );
+  }
   let backedUpTo: string | null = null;
   if (isRealSoul(existing)) {
     const base = `${rel}.${backupSuffix(now)}`;

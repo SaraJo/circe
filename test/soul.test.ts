@@ -148,3 +148,49 @@ describe('writeSoul', () => {
     );
   });
 });
+
+describe('writeSoul against a persona it cannot read', () => {
+  // Global Constraint 4's last hole. A SOUL.md that exists but can't be read
+  // (EACCES, a transient I/O error) used to come back as `null`, which
+  // `isRealSoul` calls "scaffold" — so no backup was taken and the file was
+  // overwritten with nothing kept. There is no way to back it up: the backup
+  // is a copy of bytes the read just refused, and `HermesRuntime` has no
+  // copy operation. Refusing is the only outcome that can't destroy it.
+  function unreadableDefault() {
+    const h = new FakeHermes(INSTALLED_WITH_AGENTS);
+    const writes: string[] = [];
+    const realWrite = h.writeHomeFile.bind(h);
+    h.writeHomeFile = async (rel: string, contents: string) => {
+      writes.push(rel);
+      return realWrite(rel, contents);
+    };
+    h.readHomeFile = async (rel: string) => {
+      if (rel === 'SOUL.md') throw new Error('Cannot read /fake/home/SOUL.md (EACCES): denied');
+      return h.files.get(rel) ?? null;
+    };
+    return { h, writes };
+  }
+
+  it('refuses the write and says why', async () => {
+    const { h } = unreadableDefault();
+    await expect(
+      writeSoul({ hermes: h, profileId: 'default', contents: '# Athena — coordinator\n' }),
+    ).rejects.toThrow(/Refusing to overwrite SOUL\.md/);
+  });
+
+  it('writes nothing at all — not the persona, not a backup', async () => {
+    const { h, writes } = unreadableDefault();
+    await writeSoul({ hermes: h, profileId: 'default', contents: '# Athena — coordinator\n' }).catch(
+      () => {},
+    );
+    expect(writes).toEqual([]);
+    expect(h.files.get('SOUL.md')).toBe('# Trillian — Central Coordinator\n\nYou are **Trillian**.\n');
+  });
+
+  it('carries the underlying error text along, for the write-failed screen', async () => {
+    const { h } = unreadableDefault();
+    await expect(
+      writeSoul({ hermes: h, profileId: 'default', contents: '# Athena\n' }),
+    ).rejects.toThrow(/EACCES/);
+  });
+});

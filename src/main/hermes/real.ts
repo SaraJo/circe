@@ -102,8 +102,27 @@ export class RealHermes implements HermesRuntime {
 
     const out: HermesProfile[] = [];
     for (const [id, model] of seen) {
-      const soul = await this.readFileOrNull(soulPath(this.p.home, id));
-      out.push({ id, displayName: displayNameFor(id, soul), model, isReal: isRealSoul(soul) });
+      // A SOUL.md that exists but can't be read is treated as real. The
+      // realness heuristic guards a destructive write, so its two error
+      // directions aren't symmetric (see `profiles.ts`): calling an
+      // unreadable file "scaffold" here is exactly how a hand-written
+      // persona gets silently replaced. Failing toward "real" costs the user
+      // a confirm screen they can decline; `writeSoul` then refuses the
+      // write outright when it hits the same unreadable file.
+      let soul: string | null = null;
+      let unreadable = false;
+      try {
+        soul = await this.readFileOrNull(soulPath(this.p.home, id));
+      } catch (err) {
+        unreadable = true;
+        console.warn(`Treating profile "${id}" as configured: ${(err as Error).message}`);
+      }
+      out.push({
+        id,
+        displayName: unreadable ? id : displayNameFor(id, soul),
+        model,
+        isReal: unreadable || isRealSoul(soul),
+      });
     }
     return out;
   }
@@ -123,11 +142,25 @@ export class RealHermes implements HermesRuntime {
     await writeFile(abs, contents, 'utf8');
   }
 
+  /**
+   * Null means *absent*, and nothing else. Swallowing every error here was
+   * the last path by which Circe could destroy something unrecoverable: an
+   * `EACCES` or transient I/O failure reading a hand-written `SOUL.md` read
+   * back as `null`, so `isRealSoul` said "scaffold", so `writeSoul` took no
+   * backup and `hasConfiguredDefault` showed no confirm — and the persona
+   * was overwritten with nothing kept.
+   *
+   * `ENOTDIR` counts as absent too: it means a parent path component isn't a
+   * directory, so the file genuinely isn't there. Everything else — the file
+   * is present, we just can't read it — is raised, and callers decide.
+   */
   private async readFileOrNull(abs: string): Promise<string | null> {
     try {
       return await readFile(abs, 'utf8');
-    } catch {
-      return null;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT' || code === 'ENOTDIR') return null;
+      throw new Error(`Cannot read ${abs} (${code ?? 'unknown error'}): ${(err as Error).message}`);
     }
   }
 }
