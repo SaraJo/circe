@@ -24,8 +24,12 @@ export async function loadTemplate(): Promise<string> {
 }
 
 export function renderOrchestratorSoul(c: Character, template: string): string {
+  // Replacer functions, not replacement strings: a plain string handed to
+  // replaceAll still honours $&, $$, $`, and $' as special patterns, so a
+  // derived name or tagline containing one would splice in matched text
+  // instead of its own literal characters.
   return template
-    .replaceAll('{{NAME}}', c.name)
-    .replaceAll('{{TAGLINE}}', c.tagline)
-    .replaceAll('{{FANDOM}}', c.fandom);
+    .replaceAll('{{NAME}}', () => c.name)
+    .replaceAll('{{TAGLINE}}', () => c.tagline)
+    .replaceAll('{{FANDOM}}', () => c.fandom);
 }

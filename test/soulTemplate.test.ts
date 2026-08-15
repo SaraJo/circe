@@ -62,4 +62,20 @@ describe('renderOrchestratorSoul', () => {
   it('tells the agent not to roleplay the character', async () => {
     expect(await render()).toMatch(/do not roleplay/i);
   });
+
+  it('has a network section recording that no specialists exist yet', async () => {
+    const soul = await render();
+    expect(soul).toContain('## The network');
+    expect(soul).toMatch(/you are the only agent/i);
+  });
+
+  it('substitutes special replacement-pattern characters literally', () => {
+    const dollarCharacter: Character = {
+      ...TRILLIAN,
+      name: 'Trillian $&',
+      tagline: "the one who keeps $` the plot $'",
+    };
+    const rendered = renderOrchestratorSoul(dollarCharacter, '{{NAME}} — {{TAGLINE}}');
+    expect(rendered).toBe("Trillian $& — the one who keeps $` the plot $'");
+  });
 });
