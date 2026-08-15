@@ -1,0 +1,49 @@
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: var(--text);
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  border-radius: 12px;
+  overflow: hidden;
+  backdrop-filter: blur(20px);
+  -webkit-font-smoothing: antialiased;
+}
+
+#bar {
+  -webkit-app-region: drag;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--tile-border);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+#close {
+  -webkit-app-region: no-drag;
+  background: none; border: none; color: var(--muted);
+  font-size: 18px; line-height: 1; cursor: pointer;
+}
+
+#log { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.msg { padding: 9px 12px; border-radius: 10px; white-space: pre-wrap; max-width: 88%; }
+.msg.user { background: var(--user-bg); align-self: flex-end; }
+.msg.agent { background: var(--agent-bg); align-self: flex-start; }
+.msg.error { background: var(--agent-bg); align-self: flex-start; color: var(--muted); font-style: italic; }
+
+footer { padding: 10px 12px; border-top: 1px solid var(--tile-border); }
+textarea {
+  width: 100%; resize: none; font: inherit; color: inherit;
+  background: var(--input-bg);
+  border: 1px solid var(--tile-border);
+  border-radius: 8px; padding: 9px 11px;
+}
+textarea:focus { outline: none; border-color: var(--accent-soft); box-shadow: 0 0 0 3px var(--accent-glow); }

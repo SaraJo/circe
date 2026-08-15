@@ -1,5 +1,10 @@
-// Placeholder entry point so `electron.vite.config.ts`'s preload build (which
-// already lists this file) can resolve. `createTileWindow` (src/main/windows.ts)
-// references `../preload/tile.js` but is not called until Task 11, which is
-// where this file's real bridge implementation belongs.
-export {};
+import { contextBridge, ipcRenderer } from 'electron';
+
+contextBridge.exposeInMainWorld('circe', {
+  onUpdate: (cb: (u: Record<string, unknown>) => void) =>
+    ipcRenderer.on('tile:update', (_e, u) => cb(u)),
+  onOpening: (cb: (text: string) => void) =>
+    ipcRenderer.on('tile:opening', (_e, text: string) => cb(text)),
+  send: (text: string) => ipcRenderer.send('tile:prompt', text),
+  close: () => ipcRenderer.send('tile:close'),
+});
