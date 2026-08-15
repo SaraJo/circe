@@ -136,18 +136,19 @@ function render(step: WizardStep): void {
       break;
     }
 
-    case 'deriving':
-      screenEl.append(
-        el(`
+    case 'deriving': {
+      const node = el(`
         <section class="screen">
           <h1>Finding your coordinator</h1>
-          <p class="lead">Looking through ${step.fandom} for the one who keeps track
-          of everyone else. This can take up to a minute.</p>
+          <p class="lead">Looking through <span class="fandom"></span> for the one who
+          keeps track of everyone else. This can take up to a minute.</p>
           <div class="spinner"></div>
         </section>
-      `),
-      );
+      `);
+      node.querySelector('.fandom')!.textContent = step.fandom;
+      screenEl.append(node);
       break;
+    }
 
     case 'derive-failed': {
       const node = el(`
@@ -190,15 +191,21 @@ function render(step: WizardStep): void {
       screenEl.append(renderCharacter(step.character));
       break;
 
-    case 'launching':
-      screenEl.append(
-        el(`
+    case 'launching': {
+      const node = el(`
         <section class="screen">
-          <h1>Starting ${step.character.name}…</h1>
+          <h1>Starting <span class="name"></span>…</h1>
         </section>
-      `),
-      );
+      `);
+      node.querySelector('.name')!.textContent = step.character.name;
+      screenEl.append(node);
       break;
+    }
+
+    default: {
+      const _exhaustive: never = step;
+      throw new Error(`Unhandled wizard step: ${JSON.stringify(_exhaustive)}`);
+    }
   }
 }
 
