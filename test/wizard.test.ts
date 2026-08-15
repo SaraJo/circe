@@ -208,3 +208,63 @@ describe('double-clicked accept', () => {
     expect(soul).toContain('# Trillian — the one who keeps the plot');
   });
 });
+
+describe('retryDerivation entry guard', () => {
+  it('does nothing from launching, after an awaited accept', async () => {
+    const { hermes, w } = await toMeet(INSTALLED_EMPTY);
+    await w.accept();
+    expect(w.state.kind).toBe('launching');
+    const queriesBefore = hermes.queries.length;
+
+    await w.retryDerivation();
+
+    expect(w.state.kind).toBe('launching');
+    expect(hermes.queries).toHaveLength(queriesBefore);
+  });
+
+  it('does nothing from provider-missing, even with a stale character still held', async () => {
+    // Derive once for real, so a character is sitting in the private field,
+    // then simulate the provider disconnecting and the caller re-running
+    // start() — a path the class doesn't forbid. accept() was never called,
+    // so nothing has cleared the character; the entry guard is the only
+    // thing standing between this and a real query.
+    const testScenario = scenario(INSTALLED_EMPTY);
+    const hermes = new FakeHermes(testScenario);
+    const w = new Wizard(hermes);
+    await w.start();
+    await w.submitFandom("Hitchhiker's Guide to the Galaxy");
+    expect(w.state).toMatchObject({ kind: 'meet', character: { name: 'Trillian' } });
+
+    testScenario.hasProvider = false;
+    await w.start();
+    expect(w.state.kind).toBe('provider-missing');
+    const queriesBefore = hermes.queries.length;
+
+    await w.retryDerivation();
+
+    expect(w.state.kind).toBe('provider-missing');
+    expect(hermes.queries).toHaveLength(queriesBefore);
+  });
+
+  it('still re-derives from meet — the escape hatch stays open', async () => {
+    const { hermes, w } = await toMeet(INSTALLED_EMPTY);
+    expect(w.state.kind).toBe('meet');
+    const queriesBefore = hermes.queries.length;
+
+    await w.retryDerivation();
+
+    expect(hermes.queries.length).toBeGreaterThan(queriesBefore);
+    expect(w.state).toMatchObject({ kind: 'meet', character: { name: 'Trillian' } });
+  });
+
+  it('still re-derives from claim-default — the escape hatch stays open', async () => {
+    const { hermes, w } = await toMeet(INSTALLED_WITH_AGENTS);
+    expect(w.state.kind).toBe('claim-default');
+    const queriesBefore = hermes.queries.length;
+
+    await w.retryDerivation();
+
+    expect(hermes.queries.length).toBeGreaterThan(queriesBefore);
+    expect(w.state).toMatchObject({ kind: 'claim-default', existingName: 'Trillian' });
+  });
+});

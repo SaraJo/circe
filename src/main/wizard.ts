@@ -16,6 +16,22 @@ import { installOrchestratorSkill } from './orchestrator/skill';
 const FANDOM_ENTRY_STATES = new Set<WizardStep['kind']>(['fandom', 'derive-failed', 'deriving']);
 
 /**
+ * States from which "try another character" is meaningful: a failed or
+ * in-flight derivation, or either of the two character-holding review
+ * screens. Deliberately not the same set as `FANDOM_ENTRY_STATES` —
+ * `retryDerivation` legitimately runs from `meet`/`claim-default`, which
+ * `submitFandom` must not, and must NOT run from `launching`, where a
+ * lingering `this.character` would otherwise let it fire a real derivation
+ * over a write already in progress.
+ */
+const RETRY_ENTRY_STATES = new Set<WizardStep['kind']>([
+  'derive-failed',
+  'deriving',
+  'meet',
+  'claim-default',
+]);
+
+/**
  * The whole onboarding flow, with no Electron in it. The renderer observes
  * `state` and calls the transitions; nothing here knows a window exists.
  */
@@ -74,9 +90,13 @@ export class Wizard {
    * back to the already-derived character (`meet`/`claim-default`). Calls
    * `runDerivation` directly rather than `submitFandom`, because retrying is
    * legitimate from `meet`/`claim-default` too, and those aren't in
-   * `submitFandom`'s entry set.
+   * `submitFandom`'s entry set. Guarded by its own `RETRY_ENTRY_STATES` —
+   * routing around `submitFandom`'s guard means this needed one of its own,
+   * otherwise a lingering `this.character` would make it fire from anywhere,
+   * `launching` included.
    */
   async retryDerivation(): Promise<void> {
+    if (!RETRY_ENTRY_STATES.has(this.state.kind)) return;
     const s = this.state;
     const fandom =
       s.kind === 'derive-failed' || s.kind === 'deriving'
@@ -152,7 +172,10 @@ export class Wizard {
    * `launching` happens *before* any `await`, synchronously, so a second
    * call issued before this one's first await settles sees `launching`
    * already and bails via `accept()`'s guard — the re-entrancy guard is the
-   * state transition itself, not a separate flag.
+   * state transition itself, not a separate flag. `this.character` is
+   * cleared once consumed: the `launching` state already carries its own
+   * copy of the character, so the field is genuinely spent, and clearing it
+   * closes off `retryDerivation` finding a stale one to fire from.
    */
   private async commitAccept(): Promise<void> {
     const character = this.character;
@@ -161,5 +184,6 @@ export class Wizard {
     const soul = renderOrchestratorSoul(character, await loadTemplate());
     await writeSoul({ hermes: this.hermes, profileId: 'default', contents: soul });
     await installOrchestratorSkill(this.hermes, 'default');
+    this.character = null;
   }
 }
