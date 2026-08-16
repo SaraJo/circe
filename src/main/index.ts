@@ -6,6 +6,7 @@ import { AcpClient } from './acp';
 import { openingMessage } from './orchestrator/opening';
 import type { Character } from '../shared/types';
 import { readStartup } from './startup';
+import { readTileState, stateFor, withActiveSession, writeTileState } from './tileState';
 
 app.setName('Circe');
 
@@ -52,6 +53,15 @@ function openExternalSafely(url: string): void {
  */
 let tileLoaded = false;
 let tileQueue: string[] = [];
+/**
+ * Resolves when the tile's renderer has registered its listeners. A replay is a
+ * burst of `session/update` notifications arriving the moment `session/load`
+ * is answered, and `sendTileUpdate` has no queue — so the load must not be
+ * issued until there is something on the other end to draw it.
+ */
+let tileReady: Promise<void> = Promise.resolve();
+/** The session the tile is currently showing. Updates for any other are dropped. */
+let activeSessionId: string | null = null;
 
 /**
  * `did-finish-load` fires only after the renderer's module script has run and
@@ -77,6 +87,35 @@ function sendToTile(text: string): void {
  */
 function sendTileUpdate(update: Record<string, unknown>): void {
   if (tileWin && !tileWin.isDestroyed()) tileWin.webContents.send('tile:update', update);
+}
+
+/**
+ * Resumes the conversation this profile's tile was last on, or begins a new one.
+ *
+ * Hermes owns the conversation: `session/load` asks it to rehydrate from its own
+ * store, and it replays the history back as updates. Circe uploads nothing and
+ * keeps no copy — the id in `circe/state.json` is the whole of what it remembers.
+ *
+ * Every failure lands on the same answer, a fresh session, because a tile that
+ * refuses to open because last week's conversation went missing is worse than
+ * one that opens empty.
+ */
+async function restoreOrCreateSession(client: AcpClient, profileId: string): Promise<void> {
+  const file = await readTileState(hermes);
+  const saved = stateFor(file, profileId);
+  const prior = saved.tabs[saved.activeIndex] ?? null;
+
+  if (prior && client.canLoadSession) {
+    activeSessionId = prior; // set first: the replay's updates carry this id
+    await tileReady;
+    sendTileUpdate({ sessionUpdate: 'circe/replay-start' });
+    const resumed = await client.loadSession(prior);
+    sendTileUpdate({ sessionUpdate: 'circe/replay-end' });
+    if (resumed) return;
+  }
+
+  activeSessionId = await client.newSession();
+  await writeTileState(hermes, withActiveSession(file, profileId, activeSessionId));
 }
 
 /**
@@ -115,14 +154,21 @@ async function launchTile(
   // true the moment the orchestrator creates the first specialist. Reopening
   // a tile — from the dock, or on a later launch — must not replay it.
   tileQueue = greeting === null ? [] : [greeting];
-  tileWin.webContents.once('did-finish-load', () => {
-    tileLoaded = true;
-    for (const text of tileQueue.splice(0)) tileWin?.webContents.send('tile:opening', text);
+  tileReady = new Promise<void>((resolve) => {
+    tileWin!.webContents.once('did-finish-load', () => {
+      tileLoaded = true;
+      for (const text of tileQueue.splice(0)) tileWin?.webContents.send('tile:opening', text);
+      resolve();
+    });
   });
 
   acp = new AcpClient({
     profileId,
-    onUpdate: (u) => sendTileUpdate(u as Record<string, unknown>),
+    onUpdate: (sessionId, u) => {
+      // One client can serve several sessions; only the one on screen is drawn.
+      if (sessionId !== activeSessionId) return;
+      sendTileUpdate(u as Record<string, unknown>);
+    },
     onExit: (code) => sendTileUpdate({ sessionUpdate: 'circe/exited', code }),
   });
 
@@ -138,11 +184,13 @@ async function launchTile(
   tileWin.on('closed', () => {
     acp?.stop();
     acp = null;
+    activeSessionId = null;
     tileWin = null;
   });
 
   try {
     await acp.start();
+    await restoreOrCreateSession(acp, profileId);
   } catch (err) {
     acp.stop();
     const message = err instanceof Error ? err.message : String(err);
@@ -204,12 +252,13 @@ function registerIpc(): void {
 
   ipcMain.on('tile:prompt', (_e, text: string) => {
     const client = acp;
-    if (!client) return;
+    const sessionId = activeSessionId;
+    if (!client || !sessionId) return;
     // A turn ends when `session/prompt` resolves — that is ACP's completion
     // signal (it answers with `{ stopReason }`), and it is what the working
     // prototype keys off too (renderer.js:591). Both outcomes end the turn,
     // so a failed prompt doesn't leave the previous bubble open forever.
-    void client.prompt(text).then(
+    void client.prompt(sessionId, text).then(
       () => sendTileUpdate({ sessionUpdate: 'circe/turn-end' }),
       (err: unknown) => {
         sendTileUpdate({ sessionUpdate: 'circe/turn-end' });
