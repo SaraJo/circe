@@ -612,3 +612,38 @@ cause of the two headline defects.
   eight enumerated ones genuinely do, while five others would pass either way. The tests are valid
   regression guards, just not all discriminating. — *Cost if wrong:* five tests provide less assurance
   than the report implies; no code is affected.
+
+---
+
+## Phase 1 walkthrough — session restore (2026-08-16)
+
+Run against a sandboxed `HERMES_HOME` via `.claude/skills/run-circe`, on the real Hermes 0.14.0
+with real credentials. The operator's `~/.hermes/SOUL.md` was `2e13512a` before and after, mtime
+still Jul 29, all seven profiles intact, and no `circe/` state was written to the real home.
+
+**Observed by eye, not inferred:**
+
+- Fresh sandbox (stock Hermes boilerplate persona) opened the wizard. Derivation from "Terry
+  Pratchett's Discworld" produced Lord Havelock Vetinari; accepting opened the tile with the
+  opening handoff.
+- A live exchange worked: "In one sentence: what is your job here?" drew a reply.
+- **Quit and cold-started.** The tile opened directly onto the agent — no wizard — and the prior
+  exchange was drawn: the user message in one bubble, the agent reply in another, in Vetinari's
+  palette. The onboarding greeting was *not* replayed, which is correct: it is Circe's own prose
+  and was never part of the conversation.
+- **The user message rendered as a single bubble, not fragmented.** This was the open question
+  from Task 3's review — whether one message could replay as several chunks. It does not.
+- **The agent had its context back.** Asked "What did I just ask you, and what did you answer?"
+  after the restart, it recalled both correctly. So `session/load` restores Hermes' own memory,
+  not merely the pixels — the transcript and the agent agree.
+- `circe/state.json` held exactly `{"version":1,"profiles":{"default":{"tabs":["07b1a3fd…"],
+  "activeIndex":0}}}` — one session id, no message text, no agent facts (constraint 10).
+
+**Not verified by this walkthrough, stated plainly:**
+
+- The launch-supersession fix (closing a tile mid-restore and reopening) was not exercised. It is
+  timing-dependent and has no test, only two reviewers tracing the interleavings. See the Phase 1
+  ledger.
+- The renderer's own update switch is still covered only by a hand-maintained copy in
+  `test/restore.test.ts`, not by importing the shipped module. This walkthrough is what verified
+  the real renderer; a regression in it would not fail the suite.
