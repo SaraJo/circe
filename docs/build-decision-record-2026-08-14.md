@@ -641,9 +641,50 @@ still Jul 29, all seven profiles intact, and no `circe/` state was written to th
 
 **Not verified by this walkthrough, stated plainly:**
 
-- The launch-supersession fix (closing a tile mid-restore and reopening) was not exercised. It is
-  timing-dependent and has no test, only two reviewers tracing the interleavings. See the Phase 1
-  ledger.
+- The launch-supersession fix (closing a tile mid-restore and reopening) was not exercised by hand.
+  It is timing-dependent. It now has a test — but of the decision's *guard*, not of the real
+  interleaving; see the coverage note below. See also the Phase 1 ledger.
 - The renderer's own update switch is still covered only by a hand-maintained copy in
   `test/restore.test.ts`, not by importing the shipped module. This walkthrough is what verified
   the real renderer; a regression in it would not fail the suite.
+
+### What the Phase 1 fix wave changed about that coverage (2026-08-16)
+
+The final whole-branch review found that the "boundary" test crossed neither boundary: it drove the
+real `AcpClient.handle` between two *reimplementations* — the harness reproduced `index.ts`'s
+session filter, and the `circe/replay-start` / `circe/replay-end` bracket was hand-pushed into the
+expected array rather than emitted by the code that ships. Deleting either emit from `index.ts`
+left all 183 tests green. The fix wave extracted the restore decision into `src/main/restore.ts`,
+which takes its collaborators as parameters and imports no Electron, and tested it for real.
+
+**Now covered by tests** (`test/restore.test.ts`, `describe('restoreOrCreateSession')`, against a
+fake client and `FakeHermes`):
+
+- The shipped code emits `circe/replay-start` before `session/load` and `circe/replay-end` after
+  it — demonstrated load-bearing by deleting each emit and watching the suite go red.
+- The session id is routable *before* the load, which is what makes the replay reach this tile.
+- The `circe/replay-abandoned` notice on the fallback path, and on a load that throws.
+- All three fresh-session paths (no prior id, `canLoadSession` false, `loadSession` false) end in
+  `session/new` and persist exactly `{tabs:[id], activeIndex:0}`.
+- The launch-window holding pen: a message typed while `session/load` is in flight is held rather
+  than routed into the session being replayed, and is sent once a session exists.
+- The supersession guard: a superseded call emits nothing, creates nothing, and writes nothing.
+
+**Still not covered by any test:**
+
+- **Nothing in `src/main/index.ts` is.** No test imports it — it pulls in `electron` at module
+  scope. That leaves untested: `launchTile`'s window and client wiring, the `onUpdate` session
+  filter and `onExit` handler, the `closed` handler's reset, the launch-failure copy and its report
+  of unsent messages, `tile:prompt`'s dispatch on the route, `tile:close`, the `sendToTile` queue,
+  and the `activate`/`boot` paths. What moved to `restore.ts` is covered; what stayed is not, and
+  `index.ts` calling `restoreOrCreateSession` with the right collaborators is itself unverified
+  except by the walkthrough above and by reading it.
+- **The shipped renderer's update switch, still.** `test/restore.test.ts`'s `render()` is a
+  hand-maintained copy of `src/renderer/tile/main.ts`'s switch; the walkthrough remains the sole
+  evidence for the real one. The wave deliberately did not extract it — that is parked for the
+  phase that rewrites the renderer.
+- **The `circe/replay-abandoned` case in the renderer has never been seen running.** It postdates
+  the walkthrough. Its main-process half is tested; the half that clears the log and writes
+  "Couldn't reopen the previous conversation — starting a new one." is covered by neither a test
+  nor an eye. Same for the held-message flow end to end: the holding pen is unit-tested, but no one
+  has watched a message typed during a real launch arrive at a real agent.
