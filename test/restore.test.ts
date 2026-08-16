@@ -122,7 +122,10 @@ describe('resuming a conversation', () => {
 
     drawn.push({ sessionUpdate: 'circe/replay-start' });
     feed(notification('sess-1', { sessionUpdate: 'usage_update', size: 1_000_000, used: 11_166 }));
-    feed(notification('sess-1', { availableCommands: [{ name: 'help' }] }));
+    feed(notification('sess-1', {
+      sessionUpdate: 'available_commands_update',
+      availableCommands: [{ name: 'help' }],
+    }));
     feed(notification('sess-1', {
       sessionUpdate: 'agent_message_chunk',
       content: { type: 'text', text: 'hello' },
@@ -146,35 +149,32 @@ describe('resuming a conversation', () => {
   });
 
   /**
-   * Pins the arrival order observed against a live Hermes 0.14.0 during a
-   * `session/load` resume:
+   * Verified against a live Hermes 0.14.0 `session/load` resume: the replayed
+   * chat content (`user_message_chunk`, `agent_message_chunk`) arrives on the
+   * wire *before* the `session/load` response, and only non-chat kinds
+   * (`available_commands_update`, `usage_update`) arrive after it. That order
+   * is what makes `src/main/index.ts`'s `circe/replay-start` …
+   * `circe/replay-end` bracket — sent synchronously around the
+   * `await client.loadSession(...)` call — correct: every chat update lands
+   * inside the bracket, where `replaying` is true and `user_message_chunk` is
+   * drawn.
    *
-   *   1. UPDATE   user_message_chunk
-   *   2. UPDATE   agent_message_chunk
-   *   3. RESPONSE to session/load
-   *   4. UPDATE   available_commands_update
-   *   5. UPDATE   usage_update
-   *
-   * The replayed chat arrives *before* the response that `loadSession()`
-   * resolves on; `available_commands_update` and `usage_update` are stragglers
-   * that only arrive *after*. This is what makes `src/main/index.ts`'s
-   * `circe/replay-start` … `circe/replay-end` bracket (sent synchronously
-   * around the `await client.loadSession(...)` call) correct: every chat
-   * update lands inside the bracket, and both trailing update kinds are ones
-   * `render()` already ignores, so it doesn't matter that they land outside it.
-   *
-   * If a future Hermes instead trailed a *message* chunk after the
-   * `session/load` response — reversing steps 2 and 4/5 relative to a chat
-   * update — that chunk would arrive after `circe/replay-end` had already
-   * closed the bracket, `replaying` would already be false, and the message
-   * would be silently dropped rather than crash anything. This test fails
-   * first if that regresses.
+   * This test does not observe the live wire itself — it pins the
+   * *consequence* if that order ever stopped holding. `render()`'s
+   * `user_message_chunk` case only draws while `replaying` is true, and
+   * `circe/replay-end` clears that flag, so anything arriving after the
+   * bracket closes is invisible. A trailing `user_message_chunk` fed here
+   * after `circe/replay-end` is asserted absent from the rendered transcript:
+   * if a future Hermes ever trailed a genuine chat chunk behind the
+   * `session/load` response instead of only non-chat kinds, the tile would
+   * come back with an incomplete transcript and nothing would crash to say
+   * so.
    */
-  it('pins Hermes 0.14.0’s replay order — chat before the session/load response, non-chat after — so a future Hermes trailing a message chunk instead would come back caught here, not as a silently incomplete transcript', () => {
+  it('a chat update trailing the replay bracket is silently dropped from the transcript, not crashed', () => {
     const { client, drawn } = harness('sess-1');
     const feed = (client as unknown as WithHandle).handle.bind(client);
 
-    // Steps 1-2: the replayed exchange, inside the bracket.
+    // The replayed exchange, inside the bracket — this is the real shape.
     drawn.push({ sessionUpdate: 'circe/replay-start' });
     feed(notification('sess-1', {
       sessionUpdate: 'user_message_chunk',
@@ -184,13 +184,15 @@ describe('resuming a conversation', () => {
       sessionUpdate: 'agent_message_chunk',
       content: { type: 'text', text: "I'm Spock." },
     }));
-
-    // Step 3: the session/load response resolves — main/index.ts closes the bracket.
     drawn.push({ sessionUpdate: 'circe/replay-end' });
 
-    // Steps 4-5: the trailing non-chat updates, outside the bracket.
-    feed(notification('sess-1', { availableCommands: [{ name: 'help' }] }));
-    feed(notification('sess-1', { sessionUpdate: 'usage_update', size: 1_000_000, used: 11_166 }));
+    // A genuine chat update arriving after the bracket closes — what a
+    // future Hermes trailing a message chunk behind the session/load
+    // response would look like.
+    feed(notification('sess-1', {
+      sessionUpdate: 'user_message_chunk',
+      content: { type: 'text', text: 'anyone home?' },
+    }));
 
     expect(render(drawn)).toEqual([
       { role: 'user', text: 'who are you?' },
