@@ -105,16 +105,27 @@ async function restoreOrCreateSession(client: AcpClient, profileId: string): Pro
   const saved = stateFor(file, profileId);
   const prior = saved.tabs[saved.activeIndex] ?? null;
 
+  // `acp` can be reassigned to a later launch's client while any `await` below
+  // is in flight (session/load and session/new each have a 30s ceiling, easily
+  // long enough for the tile to be closed and reopened). Every write to the
+  // module-level session state is guarded so a superseded launch never clobbers
+  // the launch that replaced it.
   if (prior && client.canLoadSession) {
+    if (acp !== client) return;
     activeSessionId = prior; // set first: the replay's updates carry this id
     await tileReady;
+    if (acp !== client) return;
     sendTileUpdate({ sessionUpdate: 'circe/replay-start' });
     const resumed = await client.loadSession(prior);
+    if (acp !== client) return;
     sendTileUpdate({ sessionUpdate: 'circe/replay-end' });
     if (resumed) return;
   }
 
-  activeSessionId = await client.newSession();
+  if (acp !== client) return;
+  const sessionId = await client.newSession();
+  if (acp !== client) return;
+  activeSessionId = sessionId;
   await writeTileState(hermes, withActiveSession(file, profileId, activeSessionId));
 }
 
@@ -155,22 +166,44 @@ async function launchTile(
   // a tile — from the dock, or on a later launch — must not replay it.
   tileQueue = greeting === null ? [] : [greeting];
   tileReady = new Promise<void>((resolve) => {
-    tileWin!.webContents.once('did-finish-load', () => {
+    const win = tileWin!;
+    // `did-finish-load` is the happy path: it flushes the queued greeting and
+    // marks the tile ready to draw. But a window can also fail to load
+    // (`did-fail-load`) or be destroyed before it ever loads (`closed`) —
+    // without an escape on those too, `await tileReady` downstream would hang
+    // forever and "every failure path lands on a fresh session" would be a lie.
+    // Resolving twice is harmless; only one of these three fires first.
+    win.webContents.once('did-finish-load', () => {
       tileLoaded = true;
       for (const text of tileQueue.splice(0)) tileWin?.webContents.send('tile:opening', text);
       resolve();
     });
+    win.webContents.once('did-fail-load', () => resolve());
+    win.once('closed', () => resolve());
   });
 
-  acp = new AcpClient({
+  // Captured locally, not read back off the module-level `acp`: `start()` and
+  // `restoreOrCreateSession()` below each await for up to 30s, easily enough
+  // time for this tile to be closed and reopened from the dock, which spins up
+  // a second `launchTile` call with its own client and reassigns `acp`. Every
+  // access to *this* launch's client goes through `client`, and every write to
+  // module-level session state is guarded with `acp === client` so a
+  // superseded launch can never stop, or write over, the launch that replaced
+  // it.
+  const client = new AcpClient({
     profileId,
     onUpdate: (sessionId, u) => {
+      if (acp !== client) return; // this launch has been superseded
       // One client can serve several sessions; only the one on screen is drawn.
       if (sessionId !== activeSessionId) return;
       sendTileUpdate(u as Record<string, unknown>);
     },
-    onExit: (code) => sendTileUpdate({ sessionUpdate: 'circe/exited', code }),
+    onExit: (code) => {
+      if (acp !== client) return; // the exit belongs to an already-replaced client
+      sendTileUpdate({ sessionUpdate: 'circe/exited', code });
+    },
   });
+  acp = client;
 
   // `tile:close` (the in-app `×` button) stops the client, but the native
   // close button, Cmd+W, and `app.quit()` all bypass it entirely and go
@@ -181,24 +214,35 @@ async function launchTile(
   // button's, so `stop()` must tolerate a second call: it does (a no-op
   // `child?.kill()` on an already-null child, an already-empty `pending` map
   // to reject), so no dedup is needed here.
+  //
+  // `client.stop()` always targets this launch's own client, closed window or
+  // not — but the module-level `acp`/`activeSessionId` are only reset if this
+  // launch is still the current one; a stale `closed` handler firing after a
+  // fast reopen must not clear the new launch's live session.
   tileWin.on('closed', () => {
-    acp?.stop();
-    acp = null;
-    activeSessionId = null;
+    client.stop();
+    if (acp === client) {
+      acp = null;
+      activeSessionId = null;
+    }
     tileWin = null;
   });
 
   try {
-    await acp.start();
-    await restoreOrCreateSession(acp, profileId);
+    await client.start();
+    await restoreOrCreateSession(client, profileId);
   } catch (err) {
-    acp.stop();
-    const message = err instanceof Error ? err.message : String(err);
-    sendToTile(
-      "I couldn't reach the Hermes agent behind this tile, so I can't respond yet. " +
-        'Check that Hermes is installed and set up (`hermes setup` in a terminal), ' +
-        `then close this tile and start over.\n\n(${message})`,
-    );
+    client.stop();
+    if (acp === client) {
+      acp = null;
+      activeSessionId = null;
+      const message = err instanceof Error ? err.message : String(err);
+      sendToTile(
+        "I couldn't reach the Hermes agent behind this tile, so I can't respond yet. " +
+          'Check that Hermes is installed and set up (`hermes setup` in a terminal), ' +
+          `then close this tile and start over.\n\n(${message})`,
+      );
+    }
   }
 
   wizardWin?.close();
