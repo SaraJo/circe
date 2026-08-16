@@ -6,7 +6,7 @@ import { AcpClient } from './acp';
 import { openingMessage } from './orchestrator/opening';
 import type { Character } from '../shared/types';
 import { readStartup } from './startup';
-import { readTileState, stateFor, withActiveSession, writeTileState } from './tileState';
+import { restoreOrCreateSession, TileSession } from './restore';
 
 app.setName('Circe');
 
@@ -60,8 +60,12 @@ let tileQueue: string[] = [];
  * issued until there is something on the other end to draw it.
  */
 let tileReady: Promise<void> = Promise.resolve();
-/** The session the tile is currently showing. Updates for any other are dropped. */
-let activeSessionId: string | null = null;
+/**
+ * The session the tile is currently showing, and the holding pen for anything
+ * typed before there is one. Updates for any other session are dropped. See
+ * `restore.ts` for why the launch window has to hold rather than drop.
+ */
+const tileSession = new TileSession();
 
 /**
  * `did-finish-load` fires only after the renderer's module script has run and
@@ -90,43 +94,25 @@ function sendTileUpdate(update: Record<string, unknown>): void {
 }
 
 /**
- * Resumes the conversation this profile's tile was last on, or begins a new one.
+ * Sends one message and closes the turn behind it.
  *
- * Hermes owns the conversation: `session/load` asks it to rehydrate from its own
- * store, and it replays the history back as updates. Circe uploads nothing and
- * keeps no copy — the id in `circe/state.json` is the whole of what it remembers.
- *
- * Every failure lands on the same answer, a fresh session, because a tile that
- * refuses to open because last week's conversation went missing is worse than
- * one that opens empty.
+ * A turn ends when `session/prompt` resolves — that is ACP's completion signal
+ * (it answers with `{ stopReason }`), and it is what the working prototype keys
+ * off too (renderer.js:591). Both outcomes end the turn, so a failed prompt
+ * doesn't leave the previous bubble open forever.
  */
-async function restoreOrCreateSession(client: AcpClient, profileId: string): Promise<void> {
-  const file = await readTileState(hermes);
-  const saved = stateFor(file, profileId);
-  const prior = saved.tabs[saved.activeIndex] ?? null;
-
-  // `acp` can be reassigned to a later launch's client while any `await` below
-  // is in flight (session/load and session/new each have a 30s ceiling, easily
-  // long enough for the tile to be closed and reopened). Every write to the
-  // module-level session state is guarded so a superseded launch never clobbers
-  // the launch that replaced it.
-  if (prior && client.canLoadSession) {
-    if (acp !== client) return;
-    activeSessionId = prior; // set first: the replay's updates carry this id
-    await tileReady;
-    if (acp !== client) return;
-    sendTileUpdate({ sessionUpdate: 'circe/replay-start' });
-    const resumed = await client.loadSession(prior);
-    if (acp !== client) return;
-    sendTileUpdate({ sessionUpdate: 'circe/replay-end' });
-    if (resumed) return;
-  }
-
-  if (acp !== client) return;
-  const sessionId = await client.newSession();
-  if (acp !== client) return;
-  activeSessionId = sessionId;
-  await writeTileState(hermes, withActiveSession(file, profileId, activeSessionId));
+function sendPrompt(client: AcpClient, sessionId: string, text: string): void {
+  void client.prompt(sessionId, text).then(
+    () => sendTileUpdate({ sessionUpdate: 'circe/turn-end' }),
+    (err: unknown) => {
+      sendTileUpdate({ sessionUpdate: 'circe/turn-end' });
+      const message = err instanceof Error ? err.message : String(err);
+      // Deliberately does not name a cause: this fires for a dead connection,
+      // a stopped client and an agent-side error alike, and the attached
+      // message is the only thing that actually knows which.
+      sendToTile(`Your message wasn't sent. (${message})`);
+    },
+  );
 }
 
 /**
@@ -157,6 +143,9 @@ async function launchTile(
   if (tileWin) return; // already launched; see the guard note above.
 
   lastLaunch = { character, profileId };
+  // Opened before the window exists, so there is no instant in which the tile
+  // is on screen with an enabled input and nowhere for a message to go.
+  tileSession.beginLaunch();
   tileWin = createTileWindow(character, profileId);
 
   tileLoaded = false;
@@ -175,7 +164,10 @@ async function launchTile(
     // Resolving twice is harmless; only one of these three fires first.
     win.webContents.once('did-finish-load', () => {
       tileLoaded = true;
-      for (const text of tileQueue.splice(0)) tileWin?.webContents.send('tile:opening', text);
+      // The captured `win`, not module-level `tileWin`: by the time this fires
+      // `tileWin` may already point at a later launch's window, and the same
+      // capture discipline governs every other reference in this executor.
+      for (const text of tileQueue.splice(0)) win.webContents.send('tile:opening', text);
       resolve();
     });
     win.webContents.once('did-fail-load', () => resolve());
@@ -195,7 +187,7 @@ async function launchTile(
     onUpdate: (sessionId, u) => {
       if (acp !== client) return; // this launch has been superseded
       // One client can serve several sessions; only the one on screen is drawn.
-      if (sessionId !== activeSessionId) return;
+      if (sessionId !== tileSession.activeSessionId) return;
       sendTileUpdate(u as Record<string, unknown>);
     },
     onExit: (code) => {
@@ -216,32 +208,55 @@ async function launchTile(
   // to reject), so no dedup is needed here.
   //
   // `client.stop()` always targets this launch's own client, closed window or
-  // not — but the module-level `acp`/`activeSessionId` are only reset if this
+  // not — but the module-level `acp`/`tileSession` are only reset if this
   // launch is still the current one; a stale `closed` handler firing after a
   // fast reopen must not clear the new launch's live session.
   tileWin.on('closed', () => {
     client.stop();
     if (acp === client) {
       acp = null;
-      activeSessionId = null;
+      tileSession.reset();
     }
     tileWin = null;
   });
 
   try {
     await client.start();
-    await restoreOrCreateSession(client, profileId);
+    await restoreOrCreateSession({
+      hermes,
+      client,
+      profileId,
+      session: tileSession,
+      emit: sendTileUpdate,
+      tileReady,
+      isCurrent: () => acp === client,
+      sendPrompt: (sessionId, text) => sendPrompt(client, sessionId, text),
+    });
   } catch (err) {
     client.stop();
     if (acp === client) {
       acp = null;
-      activeSessionId = null;
+      // Closes the launch window before anything is drawn, so a message typed
+      // after this point is refused out loud rather than held for a session
+      // that is never coming.
+      const unsent = tileSession.failLaunch();
+      tileSession.reset();
       const message = err instanceof Error ? err.message : String(err);
       sendToTile(
         "I couldn't reach the Hermes agent behind this tile, so I can't respond yet. " +
           'Check that Hermes is installed and set up (`hermes setup` in a terminal), ' +
           `then close this tile and start over.\n\n(${message})`,
       );
+      // Whatever was typed while the tile was starting is already drawn as the
+      // user's own bubble. Saying nothing would leave it sitting unanswered
+      // forever, which is the silence this whole holding pen exists to avoid.
+      if (unsent.length > 0) {
+        sendToTile(
+          unsent.length === 1
+            ? "The message you typed while it was starting wasn't sent."
+            : "The messages you typed while it was starting weren't sent.",
+        );
+      }
     }
   }
 
@@ -296,20 +311,19 @@ function registerIpc(): void {
 
   ipcMain.on('tile:prompt', (_e, text: string) => {
     const client = acp;
-    const sessionId = activeSessionId;
-    if (!client || !sessionId) return;
-    // A turn ends when `session/prompt` resolves — that is ACP's completion
-    // signal (it answers with `{ stopReason }`), and it is what the working
-    // prototype keys off too (renderer.js:591). Both outcomes end the turn,
-    // so a failed prompt doesn't leave the previous bubble open forever.
-    void client.prompt(sessionId, text).then(
-      () => sendTileUpdate({ sessionUpdate: 'circe/turn-end' }),
-      (err: unknown) => {
-        sendTileUpdate({ sessionUpdate: 'circe/turn-end' });
-        const message = err instanceof Error ? err.message : String(err);
-        sendToTile(`Your message wasn't sent — the agent connection is down. (${message})`);
-      },
-    );
+    // The renderer has already drawn this message as the user's own bubble, so
+    // every branch here has to end in something the user can see: a reply, or
+    // a line saying it didn't go. Returning quietly is not one of the options.
+    const route = tileSession.route(text);
+    // Held: a launch is in flight and will either send this or, if it fails,
+    // say so in the tile. Either way the user hears back.
+    if (route.kind === 'held') return;
+    if (route.kind === 'no-session' || !client) {
+      sendTileUpdate({ sessionUpdate: 'circe/turn-end' });
+      sendToTile("Your message wasn't sent — this tile has no agent session right now.");
+      return;
+    }
+    sendPrompt(client, route.sessionId, text);
   });
   ipcMain.on('tile:close', () => {
     acp?.stop();

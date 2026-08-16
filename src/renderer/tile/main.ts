@@ -134,9 +134,9 @@ circe.onOpening((text) => {
 });
 
 /**
- * The update kinds this tile acts on. The first three are real ACP
+ * The update kinds this tile acts on. The first four are real ACP
  * `session/update` kinds and are exactly the ones the working prototype
- * handles (renderer.js:377-418); the last two are Circe's own lifecycle
+ * handles (renderer.js:377-418); the `circe/` ones are Circe's own lifecycle
  * events, namespaced so they can't ever collide with a protocol kind.
  */
 circe.onUpdate((update) => {
@@ -179,6 +179,19 @@ circe.onUpdate((update) => {
       replaying = false;
       // Closes the last replayed agent message, which has no turn-end of its own.
       endTurn();
+      return;
+    // The resume failed after Hermes had already replayed part of the
+    // conversation — it emits history *before* it answers `session/load`, so
+    // those bubbles are on screen by the time anyone knows it went wrong. They
+    // belong to a session this tile is not on and the live agent has no memory
+    // of, so they go: a tile showing a conversation that isn't there is the
+    // tile lying by omission. What replaces them says only what is known.
+    case 'circe/replay-abandoned':
+      replaying = false;
+      streaming = null;
+      toolBubble = null;
+      log.replaceChildren();
+      appendText('agent', "Couldn't reopen the previous conversation — starting a new one.");
       return;
     case 'circe/turn-end':
       endTurn();
