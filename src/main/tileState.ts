@@ -11,11 +11,21 @@ export interface ProfileTileState {
   /** Session ids, in tab-strip order. Phase 1 keeps at most one. */
   tabs: string[];
   activeIndex: number;
+  /**
+   * Fields a later build wrote and this one doesn't understand — the design's
+   * `bounds` and `accessMode` are already spec'd (§3). They are carried through
+   * parse and serialize untouched: this build reads the same file the next one
+   * writes, and stripping them would silently destroy window geometry and
+   * access mode the moment an older Circe opened a newer record.
+   */
+  [key: string]: unknown;
 }
 
 export interface TileStateFile {
   version: 1;
   profiles: Record<string, ProfileTileState>;
+  /** Unknown top-level fields survive the round trip, same as in a profile. */
+  [key: string]: unknown;
 }
 
 const RECORD_VERSION = 1;
@@ -23,7 +33,16 @@ const RECORD_VERSION = 1;
 /** Lives under the Hermes home so `HERMES_HOME` redirects cover Circe's state too. */
 export const TILE_STATE_PATH = 'circe/state.json';
 
-export const EMPTY_STATE: TileStateFile = { version: RECORD_VERSION, profiles: {} };
+/**
+ * Frozen because it is a shared singleton returned by identity from every
+ * degradation path (absent file, corrupt JSON, future version, unreadable
+ * file). One caller mutating what it got back would poison every later reader
+ * in the process, and nothing in the type system says not to.
+ */
+export const EMPTY_STATE: TileStateFile = Object.freeze({
+  version: RECORD_VERSION,
+  profiles: Object.freeze({}) as Record<string, ProfileTileState>,
+});
 
 function parseProfile(raw: unknown): ProfileTileState {
   if (typeof raw !== 'object' || raw === null) return { tabs: [], activeIndex: 0 };
@@ -33,7 +52,9 @@ function parseProfile(raw: unknown): ProfileTileState {
   // An index past the end would resume nothing while still claiming a tab was
   // open; falling back to the first tab is the recoverable reading.
   const activeIndex = Number.isInteger(index) && index >= 0 && index < tabs.length ? index : 0;
-  return { tabs, activeIndex };
+  // Spread first so the two fields this build validates always win, and
+  // anything else it doesn't know about rides along.
+  return { ...r, tabs, activeIndex };
 }
 
 export function parseTileState(json: string | null): TileStateFile {
@@ -50,7 +71,7 @@ export function parseTileState(json: string | null): TileStateFile {
   if (typeof r.profiles !== 'object' || r.profiles === null) return EMPTY_STATE;
   const profiles: Record<string, ProfileTileState> = {};
   for (const [id, raw] of Object.entries(r.profiles)) profiles[id] = parseProfile(raw);
-  return { version: RECORD_VERSION, profiles };
+  return { ...r, version: RECORD_VERSION, profiles };
 }
 
 export function stateFor(file: TileStateFile, profileId: string): ProfileTileState {
@@ -62,9 +83,16 @@ export function withActiveSession(
   profileId: string,
   sessionId: string,
 ): TileStateFile {
+  // Both spreads preserve fields this build doesn't know about: the profile's
+  // own (a later `bounds`/`accessMode`) and the file's top-level ones. Only the
+  // two fields this build owns are overwritten.
   return {
+    ...file,
     version: RECORD_VERSION,
-    profiles: { ...file.profiles, [profileId]: { tabs: [sessionId], activeIndex: 0 } },
+    profiles: {
+      ...file.profiles,
+      [profileId]: { ...file.profiles[profileId], tabs: [sessionId], activeIndex: 0 },
+    },
   };
 }
 

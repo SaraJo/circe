@@ -42,11 +42,65 @@ describe('parseTileState', () => {
     expect(stateFor(file, 'default')).toEqual({ tabs: [], activeIndex: 0 });
   });
 
+  // The design already spells `bounds` and `accessMode` (§3) for a later
+  // phase. Keeping only the two fields this build understands would mean the
+  // next write silently deleted a newer Circe's window geometry and access
+  // mode — the record survives a version bump, so it has to survive this one.
+  it('carries a future build’s unknown fields through parse and serialize', () => {
+    const written = {
+      version: 1,
+      lastOperator: 'ford',
+      profiles: {
+        default: {
+          tabs: ['s1'],
+          activeIndex: 0,
+          bounds: { x: 100, y: 40, width: 430, height: 480 },
+          accessMode: 'ask',
+        },
+      },
+    };
+    const round = JSON.parse(serializeTileState(parseTileState(JSON.stringify(written))));
+    expect(round).toEqual(written);
+  });
+
+  it('keeps unknown fields across a session change', () => {
+    const parsed = parseTileState(
+      JSON.stringify({
+        version: 1,
+        lastOperator: 'ford',
+        profiles: { default: { tabs: ['s1'], activeIndex: 0, accessMode: 'ask' } },
+      }),
+    );
+    const next = withActiveSession(parsed, 'default', 's2');
+    expect(JSON.parse(serializeTileState(next))).toEqual({
+      version: 1,
+      lastOperator: 'ford',
+      profiles: { default: { tabs: ['s2'], activeIndex: 0, accessMode: 'ask' } },
+    });
+  });
+
   it('clamps an activeIndex that points past the end', () => {
     const file = parseTileState(
       JSON.stringify({ version: 1, profiles: { default: { tabs: ['s1'], activeIndex: 4 } } }),
     );
     expect(stateFor(file, 'default').activeIndex).toBe(0);
+  });
+});
+
+// Returned by identity from every degradation path, so one caller mutating it
+// would poison every later reader in the process.
+describe('EMPTY_STATE', () => {
+  it('is frozen, top level and profiles alike', () => {
+    expect(Object.isFrozen(EMPTY_STATE)).toBe(true);
+    expect(Object.isFrozen(EMPTY_STATE.profiles)).toBe(true);
+  });
+
+  it('survives a caller trying to write a profile into it', () => {
+    const shared = parseTileState('{not json');
+    expect(() => {
+      (shared.profiles as Record<string, unknown>)['default'] = { tabs: ['x'], activeIndex: 0 };
+    }).toThrow(TypeError);
+    expect(stateFor(parseTileState(null), 'default')).toEqual({ tabs: [], activeIndex: 0 });
   });
 });
 
