@@ -5,17 +5,15 @@ import type { Character } from '../../shared/types';
  * wording: the user has one agent, and this conversation is what produces more.
  */
 export function openingMessage(c: Character): string {
+  // One line per paragraph, joined by blank lines. The tile renders this with
+  // `white-space: pre-wrap`, so it honours every newline here — wrapping the
+  // source to a fixed column would hard-break the prose mid-sentence in a
+  // ~340px tile. Let the renderer wrap; only paragraph breaks belong in the
+  // string.
   return [
-    `Hi — I'm ${c.name}. Right now I'm the only agent you have, and my job is to`,
-    'help you build the rest.',
-    '',
-    "Think of it like hiring. Tell me what you spend your time on and I'll suggest",
-    'specialists worth having — one for your job, one for the code, one for the',
-    `household admin you keep forgetting. I'll set each of them up, give them a name`,
-    `from ${c.fandom}, and hand them the tools they need.`,
-    '',
+    `Hi — I'm ${c.name}. Right now I'm the only agent you have, and my job is to help you build the rest.`,
+    `Think of it like hiring. Tell me what you spend your time on and I'll suggest specialists worth having — one for your job, one for the code, one for the household admin you keep forgetting. I'll set each of them up, give them a name from ${c.fandom}, and hand them the tools they need.`,
     'So: what do you spend your week on?',
-    '',
     `(Or say "just show me around" and I'll wait until you're ready.)`,
-  ].join('\n');
+  ].join('\n\n');
 }

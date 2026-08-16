@@ -5,6 +5,7 @@ import { createTileWindow, createWizardWindow } from './windows';
 import { AcpClient } from './acp';
 import { openingMessage } from './orchestrator/opening';
 import type { Character } from '../shared/types';
+import { readStartup } from './startup';
 
 app.setName('Circe');
 
@@ -98,14 +99,22 @@ function sendTileUpdate(update: Record<string, unknown>): void {
  * it couldn't start. The tile is the one true state once launch begins; there
  * is no useful "back to the wizard" once the character has been handed off.
  */
-async function launchTile(character: Character, profileId: string): Promise<void> {
+async function launchTile(
+  character: Character,
+  profileId: string,
+  greeting: string | null = null,
+): Promise<void> {
   if (tileWin) return; // already launched; see the guard note above.
 
   lastLaunch = { character, profileId };
   tileWin = createTileWindow(character, profileId);
 
   tileLoaded = false;
-  tileQueue = [openingMessage(character)];
+  // The opening message belongs to the handoff out of onboarding and nowhere
+  // else: it says "Right now I'm the only agent you have", which stops being
+  // true the moment the orchestrator creates the first specialist. Reopening
+  // a tile — from the dock, or on a later launch — must not replay it.
+  tileQueue = greeting === null ? [] : [greeting];
   tileWin.webContents.once('did-finish-load', () => {
     tileLoaded = true;
     for (const text of tileQueue.splice(0)) tileWin?.webContents.send('tile:opening', text);
@@ -170,7 +179,7 @@ function openWizard(): void {
     // wizard writes them *before* announcing it, so the agent this spawns
     // reads the character it is supposed to be. See `Wizard.commitAccept`.
     if (s.kind !== 'launching') return;
-    void launchTile(s.character, s.profileId);
+    void launchTile(s.character, s.profileId, openingMessage(s.character));
   });
 }
 
@@ -215,10 +224,21 @@ function registerIpc(): void {
   });
 }
 
-function boot(): void {
+async function boot(): Promise<void> {
   hermes = new RealHermes();
   registerIpc();
-  openWizard();
+
+  // SOUL.md, not the record, decides whether onboarding has happened — so a
+  // user who hand-edits their persona keeps their agent instead of being sent
+  // back through a wizard whose next move is to overwrite it. Without this,
+  // every cold start reopened onboarding no matter what was already on disk,
+  // and re-deriving a character was the only route back to your own agent.
+  const startup = await readStartup(hermes);
+  if (startup.kind === 'tile') {
+    await launchTile(startup.character, startup.profileId);
+  } else {
+    openWizard();
+  }
 
   // macOS keeps the app alive with no windows (see `window-all-closed`), and
   // without this there was no way back in: closing the tile left Circe inert
@@ -246,7 +266,9 @@ function boot(): void {
   });
 }
 
-app.whenReady().then(boot);
+app.whenReady().then(() => {
+  void boot();
+});
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });

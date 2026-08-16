@@ -32,6 +32,23 @@ describe('openingMessage', () => {
     expect(openingMessage(TRILLIAN)).not.toMatch(/your fleet|your agents are ready/i);
   });
 
+  it('wraps no paragraph itself — the tile renders this with pre-wrap', () => {
+    // The tile shows this message in a ~340px column with `white-space:
+    // pre-wrap` (tile.css `.msg.plain`), which honours every newline in the
+    // string. Any newline *inside* a paragraph is therefore a hard break at
+    // whatever column the source was wrapped to, and lands mid-sentence.
+    // Paragraphs must be single lines and let the renderer do the wrapping;
+    // only the blank lines *between* them are real.
+    const paragraphs = openingMessage(TRILLIAN).split('\n\n');
+    for (const paragraph of paragraphs) {
+      expect(paragraph).not.toContain('\n');
+    }
+  });
+
+  it('still separates its paragraphs', () => {
+    expect(openingMessage(TRILLIAN).split('\n\n').length).toBeGreaterThan(1);
+  });
+
   it('does not escape HTML-significant characters in the interpolated name or fandom', () => {
     // openingMessage is plain string interpolation with no HTML escaping —
     // by design, since the tile renders this message with `textContent`,
