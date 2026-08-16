@@ -52,6 +52,15 @@ const input = document.getElementById('input') as HTMLTextAreaElement;
 let streaming: HTMLElement | null = null;
 /** The single "⚙ …" bubble showing what the agent is doing this turn. */
 let toolBubble: HTMLElement | null = null;
+/**
+ * True between `circe/replay-start` and `circe/replay-end`, while Hermes is
+ * replaying a resumed conversation. Two things differ during a replay: the
+ * user's own messages have to be drawn (nothing typed them into this window),
+ * and each message ends a turn, because a replay has no `session/prompt` to
+ * resolve and would otherwise concatenate every agent reply in the history into
+ * one bubble.
+ */
+let replaying = false;
 
 /**
  * Plain-text bubble. Used for the user's own messages, the opening handoff
@@ -155,6 +164,22 @@ circe.onUpdate((update) => {
       log.scrollTop = log.scrollHeight;
       return;
     }
+    case 'user_message_chunk': {
+      if (!replaying) return; // live turns are drawn by the input handler
+      const piece = extractText(u.content);
+      if (!piece) return;
+      endTurn();
+      appendText('user', piece);
+      return;
+    }
+    case 'circe/replay-start':
+      replaying = true;
+      return;
+    case 'circe/replay-end':
+      replaying = false;
+      // Closes the last replayed agent message, which has no turn-end of its own.
+      endTurn();
+      return;
     case 'circe/turn-end':
       endTurn();
       return;
