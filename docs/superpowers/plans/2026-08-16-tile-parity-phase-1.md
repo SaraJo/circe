@@ -58,7 +58,6 @@ Add to `test/acp.test.ts`:
 // Same private-reach idiom as the rest of this file: no subprocess, no faked
 // protocol traffic. `handshake` is the half of startup that does not spawn.
 type WithHandshake = { handshake(): Promise<void> };
-type WithSessionUpdate = { onUpdate(sessionId: string, update: Record<string, unknown>): void };
 
 describe('AcpClient session lifecycle', () => {
   function client(): AcpClient {
@@ -507,7 +506,7 @@ export async function writeTileState(hermes: HermesRuntime, file: TileStateFile)
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run test/tileState.test.ts`
-Expected: PASS (11 tests).
+Expected: PASS. Do not add tests to reach a particular count.
 
 - [ ] **Step 5: Commit**
 
@@ -567,17 +566,7 @@ Add these cases to the `circe.onUpdate` switch, before `case 'circe/turn-end'`:
       return;
 ```
 
-And make an agent chunk close a previous replayed turn — replace the `agent_message_chunk` case body's first lines:
-
-```ts
-    case 'agent_message_chunk': {
-      const piece = extractText(u.content);
-      if (!piece) return;
-      // During a replay each agent message is its own turn; without this the
-      // second and later replies append to the first reply's bubble.
-      if (replaying && !streaming) endTurn();
-      if (!streaming) streaming = appendText('agent', '');
-```
+Leave the `agent_message_chunk` case exactly as it is. Turn separation during a replay is already handled by `user_message_chunk` calling `endTurn()`; consecutive agent chunks with no user message between them are a single streamed message and *must* share one bubble, because the protocol gives no message boundary to split on.
 
 - [ ] **Step 2: Typecheck**
 
@@ -674,7 +663,8 @@ Add above `launchTile`:
  * one that opens empty.
  */
 async function restoreOrCreateSession(client: AcpClient, profileId: string): Promise<void> {
-  const saved = stateFor(await readTileState(hermes), profileId);
+  const file = await readTileState(hermes);
+  const saved = stateFor(file, profileId);
   const prior = saved.tabs[saved.activeIndex] ?? null;
 
   if (prior && client.canLoadSession) {
@@ -687,7 +677,7 @@ async function restoreOrCreateSession(client: AcpClient, profileId: string): Pro
   }
 
   activeSessionId = await client.newSession();
-  await writeTileState(hermes, withActiveSession(await readTileState(hermes), profileId, activeSessionId));
+  await writeTileState(hermes, withActiveSession(file, profileId, activeSessionId));
 }
 ```
 
