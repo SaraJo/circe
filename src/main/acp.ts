@@ -55,6 +55,30 @@ export class AcpClient {
   constructor(private opts: AcpOptions) {}
 
   /**
+   * The working directory this client presents to Hermes. Resolved in exactly
+   * one place because it is not decoration: `session/load` has to present the
+   * same `cwd` the session was created with, and separate literals in `spawn`,
+   * `session/new` and `session/load` are three chances for them to drift apart.
+   */
+  private get cwd(): string {
+    return this.opts.cwd ?? homedir();
+  }
+
+  /**
+   * Every request needs a live child to answer it. Without this, a request
+   * against a dead or never-started client is *silently accepted*: `send` is
+   * optional-chained and a destroyed `stdin.write()` returns false rather than
+   * throwing, so the frame goes nowhere and the promise never settles.
+   * `session/prompt` deliberately carries no timeout (a real turn can run for
+   * minutes), so "never settles" means the tile thinks forever with no
+   * `circe/turn-end` — a hang, not an error. Failing loudly here is what turns
+   * that into something the user can be told about.
+   */
+  private assertRunning(): void {
+    if (!this.child) throw new Error('ACP client is not running');
+  }
+
+  /**
    * Spawns `hermes -p <profile> acp` and completes the ACP handshake. Idempotent:
    * a second call while starting (or already started) returns the same promise
    * rather than spawning a second child that would share this instance's request-id
@@ -81,7 +105,7 @@ export class AcpClient {
     // it would reject the new child's in-flight requests and report a false
     // `onExit` for a session that's actually running fine.
     const child = spawn(bin, ['-p', this.opts.profileId, 'acp', '--accept-hooks'], {
-      cwd: this.opts.cwd ?? homedir(),
+      cwd: this.cwd,
       env: { ...process.env, HERMES_ACCEPT_HOOKS: '1' },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -93,6 +117,12 @@ export class AcpClient {
     );
     child.on('exit', (code) => {
       if (this.child !== child) return; // belongs to a superseded child
+      // Dropped here, not just in `stop()`. A child that dies on its own leaves
+      // a `ChildProcess` object behind whose `stdin` is destroyed, so keeping
+      // the reference would let `assertRunning()` wave through every later
+      // request into a write that goes nowhere — the exact hang the guard
+      // exists to prevent, reached without anyone ever calling `stop()`.
+      this.child = null;
       for (const p of this.pending.values()) p.reject(new Error(`hermes acp exited (${code})`));
       this.pending.clear();
       this.opts.onExit(code);
@@ -126,9 +156,10 @@ export class AcpClient {
   }
 
   async newSession(): Promise<string> {
+    this.assertRunning();
     const session = (await this.request(
       'session/new',
-      { cwd: this.opts.cwd ?? homedir(), mcpServers: [] },
+      { cwd: this.cwd, mcpServers: [] },
       HANDSHAKE_TIMEOUT_MS,
     )) as { sessionId: string };
     return session.sessionId;
@@ -144,13 +175,21 @@ export class AcpClient {
    * legitimately go stale (the profile was deleted, the store was cleared), and
    * a tile that refuses to open because last week's conversation is gone would
    * be worse than one that starts empty.
+   *
+   * A dead client is the one failure that *throws* instead, because it is the
+   * one where a fresh session is not the sane answer: `session/new` on the same
+   * dead client cannot succeed either, and answering false here would send the
+   * caller off to burn the full 30s handshake timeout before the user is told
+   * anything. The capability check comes first, so a client that was never
+   * started still answers the documented false rather than throwing.
    */
   async loadSession(sessionId: string): Promise<boolean> {
     if (!this.loadSessionSupported) return false;
+    this.assertRunning();
     try {
       await this.request(
         'session/load',
-        { cwd: this.opts.cwd ?? homedir(), sessionId, mcpServers: [] },
+        { cwd: this.cwd, sessionId, mcpServers: [] },
         HANDSHAKE_TIMEOUT_MS,
       );
       return true;
@@ -167,6 +206,7 @@ export class AcpClient {
   // the hang it would prevent. If the process actually dies, the `exit` handler
   // above still rejects every pending request, prompt included.
   async prompt(sessionId: string, text: string): Promise<void> {
+    this.assertRunning();
     await this.request('session/prompt', {
       sessionId,
       prompt: [{ type: 'text', text }],

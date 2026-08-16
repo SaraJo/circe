@@ -23,6 +23,18 @@ type WithHandle = { handle(msg: Record<string, unknown>): void };
 // protocol traffic. `handshake` is the half of startup that does not spawn.
 type WithHandshake = { handshake(): Promise<void> };
 
+// `prompt`/`newSession`/`loadSession` now refuse to issue a request when there
+// is no live child, because `send()` optional-chains and a destroyed `stdin`
+// swallows the write — the request would never settle and `session/prompt` has
+// no timeout to rescue it. Tests that are about what those methods *do* with a
+// running client stand this stub in for the process. `send()` only ever touches
+// `child.stdin`, itself optional-chained, so an empty object is enough.
+type WithChild = { child: unknown };
+function running(client: AcpClient): AcpClient {
+  (client as unknown as WithChild).child = {};
+  return client;
+}
+
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -137,7 +149,7 @@ describe('AcpClient session lifecycle', () => {
   });
 
   it('reports a failed load as false rather than throwing, so launch can fall back', async () => {
-    const c = client();
+    const c = running(client());
     vi.spyOn(c as unknown as WithRequest, 'request').mockImplementation(async (method) => {
       if (method === 'initialize') return { agentCapabilities: { loadSession: true } };
       throw new Error('no such session');
@@ -148,14 +160,14 @@ describe('AcpClient session lifecycle', () => {
   });
 
   it('returns the id from session/new', async () => {
-    const c = client();
+    const c = running(client());
     vi.spyOn(c as unknown as WithRequest, 'request').mockResolvedValue({ sessionId: 'sess-9' });
 
     await expect(c.newSession()).resolves.toBe('sess-9');
   });
 
   it('prompts the session it was given, not an implicit one', async () => {
-    const c = client();
+    const c = running(client());
     const request = vi
       .spyOn(c as unknown as WithRequest, 'request')
       .mockResolvedValue({ stopReason: 'end_turn' });
@@ -166,6 +178,69 @@ describe('AcpClient session lifecycle', () => {
       sessionId: 'sess-3',
       prompt: [{ type: 'text', text: 'hello' }],
     });
+  });
+});
+
+/**
+ * Every one of these used to *hang* rather than fail. `send()` is
+ * `this.child?.stdin?.write(...)`: with no child the optional chain no-ops, and
+ * with a dead child the write lands on a destroyed stream and returns false
+ * without throwing. Either way the frame goes nowhere and the pending promise
+ * is never settled by anything — and `session/prompt` carries no timeout by
+ * design, so the tile sits thinking forever with no `circe/turn-end`.
+ */
+describe('requests against a client that is not running', () => {
+  function client(): AcpClient {
+    return new AcpClient({ profileId: 'test', onUpdate: () => {}, onExit: () => {} });
+  }
+
+  it('rejects prompt rather than leaving the turn open forever', async () => {
+    const c = client();
+    const request = vi.spyOn(c as unknown as WithRequest, 'request');
+
+    await expect(c.prompt('sess-1', 'hello')).rejects.toThrow('ACP client is not running');
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('rejects newSession rather than burning the full handshake timeout', async () => {
+    const c = client();
+    const request = vi.spyOn(c as unknown as WithRequest, 'request');
+
+    await expect(c.newSession()).rejects.toThrow('ACP client is not running');
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  // Not `false`: false means "that conversation is gone, open a fresh one", and
+  // the caller acts on it by calling newSession() — which on this same dead
+  // client cannot work either. Throwing is what stops a mid-replay death from
+  // costing the user 30 more seconds before anyone tells them anything.
+  it('rejects loadSession rather than reporting a recoverable false', async () => {
+    const c = client();
+    vi.spyOn(c as unknown as WithRequest, 'request').mockResolvedValue({
+      agentCapabilities: { loadSession: true },
+    });
+    await (c as unknown as WithHandshake).handshake();
+
+    await expect(c.loadSession('sess-1')).rejects.toThrow('ACP client is not running');
+  });
+
+  // The one case a `!this.child` guard would miss on its own: nothing calls
+  // `stop()` when the agent dies by itself (`onExit` only draws a notice), so
+  // the `ChildProcess` object outlives the process it describes and every later
+  // request would be waved through into a destroyed `stdin`. This spawns a real
+  // command that exits immediately rather than faking the `exit` event, so it
+  // is the actual wiring in `doStart` under test.
+  it('drops a child that exited on its own, so later requests refuse instead of hanging', async () => {
+    const prior = process.env.CIRCE_HERMES_BIN;
+    process.env.CIRCE_HERMES_BIN = '/bin/echo';
+    try {
+      const c = client();
+      await expect(c.start()).rejects.toThrow(/exited/);
+      await expect(c.newSession()).rejects.toThrow('ACP client is not running');
+    } finally {
+      if (prior === undefined) delete process.env.CIRCE_HERMES_BIN;
+      else process.env.CIRCE_HERMES_BIN = prior;
+    }
   });
 });
 
