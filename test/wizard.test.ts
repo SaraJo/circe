@@ -7,6 +7,7 @@ import {
   INSTALLED_WITH_AGENTS,
   type Scenario,
 } from './fake/hermes';
+import { LAST_LAUNCH_PATH } from '../src/main/startup';
 
 const REPLY = JSON.stringify({
   name: 'Trillian',
@@ -68,6 +69,38 @@ describe('a fresh Hermes install', () => {
     await w.accept();
     const backups = [...hermes.files.keys()].filter((k) => k.includes('.bak-'));
     expect(backups).toEqual([]);
+  });
+
+  it('records the launch so the next cold start can reopen the tile', async () => {
+    const { hermes, w } = await toMeet(INSTALLED_EMPTY);
+
+    await w.accept();
+
+    const record = JSON.parse((await hermes.readHomeFile(LAST_LAUNCH_PATH))!);
+    expect(record).toMatchObject({
+      version: 1,
+      profileId: 'default',
+      character: { name: 'Trillian', palette: { bg: '#1e2952' } },
+    });
+  });
+
+  it('still launches when the record cannot be written', async () => {
+    // The record is a convenience: losing it costs the tile's colours on the
+    // next launch, nothing more. Failing the launch over it would trade the
+    // user's working agent for a cache write.
+    const hermes = new FakeHermes(scenario(INSTALLED_EMPTY));
+    const realWrite = hermes.writeHomeFile.bind(hermes);
+    hermes.writeHomeFile = async (rel: string, contents: string) => {
+      if (rel === LAST_LAUNCH_PATH) throw new Error('EACCES');
+      return realWrite(rel, contents);
+    };
+    const w = new Wizard(hermes);
+    await w.start();
+    await w.submitFandom("Hitchhiker's Guide to the Galaxy");
+
+    await w.accept();
+
+    expect(w.state).toMatchObject({ kind: 'launching', profileId: 'default' });
   });
 });
 
@@ -381,6 +414,42 @@ describe('a write that fails', () => {
     });
     expect(written).toEqual([]);
     expect(hermes.files.get('SOUL.md')).toContain('Central Coordinator');
+  });
+
+  it('reports the persona as replaced when only the skill install failed', async () => {
+    // Ruling F-1. `commitAccept` writes SOUL.md and *then* installs the skill,
+    // under one `catch`. If the skill install is what failed, the persona has
+    // already been replaced and a backup taken — so the write-failed screen
+    // must not go on claiming the user's setup is untouched, and must be able
+    // to name the backup, or nobody will go looking for it.
+    const hermes = new FakeHermes(scenario(INSTALLED_WITH_AGENTS));
+    const realWrite = hermes.writeHomeFile.bind(hermes);
+    hermes.writeHomeFile = async (rel: string, contents: string) => {
+      if (rel.startsWith('skills/')) throw new Error('EACCES: skills dir is read-only');
+      return realWrite(rel, contents);
+    };
+    const w = new Wizard(hermes);
+    await w.start();
+    await w.submitFandom("Hitchhiker's Guide to the Galaxy");
+
+    await w.confirmClaimDefault();
+
+    expect(w.state).toMatchObject({
+      kind: 'write-failed',
+      message: expect.stringContaining('EACCES'),
+      personaReplaced: { path: 'SOUL.md', backedUpTo: expect.stringContaining('SOUL.md.') },
+    });
+  });
+
+  it('reports no persona replacement when the soul write itself failed', async () => {
+    const hermes = failingOnWrite(INSTALLED_EMPTY, 'EACCES: permission denied');
+    const w = new Wizard(hermes);
+    await w.start();
+    await w.submitFandom("Hitchhiker's Guide to the Galaxy");
+
+    await w.accept();
+
+    expect(w.state).toMatchObject({ kind: 'write-failed', personaReplaced: null });
   });
 
   it('can be retried, and succeeds once the write works', async () => {

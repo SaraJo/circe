@@ -56,6 +56,19 @@ export type WizardStep =
    * against them — see `Wizard.commitAccept`.
    */
   | { kind: 'saving'; character: Character }
-  /** A write failed. Nothing has been launched; the user can retry. */
-  | { kind: 'write-failed'; character: Character; message: string }
+  /**
+   * A write failed. Nothing has been launched; the user can retry.
+   *
+   * `personaReplaced` is non-null when `SOUL.md` had already been written by
+   * the time the failure happened — i.e. the skill install is what broke. The
+   * user's persona *is* gone in that case (a backup was taken if there was
+   * anything worth keeping), and the screen must say so rather than claim
+   * their setup is untouched. Null means nothing was written.
+   */
+  | {
+      kind: 'write-failed';
+      character: Character;
+      message: string;
+      personaReplaced: { path: string; backedUpTo: string | null } | null;
+    }
   | { kind: 'launching'; character: Character; profileId: string };

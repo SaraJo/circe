@@ -215,9 +215,18 @@ function render(step: WizardStep): void {
           </div>
         </section>
       `);
-      node.querySelector('.lead')!.textContent =
-        `Something went wrong writing ${step.character.name} to your Hermes home, so ` +
-        `nothing was changed and no agent was started. Your existing setup is untouched.`;
+      // Two different truths behind one failure. Claiming "untouched" when the
+      // persona has in fact been replaced is a false statement about the
+      // user's own data, and it steers them away from the backup that exists.
+      node.querySelector('.lead')!.textContent = step.personaReplaced
+        ? `Something went wrong setting up ${step.character.name}, and no agent was ` +
+          `started — but your ${step.personaReplaced.path} had already been replaced by ` +
+          `then.` +
+          (step.personaReplaced.backedUpTo
+            ? ` Your previous version was saved to ${step.personaReplaced.backedUpTo}.`
+            : ` There was no earlier version worth keeping, so no backup was made.`)
+        : `Something went wrong writing ${step.character.name} to your Hermes home, so ` +
+          `nothing was changed and no agent was started. Your existing setup is untouched.`;
       node.querySelector('.status')!.textContent = step.message;
       node.querySelector('#retry-write')!.addEventListener('click', () => window.circe.accept());
       screenEl.append(node);

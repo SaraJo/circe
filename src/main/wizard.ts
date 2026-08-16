@@ -5,6 +5,7 @@ import { hasConfiguredDefault } from './profiles';
 import { writeSoul } from './soul';
 import { loadTemplate, renderOrchestratorSoul } from './orchestrator/soulTemplate';
 import { installOrchestratorSkill } from './orchestrator/skill';
+import { LAST_LAUNCH_PATH, serializeLastLaunch } from './startup';
 
 /**
  * States from which submitting a fandom makes sense: the fresh question, a
@@ -204,9 +205,19 @@ export class Wizard {
     const character = this.character;
     if (!character) return;
     this.set({ kind: 'saving', character });
+    // Tracked so the failure path can tell the two halves apart: a failure in
+    // `installOrchestratorSkill` happens *after* the persona has already been
+    // replaced, and the screen must not then claim nothing was changed
+    // (Ruling F-1). Stays null if `writeSoul` is what threw.
+    let personaReplaced: { path: string; backedUpTo: string | null } | null = null;
     try {
       const soul = renderOrchestratorSoul(character, await loadTemplate());
-      await writeSoul({ hermes: this.hermes, profileId: 'default', contents: soul });
+      const written = await writeSoul({
+        hermes: this.hermes,
+        profileId: 'default',
+        contents: soul,
+      });
+      personaReplaced = { path: written.path, backedUpTo: written.backedUpTo };
       await installOrchestratorSkill(this.hermes, 'default');
     } catch (err) {
       // Nothing is launched: a tile in front of an agent with no persona is
@@ -216,9 +227,23 @@ export class Wizard {
         kind: 'write-failed',
         character,
         message: err instanceof Error ? err.message : String(err),
+        personaReplaced,
       });
       return;
     }
+    // Deliberately outside the block above, and deliberately swallowed. This
+    // record only caches the tile's colours for the next cold start — the way
+    // back to the agent is `SOUL.md`, which is already written by now. Failing
+    // the launch over a cache write would trade a working agent for nothing.
+    try {
+      await this.hermes.writeHomeFile(
+        LAST_LAUNCH_PATH,
+        serializeLastLaunch(character, 'default'),
+      );
+    } catch (err) {
+      console.warn(`Could not record the launch (${LAST_LAUNCH_PATH}):`, err);
+    }
+
     this.character = null;
     this.set({ kind: 'launching', character, profileId: 'default' });
   }
