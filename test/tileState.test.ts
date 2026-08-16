@@ -2,10 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   EMPTY_STATE,
   parseTileState,
+  readTileState,
   serializeTileState,
   stateFor,
+  TILE_STATE_PATH,
   withActiveSession,
+  writeTileState,
 } from '../src/main/tileState';
+import { FakeHermes, INSTALLED_EMPTY } from './fake/hermes';
 
 describe('parseTileState', () => {
   it('reads a well-formed record', () => {
@@ -68,5 +72,32 @@ describe('withActiveSession', () => {
   it('round-trips through serialize and parse', () => {
     const next = withActiveSession(EMPTY_STATE, 'default', 's1');
     expect(parseTileState(serializeTileState(next))).toEqual(next);
+  });
+});
+
+describe('readTileState', () => {
+  it('returns EMPTY_STATE when readHomeFile rejects', async () => {
+    const hermes = new FakeHermes(INSTALLED_EMPTY);
+    const realRead = hermes.readHomeFile.bind(hermes);
+    hermes.readHomeFile = async (rel: string) => {
+      if (rel === TILE_STATE_PATH) throw new Error('EACCES');
+      return realRead(rel);
+    };
+    const result = await readTileState(hermes);
+    expect(result).toEqual(EMPTY_STATE);
+  });
+});
+
+describe('writeTileState', () => {
+  it('does not reject when writeHomeFile rejects', async () => {
+    const hermes = new FakeHermes(INSTALLED_EMPTY);
+    const realWrite = hermes.writeHomeFile.bind(hermes);
+    hermes.writeHomeFile = async (rel: string, contents: string) => {
+      if (rel === TILE_STATE_PATH) throw new Error('EACCES');
+      return realWrite(rel, contents);
+    };
+    const state = withActiveSession(EMPTY_STATE, 'default', 's1');
+    // This should not throw even though writeHomeFile will reject.
+    await expect(writeTileState(hermes, state)).resolves.toBeUndefined();
   });
 });
