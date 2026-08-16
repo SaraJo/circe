@@ -19,6 +19,10 @@ type WithBuffer = { buffer: string };
 // since `handle` is pure dispatch over a parsed frame.
 type WithHandle = { handle(msg: Record<string, unknown>): void };
 
+// Same private-reach idiom as the rest of this file: no subprocess, no faked
+// protocol traffic. `handshake` is the half of startup that does not spawn.
+type WithHandshake = { handshake(): Promise<void> };
+
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -57,7 +61,7 @@ describe('session/update forwarding', () => {
     const seen: Array<Record<string, unknown>> = [];
     const client = new AcpClient({
       profileId: 'test',
-      onUpdate: (u) => seen.push(u as Record<string, unknown>),
+      onUpdate: (_id, u) => seen.push(u as Record<string, unknown>),
       onExit: () => {},
     });
     return { client, seen };
@@ -94,6 +98,114 @@ describe('session/update forwarding', () => {
     const { client, seen } = collect();
     (client as unknown as WithHandle).handle({ method: 'session/update', params: { sessionId: 's' } });
     (client as unknown as WithHandle).handle({ method: 'session/update' });
+
+    expect(seen).toEqual([]);
+  });
+});
+
+describe('AcpClient session lifecycle', () => {
+  function client(): AcpClient {
+    return new AcpClient({ profileId: 'test', onUpdate: () => {}, onExit: () => {} });
+  }
+
+  it('records that the agent supports loadSession', async () => {
+    const c = client();
+    vi.spyOn(c as unknown as WithRequest, 'request').mockResolvedValue({
+      agentCapabilities: { loadSession: true },
+    });
+
+    await (c as unknown as WithHandshake).handshake();
+
+    expect(c.canLoadSession).toBe(true);
+  });
+
+  it('treats a missing capability block as no loadSession support', async () => {
+    const c = client();
+    vi.spyOn(c as unknown as WithRequest, 'request').mockResolvedValue({});
+
+    await (c as unknown as WithHandshake).handshake();
+
+    expect(c.canLoadSession).toBe(false);
+  });
+
+  it('refuses to load a session when the agent never advertised support', async () => {
+    const c = client();
+    const request = vi.spyOn(c as unknown as WithRequest, 'request');
+
+    await expect(c.loadSession('sess-1')).resolves.toBe(false);
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('reports a failed load as false rather than throwing, so launch can fall back', async () => {
+    const c = client();
+    vi.spyOn(c as unknown as WithRequest, 'request').mockImplementation(async (method) => {
+      if (method === 'initialize') return { agentCapabilities: { loadSession: true } };
+      throw new Error('no such session');
+    });
+    await (c as unknown as WithHandshake).handshake();
+
+    await expect(c.loadSession('gone')).resolves.toBe(false);
+  });
+
+  it('returns the id from session/new', async () => {
+    const c = client();
+    vi.spyOn(c as unknown as WithRequest, 'request').mockResolvedValue({ sessionId: 'sess-9' });
+
+    await expect(c.newSession()).resolves.toBe('sess-9');
+  });
+
+  it('prompts the session it was given, not an implicit one', async () => {
+    const c = client();
+    const request = vi
+      .spyOn(c as unknown as WithRequest, 'request')
+      .mockResolvedValue({ stopReason: 'end_turn' });
+
+    await c.prompt('sess-3', 'hello');
+
+    expect(request).toHaveBeenCalledWith('session/prompt', {
+      sessionId: 'sess-3',
+      prompt: [{ type: 'text', text: 'hello' }],
+    });
+  });
+});
+
+describe('session/update routing', () => {
+  it('forwards the outer sessionId alongside the inner update', () => {
+    const seen: Array<{ id: string; u: Record<string, unknown> }> = [];
+    const c = new AcpClient({
+      profileId: 'test',
+      onUpdate: (id, u) => seen.push({ id, u: u as Record<string, unknown> }),
+      onExit: () => {},
+    });
+
+    (c as unknown as WithHandle).handle({
+      method: 'session/update',
+      params: {
+        sessionId: 'sess-B',
+        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'hi' } },
+      },
+    });
+
+    expect(seen).toEqual([
+      {
+        id: 'sess-B',
+        u: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'hi' } },
+      },
+    ]);
+  });
+
+  it('drops a notification carrying no sessionId, since it cannot be routed', () => {
+    const seen: string[] = [];
+    const c = new AcpClient({
+      profileId: 'test',
+      onUpdate: (id) => seen.push(id),
+      onExit: () => {},
+    });
+
+    (c as unknown as WithHandle).handle({
+      method: 'session/update',
+      params: { update: { sessionUpdate: 'agent_message_chunk' } },
+    });
 
     expect(seen).toEqual([]);
   });

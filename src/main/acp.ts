@@ -13,7 +13,14 @@ export interface AcpUpdate {
 export interface AcpOptions {
   profileId: string;
   cwd?: string;
-  onUpdate(update: AcpUpdate): void;
+  /**
+   * `sessionId` is the *outer* `params.sessionId` of the notification; `update`
+   * is the inner object carrying `sessionUpdate`. One client serves several
+   * sessions, so the id is the only thing that says which tab an update belongs
+   * to — forwarding the update alone would land a replayed history in whatever
+   * tab happened to be active.
+   */
+  onUpdate(sessionId: string, update: AcpUpdate): void;
   onExit(code: number | null): void;
 }
 
@@ -42,7 +49,7 @@ export class AcpClient {
   private buffer = '';
   private nextId = 1;
   private pending = new Map<number, { resolve(v: unknown): void; reject(e: Error): void }>();
-  private sessionId: string | null = null;
+  private loadSessionSupported = false;
   private startPromise: Promise<void> | null = null;
 
   constructor(private opts: AcpOptions) {}
@@ -91,20 +98,66 @@ export class AcpClient {
       this.opts.onExit(code);
     });
 
-    await this.request(
+    await this.handshake();
+  }
+
+  /**
+   * The half of startup that talks protocol rather than spawning. Separate so
+   * it can be tested without a subprocess, and so `doStart` no longer creates a
+   * session: whether to resume an existing conversation or begin a new one is a
+   * decision for the caller, made after the handshake tells us whether resuming
+   * is possible at all.
+   */
+  private async handshake(): Promise<void> {
+    const init = (await this.request(
       'initialize',
       {
         protocolVersion: 1,
         clientCapabilities: { fs: { readTextFile: false, writeTextFile: false } },
       },
       HANDSHAKE_TIMEOUT_MS,
-    );
+    )) as { agentCapabilities?: { loadSession?: unknown } } | null;
+    this.loadSessionSupported = init?.agentCapabilities?.loadSession === true;
+  }
+
+  /** Whether this agent can resume a prior conversation (Hermes 0.14.0: yes). */
+  get canLoadSession(): boolean {
+    return this.loadSessionSupported;
+  }
+
+  async newSession(): Promise<string> {
     const session = (await this.request(
       'session/new',
       { cwd: this.opts.cwd ?? homedir(), mcpServers: [] },
       HANDSHAKE_TIMEOUT_MS,
     )) as { sessionId: string };
-    this.sessionId = session.sessionId;
+    return session.sessionId;
+  }
+
+  /**
+   * Resumes a prior conversation. Hermes rehydrates it from its own store and
+   * replays the history outbound as `session/update` notifications — Circe
+   * uploads nothing.
+   *
+   * Returns false rather than throwing on every failure path, because every
+   * failure has the same sane answer: open a fresh session. A session id can
+   * legitimately go stale (the profile was deleted, the store was cleared), and
+   * a tile that refuses to open because last week's conversation is gone would
+   * be worse than one that starts empty.
+   */
+  async loadSession(sessionId: string): Promise<boolean> {
+    if (!this.loadSessionSupported) return false;
+    try {
+      await this.request(
+        'session/load',
+        { cwd: this.opts.cwd ?? homedir(), sessionId, mcpServers: [] },
+        HANDSHAKE_TIMEOUT_MS,
+      );
+      return true;
+    } catch (err) {
+      console.warn(`Could not resume ACP session ${sessionId}; starting a new one.`, err);
+      return false;
+    }
   }
 
   // No timeout on session/prompt: a real agent turn can legitimately run for
@@ -113,10 +166,9 @@ export class AcpClient {
   // wouldn't catch anything — killing a working agent mid-thought is worse than
   // the hang it would prevent. If the process actually dies, the `exit` handler
   // above still rejects every pending request, prompt included.
-  async prompt(text: string): Promise<void> {
-    if (!this.sessionId) throw new Error('ACP session not started');
+  async prompt(sessionId: string, text: string): Promise<void> {
     await this.request('session/prompt', {
-      sessionId: this.sessionId,
+      sessionId,
       prompt: [{ type: 'text', text }],
     });
   }
@@ -124,18 +176,19 @@ export class AcpClient {
   // Returns the client to a genuinely restartable state and leaves nothing behind
   // for a killed child to act on later. Clearing only `child` would leave
   // `startPromise` cached (so a later start() replays the stale settled promise
-  // instead of spawning), `sessionId` set (so prompt() would pass its own guard
-  // and write to a null child), `pending` requests waiting on an `exit` event that
-  // may arrive late or never (the exit-identity check above would in fact ignore
-  // it, since `this.child` is about to become a different process or null), and a
-  // trailing partial line in `buffer` that would otherwise get concatenated onto
-  // the next child's first stdout chunk. `nextId` is left alone: monotonic ids
-  // across restarts are harmless and avoid any chance of id reuse.
+  // instead of spawning), `loadSessionSupported` set (so a later loadSession()
+  // would attempt a request against a null child instead of correctly refusing),
+  // `pending` requests waiting on an `exit` event that may arrive late or never
+  // (the exit-identity check above would in fact ignore it, since `this.child`
+  // is about to become a different process or null), and a trailing partial
+  // line in `buffer` that would otherwise get concatenated onto the next
+  // child's first stdout chunk. `nextId` is left alone: monotonic ids across
+  // restarts are harmless and avoid any chance of id reuse.
   stop(): void {
     this.child?.kill();
     this.child = null;
     this.startPromise = null;
-    this.sessionId = null;
+    this.loadSessionSupported = false;
     this.buffer = '';
     for (const p of this.pending.values()) p.reject(new Error('ACP client stopped'));
     this.pending.clear();
@@ -163,14 +216,15 @@ export class AcpClient {
     // lives on the inner object, never on `params` itself. Forwarding
     // `params` handed the renderer an object whose `sessionUpdate` was always
     // `undefined`, so no branch ever fired and no reply was ever displayed.
-    // The inner object is what goes out; `sessionId` is dropped because this
-    // client owns exactly one session (acpClient.js:339 forwards the whole
-    // params only because the prototype multiplexes tabs over one client, and
-    // renderer.js:372 immediately reaches for `params.update`).
+    // The inner object is what goes out; the outer `sessionId` goes out too,
+    // separately, because one client now serves several sessions and it is the
+    // only thing that says which one this update belongs to.
     if (msg.method === 'session/update') {
-      const params = (msg.params ?? {}) as { update?: unknown };
-      const update = params.update;
-      if (update && typeof update === 'object') this.opts.onUpdate(update as AcpUpdate);
+      const params = (msg.params ?? {}) as { sessionId?: unknown; update?: unknown };
+      const { sessionId, update } = params;
+      if (typeof sessionId === 'string' && update && typeof update === 'object') {
+        this.opts.onUpdate(sessionId, update as AcpUpdate);
+      }
       return;
     }
     // A permission request. This slice runs the tile unlocked, so approve the
