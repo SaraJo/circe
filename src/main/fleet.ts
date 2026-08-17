@@ -50,6 +50,13 @@ export class FleetWatch {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
   /**
+   * The currently-running sweep, if any. Shared between the debounced timer
+   * and `sweepNow` so a manual trigger arriving while a debounced sweep is
+   * already in flight joins it instead of starting a redundant second
+   * enumeration — see `sweepNow`.
+   */
+  private inFlight: Promise<void> | null = null;
+  /**
    * Every profile id this watch has ever reported, plus whatever
    * `deps.alreadyTiled` seeded it with. Grows on every `onProfile` call —
    * seeding it once at construction and never adding to it would let a
@@ -90,7 +97,42 @@ export class FleetWatch {
     }, this.deps.debounceMs ?? 600);
   }
 
-  private async sweep(): Promise<void> {
+  /**
+   * Triggers a sweep immediately, bypassing the debounce, for a caller that
+   * already knows work might be sitting unnoticed — `openFleet`'s post-launch
+   * catch-up (I2): each iteration of its launch loop awaits a 30s handshake
+   * and a full session restore, so for a large fleet a profile that became
+   * tileable mid-loop could otherwise sit unnoticed for minutes, until some
+   * unrelated later filesystem event happened to sweep again.
+   *
+   * Deliberately not called from inside this class — a caller earns the
+   * immediate catch-up by opting in explicitly (`openFleet` does; the wizard
+   * handoff must not, since piling a sweep on top of a fresh handoff is
+   * exactly the disruption I1 exists to avoid).
+   *
+   * Cancels any pending debounced timer first and shares `sweep`'s own
+   * in-flight guard, so this can never run concurrently with — or
+   * double-dispatch against — a debounced sweep already underway.
+   */
+  sweepNow(): Promise<void> {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    return this.sweep();
+  }
+
+  /** Guards concurrent runs: a second call while one is in flight joins it. */
+  private sweep(): Promise<void> {
+    if (this.inFlight) return this.inFlight;
+    const run = this.doSweep().finally(() => {
+      this.inFlight = null;
+    });
+    this.inFlight = run;
+    return run;
+  }
+
+  private async doSweep(): Promise<void> {
     if (this.stopped) return;
     let profiles: HermesProfile[];
     try {

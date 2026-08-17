@@ -96,11 +96,46 @@ function openWizard(): void {
     // watch gets started. Without one here, the orchestrator writes
     // `profiles/<id>/SOUL.md`, reports success, and nothing appears: the
     // product's premise fails silently for the person least equipped to
-    // notice why. Seeded with just this profile's id, not a re-enumeration —
-    // `openFleet` hasn't run on this path, so there is nothing else to seed
-    // with, and this id is already accounted for by the `tiles.launch` above.
-    startFleetWatch([s.profileId]);
+    // notice why.
+    void openPreexistingFleetOnHandoff(s.profileId);
   });
+}
+
+/**
+ * Opens tiles for any already-real profiles besides the one the wizard just
+ * created, then watches for more. (I1.)
+ *
+ * `readStartup` decides wizard-vs-fleet from `default`'s own `SOUL.md` alone,
+ * so a machine that already has real specialists — an existing Hermes user
+ * installing Circe — goes through onboarding too. Without this, those
+ * specialists get no tile here, and none again until the *next* unrelated
+ * write anywhere under `profiles/`, whenever that happens to land: the watch
+ * then dumps all of them on screen at once, each stealing focus with no
+ * explanation, possibly minutes into the user's first conversation with the
+ * agent they just met.
+ *
+ * Deliberately does not touch the orchestrator's own tile, which
+ * `tiles.launch` above has already put on screen: `tiles.raise` at the end
+ * brings it back in front of whatever this function just opened, rather than
+ * this function launching it a second time. That ordering — everyone else
+ * first, the orchestrator raised last — is what makes the tile the user just
+ * met the one they end up looking at, matching `openFleet`'s own "main
+ * operator opens last" rule (spec §6.6).
+ *
+ * No immediate `sweepNow` here, unlike `openFleet` (I2): piling the watch's
+ * own catch-up sweep on top of a handoff that is still in progress is
+ * precisely the disruption this function exists to avoid.
+ */
+async function openPreexistingFleetOnHandoff(orchestratorId: string): Promise<void> {
+  const others = (await tileableProfiles(hermes)).filter((p) => p.id !== orchestratorId);
+  for (const profile of others) {
+    await tiles.launch(await characterFor(hermes, profile), profile.id);
+  }
+  tiles.raise(orchestratorId);
+  // Seeded with everyone this function and the `tiles.launch` above actually
+  // opened — not a re-enumeration — so the watch's seen-set agrees with the
+  // registry from its very first sweep.
+  startFleetWatch([...others.map((p) => p.id), orchestratorId]);
 }
 
 /**
@@ -237,7 +272,21 @@ async function openFleet(mainId: string): Promise<void> {
   // Exactly what this call just launched — not re-enumerated — so the
   // watch's seen-set agrees with the registry from its very first sweep and
   // never re-reports a profile whose tile is already open.
-  startFleetWatch(ordered.map((p) => p.id));
+  const watch = startFleetWatch(ordered.map((p) => p.id));
+  // I2: each iteration of the loop above awaits a 30s handshake and a full
+  // session restore (held messages included), so for a several-agent fleet
+  // that loop alone can run for minutes. A profile that became tileable
+  // during it would otherwise sit unnoticed until some unrelated later write
+  // under `profiles/` happened to trigger the watch, or until the next
+  // restart on a quiet machine. One sweep right after the watch exists
+  // catches it immediately; everything the loop above already launched is in
+  // the watch's seeded set, so this can't re-open any of it.
+  //
+  // Deliberately only here, not inside `startFleetWatch` itself: on the
+  // wizard-handoff path an immediate sweep would pile any of I1's
+  // already-real profiles on top of the orchestrator's tile the user just
+  // met, which is exactly the disruption I1 exists to prevent.
+  void watch.sweepNow();
 }
 
 /**
@@ -245,21 +294,25 @@ async function openFleet(mainId: string): Promise<void> {
  * has tiles open for. Shared by `openFleet` (cold-fleet boot) and the wizard
  * handoff (first run ever) — both are "a set of tiles just opened; watch for
  * the next one" and neither should re-implement the seeding or the
- * stop-before-replace.
+ * stop-before-replace. Returns the watch itself (not just its stop function)
+ * so a caller that wants an immediate `sweepNow` — `openFleet` only, see I2 —
+ * can trigger one without this helper doing it on every caller's behalf.
  */
-function startFleetWatch(seed: Iterable<string>): void {
+function startFleetWatch(seed: Iterable<string>): FleetWatch {
   // Stopped before being replaced, not after: a second call (a re-boot via
   // `activate`, say) must never leave an earlier watch's `hermes.watchHome`
   // subscription running alongside the new one.
   fleetWatch?.();
-  fleetWatch = new FleetWatch({
+  const watch = new FleetWatch({
     hermes,
     alreadyTiled: seed,
     isOpen: (id) => tiles.has(id),
     onProfile: async (profile) => {
       await tiles.launch(await characterFor(hermes, profile), profile.id);
     },
-  }).start();
+  });
+  fleetWatch = watch.start();
+  return watch;
 }
 
 app.whenReady().then(() => {

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { FleetWatch, tileableProfiles } from '../src/main/fleet';
+import { characterFor } from '../src/main/startup';
 import { FakeHermes, INSTALLED_EMPTY, INSTALLED_WITH_AGENTS, SCAFFOLD_SOUL } from './fake/hermes';
 
 describe('tileableProfiles', () => {
@@ -29,6 +30,35 @@ describe('tileableProfiles', () => {
     });
 
     expect((await tileableProfiles(hermes)).map((p) => p.id)).toEqual(['default']);
+  });
+});
+
+// The spec's own required test (§6, "Constraint 10"): build a profile
+// directory by hand with only the two files the spec says describe a
+// profile, with no Circe-side record of it anywhere, and confirm the tile
+// pipeline shows it correctly. If this passes, no agent fact has leaked into
+// Circe's own state — everything came from the profile itself.
+describe('constraint 10: a hand-built profile, end to end', () => {
+  it('tileableProfiles + characterFor show a profile built with only SOUL.md and circe.json', async () => {
+    const palette = { bg: '#0b1d3a', border: '#f2c14e', accent: '#ffe1a8' };
+    const hermes = new FakeHermes({
+      version: '0.14.0',
+      hasProvider: true,
+      models: { default: 'claude-opus-5', prak: 'claude-opus-5' },
+      files: {
+        'SOUL.md': '# Trillian — the one who keeps the plot\n',
+        'profiles/prak/SOUL.md': '# Prak — the one who cannot lie\n',
+        'profiles/prak/circe.json': JSON.stringify({ version: 1, palette }),
+      },
+    });
+
+    const profiles = await tileableProfiles(hermes);
+    const prak = profiles.find((p) => p.id === 'prak');
+    expect(prak).toBeDefined();
+
+    const character = await characterFor(hermes, prak!);
+    expect(character.name).toBe('Prak');
+    expect(character.palette).toEqual(palette);
   });
 });
 
@@ -277,6 +307,63 @@ describe('FleetWatch', () => {
 
   // A single bad tile must not stop the sweep from reaching the rest of the
   // profiles it found in the same enumeration.
+  // I2: `openFleet`'s launch loop can run for minutes on a large fleet, and a
+  // profile that becomes tileable during it must not wait for some later,
+  // unrelated filesystem event to be noticed.
+  describe('sweepNow', () => {
+    it('opens tiles for anything already tileable, without waiting on a filesystem event or the debounce', async () => {
+      const hermes = new FakeHermes(configured());
+      hermes.scenarioModels.ford = 'claude-opus-5';
+      await hermes.writeHomeFile('profiles/ford/SOUL.md', '# Ford — the one who finds the exit\n');
+      // Deliberately never call `watch.start()` and never fire a home change:
+      // `sweepNow` must not depend on either to do its job.
+      const { watch, opened } = watcher(hermes);
+
+      await watch.sweepNow();
+
+      expect(opened).toEqual(['ford']);
+    });
+
+    // Proves the in-flight guard: a manual sweep arriving while a debounced
+    // one is already mid-`onProfile` must join it, not run a second
+    // enumeration and risk opening the same profile twice.
+    it('joins a debounced sweep already in flight rather than double-dispatching', async () => {
+      const hermes = new FakeHermes(configured());
+      hermes.scenarioModels.ford = 'claude-opus-5';
+      await hermes.writeHomeFile('profiles/ford/SOUL.md', '# Ford — the one who finds the exit\n');
+      const listProfiles = vi.spyOn(hermes, 'listProfiles');
+      const opened: string[] = [];
+      let release: (() => void) | null = null;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const watch = new FleetWatch({
+        hermes,
+        isOpen: () => false,
+        alreadyTiled: ['default'],
+        onProfile: async (profile) => {
+          await gate; // holds the debounced sweep mid-flight
+          opened.push(profile.id);
+        },
+        debounceMs: 10,
+      });
+      const stop = watch.start();
+
+      hermes.fireHomeChange('profiles/ford/SOUL.md');
+      // Let the debounce actually fire and the sweep reach the held
+      // `onProfile` call before triggering the manual one.
+      await vi.waitFor(() => expect(listProfiles).toHaveBeenCalledTimes(1));
+
+      const manual = watch.sweepNow();
+      release!();
+      await manual;
+
+      expect(opened).toEqual(['ford']);
+      expect(listProfiles).toHaveBeenCalledTimes(1); // not a second enumeration
+      stop();
+    });
+  });
+
   it('keeps opening tiles for other profiles when onProfile throws for one', async () => {
     const hermes = new FakeHermes(configured());
     const opened: string[] = [];
