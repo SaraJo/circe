@@ -122,20 +122,35 @@ function openWizard(): void {
  * met the one they end up looking at, matching `openFleet`'s own "main
  * operator opens last" rule (spec §6.6).
  *
- * No immediate `sweepNow` here, unlike `openFleet` (I2): piling the watch's
- * own catch-up sweep on top of a handoff that is still in progress is
- * precisely the disruption this function exists to avoid.
+ * The `try`/`finally` is load-bearing (R2): before this handoff existed, the
+ * watch started synchronously and unconditionally. A throw partway through
+ * this loop — `createTileWindow` failing inside `tiles.launch`, most
+ * plausibly, since that call sits outside `launch`'s own try — must not
+ * leave the process with zero fleet watches. The watch always starts, seeded
+ * with `tiles.openProfileIds()` — whatever the registry actually has open at
+ * that moment, not the ids this function merely hoped to open — so a partial
+ * failure here degrades to "some pre-existing agents have no tile yet"
+ * rather than "nothing is watched at all, ever."
+ *
+ * `sweepNow` runs immediately after, same as `openFleet` (I2/R3): the watch
+ * is already seeded with every profile that has a tile by this point
+ * (including the orchestrator's own), so a sweep here can only pick up a
+ * profile that became tileable *during* the loop above — it cannot re-dump
+ * anything already on screen.
  */
 async function openPreexistingFleetOnHandoff(orchestratorId: string): Promise<void> {
-  const others = (await tileableProfiles(hermes)).filter((p) => p.id !== orchestratorId);
-  for (const profile of others) {
-    await tiles.launch(await characterFor(hermes, profile), profile.id);
+  try {
+    const others = (await tileableProfiles(hermes)).filter((p) => p.id !== orchestratorId);
+    for (const profile of others) {
+      await tiles.launch(await characterFor(hermes, profile), profile.id);
+    }
+  } catch (err) {
+    console.warn('Could not open every pre-existing agent’s tile on the wizard handoff.', err);
+  } finally {
+    tiles.raise(orchestratorId);
+    const watch = startFleetWatch(tiles.openProfileIds());
+    void watch.sweepNow();
   }
-  tiles.raise(orchestratorId);
-  // Seeded with everyone this function and the `tiles.launch` above actually
-  // opened — not a re-enumeration — so the watch's seen-set agrees with the
-  // registry from its very first sweep.
-  startFleetWatch([...others.map((p) => p.id), orchestratorId]);
 }
 
 /**
@@ -282,10 +297,9 @@ async function openFleet(mainId: string): Promise<void> {
   // catches it immediately; everything the loop above already launched is in
   // the watch's seeded set, so this can't re-open any of it.
   //
-  // Deliberately only here, not inside `startFleetWatch` itself: on the
-  // wizard-handoff path an immediate sweep would pile any of I1's
-  // already-real profiles on top of the orchestrator's tile the user just
-  // met, which is exactly the disruption I1 exists to prevent.
+  // Not inside `startFleetWatch` itself, so each caller opts in explicitly —
+  // `openPreexistingFleetOnHandoff` (R3) also calls it, once its own watch is
+  // seeded with everyone already open, for the same reason.
   void watch.sweepNow();
 }
 
@@ -295,8 +309,9 @@ async function openFleet(mainId: string): Promise<void> {
  * handoff (first run ever) — both are "a set of tiles just opened; watch for
  * the next one" and neither should re-implement the seeding or the
  * stop-before-replace. Returns the watch itself (not just its stop function)
- * so a caller that wants an immediate `sweepNow` — `openFleet` only, see I2 —
- * can trigger one without this helper doing it on every caller's behalf.
+ * so a caller that wants an immediate `sweepNow` (`openFleet`, I2;
+ * `openPreexistingFleetOnHandoff`, R3) can trigger one without this helper
+ * doing it unconditionally on every caller's behalf.
  */
 function startFleetWatch(seed: Iterable<string>): FleetWatch {
   // Stopped before being replaced, not after: a second call (a re-boot via
