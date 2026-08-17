@@ -43,6 +43,19 @@ describe('the orchestrator skill', () => {
     const text = await readFile(SKILL_SOURCE_PATH, 'utf8');
     expect(text).toContain('# <Name> — <domain>');
   });
+
+  // C1: `hermes profile create` (the preceding step) honours `HERMES_HOME`
+  // because the ACP child inherits the environment it runs in. A literal
+  // `~/.hermes` in the two file-write steps that follow would write SOUL.md
+  // and circe.json into the operator's real home even under a sandboxed
+  // `HERMES_HOME`, while the CLI step lands in the sandbox — so `profile
+  // list` shows the new profile with no SOUL.md, isReal is false, and no
+  // tile ever appears even though the orchestrator reports success.
+  it('honours HERMES_HOME instead of a literal ~/.hermes path', async () => {
+    const text = await readFile(SKILL_SOURCE_PATH, 'utf8');
+    expect(text).not.toContain('~/.hermes');
+    expect(text).toContain('HERMES_HOME');
+  });
 });
 
 describe('installOrchestratorSkill', () => {
