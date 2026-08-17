@@ -9,6 +9,33 @@ function character(profileId: string): Character {
   return { name: profileId, profileId, tagline: '', palette: PALETTE, why: '', fandom: '' };
 }
 
+/**
+ * Drains the microtask queue. `restoreOrCreateSession`'s "resume a prior
+ * session" branch is several `await`s deep (a file read, an `isCurrent`
+ * check, another) before it reaches `await tileReady` — a test that fires the
+ * window's `closed` event immediately, before any of those microtasks run,
+ * never gets the code there at all: the map deletion that same event triggers
+ * makes the *outer* `isCurrent()` check (the one guarding entry into that
+ * branch) return early, and `tileReady` is never awaited in the first place.
+ * `setImmediate` is a macrotask, so by the time it fires every microtask
+ * queued so far — including that whole chain — has drained, and execution is
+ * actually parked at `await tileReady`, which is the state this needs.
+ */
+async function flushMicrotasks(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+}
+
+/** Seeds `circe/state.json` as if a previous launch had already saved a session. */
+function withSavedSession(hermes: FakeHermes, profileId: string, sessionId: string): void {
+  hermes.files.set(
+    'circe/state.json',
+    JSON.stringify({
+      version: 1,
+      profiles: { [profileId]: { tabs: [sessionId], activeIndex: 0 } },
+    }),
+  );
+}
+
 /** A window that records what it was sent and lets a test fire its events. */
 class FakeWindow implements TileWindow {
   readonly sent: Array<{ channel: string; payload: unknown }> = [];
@@ -19,6 +46,13 @@ class FakeWindow implements TileWindow {
   restored = 0;
   closeCalls = 0;
   readonly sender = {};
+  /**
+   * Simulates the real-world gap between a window's `closed` event firing and
+   * its `isDestroyed()` reporting true — Electron does not guarantee these are
+   * atomic. `isCurrent()` is the guard that has to hold even when this lags;
+   * `emit()`'s own `isDestroyed()` check is not enough on its own.
+   */
+  lagDestroy = false;
   private loaded: Array<() => void> = [];
   private failed: Array<() => void> = [];
   private closedCbs: Array<() => void> = [];
@@ -27,7 +61,7 @@ class FakeWindow implements TileWindow {
     this.sent.push({ channel, payload });
   }
   isDestroyed(): boolean {
-    return this.destroyed;
+    return this.lagDestroy ? false : this.destroyed;
   }
   close(): void {
     this.closeCalls++;
@@ -86,6 +120,8 @@ class FakeClient implements TileClient {
   started = false;
   stopped = 0;
   readonly prompts: Array<{ sessionId: string; text: string }> = [];
+  /** How many times this client's own `newSession` was actually called. */
+  newSessionCalls = 0;
   /**
    * Armed by the harness at construction, never set afterwards: `launch` calls
    * `start()` before it returns to the test, so a test that assigns this after
@@ -94,11 +130,30 @@ class FakeClient implements TileClient {
   constructor(readonly startError: Error | null = null) {}
   /** Resolves `prompt`; a test can hold a turn open by not calling it. */
   private resolvePrompt: (() => void) | null = null;
+  /**
+   * `start()` waits on this until `releaseStart()` is called, so a test can
+   * keep a launch genuinely in flight — mid-`await` — while a second launch
+   * for the same profile runs to completion, which is the only way to observe
+   * what a superseded launch would have done if `isCurrent()` did not exist.
+   */
+  private startGate: Promise<void> = Promise.resolve();
+  private releaseStartFn: (() => void) | null = null;
   onUpdate: (sessionId: string, update: Record<string, unknown>) => void = () => {};
   onExit: (code: number | null) => void = () => {};
   private nextSession = 1;
 
+  holdStart(): void {
+    this.startGate = new Promise((resolve) => {
+      this.releaseStartFn = resolve;
+    });
+  }
+  releaseStart(): void {
+    this.releaseStartFn?.();
+    this.releaseStartFn = null;
+  }
+
   async start(): Promise<void> {
+    await this.startGate;
     if (this.startError) throw this.startError;
     this.started = true;
   }
@@ -106,6 +161,7 @@ class FakeClient implements TileClient {
     this.stopped++;
   }
   async newSession(): Promise<string> {
+    this.newSessionCalls++;
     return `session-${this.nextSession++}`;
   }
   async loadSession(): Promise<boolean> {
@@ -131,17 +187,26 @@ interface Harness {
   windows: FakeWindow[];
   clients: FakeClient[];
   hermes: FakeHermes;
+  /**
+   * Arms the *next* client `createClient` produces, then resets. Necessary
+   * because `launch` creates and starts a client synchronously, before its
+   * promise is ever returned to the test — arming a client after the test
+   * already holds a reference to it would be arming a gun already fired.
+   */
+  armNext(opts: { startError?: Error | null; holdStart?: boolean }): void;
 }
 
 /**
- * `startError` arms the *next* client to fail its handshake. It is a harness
- * argument rather than a field a test sets afterwards because `launch` calls
- * `client.start()` synchronously, before its promise ever returns to the test.
+ * `startError` arms the *first* client to fail its handshake — kept as a
+ * constructor argument for the existing "cannot reach its agent" tests.
+ * `armNext` on the returned harness covers every other per-launch arming.
  */
 function harness(startError: Error | null = null): Harness {
   const windows: FakeWindow[] = [];
   const clients: FakeClient[] = [];
   const hermes = new FakeHermes(INSTALLED_EMPTY);
+  let nextStartError = startError;
+  let nextHoldStart = false;
   const deps: TileDeps = {
     hermes,
     createWindow: () => {
@@ -150,14 +215,26 @@ function harness(startError: Error | null = null): Harness {
       return w;
     },
     createClient: (opts) => {
-      const c = new FakeClient(startError);
+      const c = new FakeClient(nextStartError);
+      if (nextHoldStart) c.holdStart();
+      nextStartError = null;
+      nextHoldStart = false;
       c.onUpdate = opts.onUpdate;
       c.onExit = opts.onExit;
       clients.push(c);
       return c;
     },
   };
-  return { registry: new TileRegistry(deps), windows, clients, hermes };
+  return {
+    registry: new TileRegistry(deps),
+    windows,
+    clients,
+    hermes,
+    armNext(opts) {
+      if ('startError' in opts) nextStartError = opts.startError ?? null;
+      if ('holdStart' in opts) nextHoldStart = opts.holdStart ?? false;
+    },
+  };
 }
 
 /** Launches and lets the window finish loading, which is the happy path. */
@@ -192,19 +269,25 @@ describe('launching a tile', () => {
 
   it('does not replay the greeting when reopened without one', async () => {
     const h = harness();
-    await launched(h);
-    h.registry.close('default');
+    const first = h.registry.launch(character('default'), 'default', 'Hello.');
+    h.windows[0]!.fireLoaded();
+    await first;
+    expect(h.windows[0]!.openings()).toEqual(['Hello.']); // sanity: it did greet the first time
 
-    await launched(h);
+    h.registry.close('default');
+    await launched(h); // reopened with no greeting
 
     expect(h.windows[1]!.openings()).toEqual([]);
   });
 
-  it('opens a session and remembers it', async () => {
+  it('opens a session and persists it', async () => {
     const h = harness();
     await launched(h);
 
     expect(h.registry.openProfileIds()).toEqual(['default']);
+    // Persisted only if `restoreOrCreateSession` actually ran and opened one —
+    // `openProfileIds()` alone would pass even if it were never called.
+    expect(h.hermes.files.has('circe/state.json')).toBe(true);
   });
 
   it('gives each profile its own window and client', async () => {
@@ -244,10 +327,41 @@ describe('launching a profile that already has a tile', () => {
   });
 });
 
+describe('has and raise', () => {
+  it('has() reports whether a profile currently has a tile', async () => {
+    const h = harness();
+    expect(h.registry.has('default')).toBe(false);
+
+    await launched(h);
+
+    expect(h.registry.has('default')).toBe(true);
+  });
+
+  it('raise() brings an existing tile forward and reports true', async () => {
+    const h = harness();
+    await launched(h);
+
+    expect(h.registry.raise('default')).toBe(true);
+    expect(h.windows[0]!.shown).toBe(1);
+    expect(h.windows[0]!.focused).toBe(1);
+  });
+
+  it('raise() reports false for a profile with no tile', () => {
+    const h = harness();
+
+    expect(h.registry.raise('nobody')).toBe(false);
+  });
+});
+
 describe('the ready promise', () => {
+  // `tile.ready` is only ever awaited inside `restore.ts`'s "resume a prior
+  // session" branch, which requires a saved session id and a client that can
+  // load one. Without both, no test below would ever actually await it.
   it('resolves on a failed load, so a launch never hangs', async () => {
     const h = harness();
+    withSavedSession(h.hermes, 'default', 'session-1');
     const launch = h.registry.launch(character('default'), 'default');
+    h.clients[0]!.canLoadSession = true;
     h.windows[0]!.fireFailedLoad();
 
     await expect(launch).resolves.toBeUndefined();
@@ -255,7 +369,15 @@ describe('the ready promise', () => {
 
   it('resolves when the window is closed before it ever loads', async () => {
     const h = harness();
+    withSavedSession(h.hermes, 'default', 'session-1');
     const launch = h.registry.launch(character('default'), 'default');
+    h.clients[0]!.canLoadSession = true;
+
+    // Let execution actually reach `await tileReady` before closing the
+    // window — see `flushMicrotasks`. Closing it immediately would delete the
+    // tile from the map before that point, and the launch would resolve via
+    // the outer `isCurrent()` guard instead of via this promise at all.
+    await flushMicrotasks();
     h.windows[0]!.fireClosed();
 
     await expect(launch).resolves.toBeUndefined();
@@ -336,7 +458,26 @@ describe('prompting', () => {
   // here. Every branch that *does* have a tile ends in something visible.
   it('does nothing for a profile with no tile', async () => {
     const h = harness();
+    await launched(h); // a real tile exists, to prove the "no tile" case doesn't touch it
+    const sentBefore = h.windows[0]!.sent.length;
+
     await expect(h.registry.prompt('nobody', 'hello')).resolves.toBeUndefined();
+
+    expect(h.windows[0]!.sent).toHaveLength(sentBefore);
+    expect(h.clients[0]!.prompts).toEqual([]);
+  });
+
+  // The launch window: from tile creation to a live session, `route()` holds
+  // rather than drops. Nothing should be drawn while a message sits there.
+  it('holds a message typed during launch without emitting anything yet', () => {
+    const h = harness();
+    h.armNext({ holdStart: true });
+    h.registry.launch(character('default'), 'default');
+    const win = h.windows[0]!;
+
+    void h.registry.prompt('default', 'are you there?');
+
+    expect(win.sent).toEqual([]);
   });
 });
 
@@ -374,31 +515,52 @@ describe('closing a tile', () => {
 });
 
 describe('supersession', () => {
-  // The guard Phase 1 established, per profile. A launch that has been replaced
-  // must not stop, draw into, or clear the launch that replaced it.
-  it('a superseded launch does not clear the live tile’s session', async () => {
+  // The guard Phase 1 established, per profile. A launch that has been
+  // replaced must not act on shared state after its replacement is live.
+  //
+  // Closing the tile is what makes a genuine second launch for the same
+  // profile possible at all (`launch` raises rather than duplicates while an
+  // entry exists), so launch A's window is closed to free the profile up —
+  // but its own `start()` is held open, so launch A is still mid-flight,
+  // captured over its own now-stale `isCurrent`, when launch B registers and
+  // finishes. Releasing A's start afterwards lets its `restoreOrCreateSession`
+  // actually run its course; unguarded, it would call its own `newSession()`
+  // and overwrite `circe/state.json` out from under the tile the user is
+  // actually looking at.
+  it('a superseded launch does not open a session or overwrite the live tile’s state', async () => {
     const h = harness();
+    h.armNext({ holdStart: true });
     const first = h.registry.launch(character('default'), 'default');
-    const firstWin = h.windows[0]!;
+    const clientA = h.clients[0]!;
 
-    // The tile is closed and reopened while the first launch is still in flight.
-    firstWin.fireClosed();
-    await launched(h, 'default');
+    h.windows[0]!.fireClosed(); // frees the profile up for a real second launch
+    await launched(h, 'default'); // launch B takes over the profile and finishes
+
+    clientA.releaseStart();
     await first;
 
+    expect(clientA.newSessionCalls).toBe(0);
     expect(h.registry.openProfileIds()).toEqual(['default']);
   });
 
-  it('a stale exit handler does not draw into the new tile', async () => {
+  // Isolates `isCurrent()`'s own contribution from `emit()`'s `isDestroyed()`
+  // fallback: the stale window is made to keep reporting itself as not
+  // destroyed (`lagDestroy`), the real-world gap between a window's `closed`
+  // event and `isDestroyed()` catching up. If `isCurrent()` weren't checked
+  // first, the fallback alone would let this update through.
+  it('a stale exit handler draws nothing once superseded, even if the old window has not reported itself destroyed yet', async () => {
     const h = harness();
     await launched(h);
     const staleClient = h.clients[0]!;
-    h.windows[0]!.fireClosed();
+    const staleWin = h.windows[0]!;
+    staleWin.lagDestroy = true;
+    staleWin.fireClosed();
     await launched(h, 'default');
     const newWin = h.windows[1]!;
 
     staleClient.onExit(1);
 
+    expect(staleWin.updates()).not.toContainEqual({ sessionUpdate: 'circe/exited', code: 1 });
     expect(newWin.updates()).not.toContainEqual({ sessionUpdate: 'circe/exited', code: 1 });
   });
 });
@@ -427,15 +589,40 @@ describe('a launch that cannot reach its agent', () => {
     expect(text).toMatch(/message you typed while it was starting wasn't sent/i);
   });
 
-  // The tile is gone from the registry, so a later message has nowhere to go
-  // and must not resurrect it.
-  it('forgets the tile, so the profile can be launched again', async () => {
+  // The window is still on screen with an enabled input, so the tile stays
+  // registered — orphaning it would make it unreachable by `prompt`, `close`,
+  // `raise` and `profileForSender` alike, and a relaunch would then miss it
+  // and stack a second window on top. A message typed afterward must land on
+  // the "no session" branch, not silence.
+  it('keeps the tile registered, so a message typed afterward gets a real answer', async () => {
     const h = harness(new Error('spawn ENOENT'));
     const launch = h.registry.launch(character('default'), 'default');
     h.windows[0]!.fireLoaded();
     await launch;
 
-    expect(h.registry.openProfileIds()).toEqual([]);
+    expect(h.registry.openProfileIds()).toEqual(['default']);
+
+    await h.registry.prompt('default', 'are you still there?');
+
+    expect(h.windows[0]!.updates()).toContainEqual({ sessionUpdate: 'circe/turn-end' });
+    expect(
+      h.windows[0]!.openings().some((t) => t.includes('no agent session right now')),
+    ).toBe(true);
+  });
+
+  // Registered, but with no live session: a relaunch must raise the same
+  // window rather than stack a second one on top of it.
+  it('raises the same tile on relaunch instead of opening a second one', async () => {
+    const h = harness(new Error('spawn ENOENT'));
+    const launch = h.registry.launch(character('default'), 'default');
+    h.windows[0]!.fireLoaded();
+    await launch;
+
+    await h.registry.launch(character('default'), 'default');
+
+    expect(h.windows).toHaveLength(1);
+    expect(h.windows[0]!.shown).toBe(1);
+    expect(h.windows[0]!.focused).toBe(1);
   });
 });
 

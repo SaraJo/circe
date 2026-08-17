@@ -106,11 +106,22 @@ export class TileRegistry {
     session.beginLaunch();
     const win = this.deps.createWindow(character, profileId);
 
-    // Captured, never read back off the map: `start()` and
+    // Declared before `createClient` so its callbacks close over a real guard
+    // rather than a temporal-dead-zone reference — a client implementation
+    // that could fire `onExit` during its own construction would otherwise
+    // throw. Checked as `tile !== undefined` first: while `tile` is still
+    // unassigned, `this.tiles.get(profileId)` is also undefined, and a bare
+    // `get(profileId) === tile` would read true before this launch owns
+    // anything — the exact inverse of what the guard is supposed to mean.
+    //
+    // `tile` itself is never read back off the map: `start()` and
     // `restoreOrCreateSession()` each await for up to 30s, easily enough time
     // for this tile to be closed and reopened, which spins up a second launch
     // with its own client. Every access to *this* launch's state goes through
-    // these locals, and every write to the map is guarded by `isCurrent`.
+    // the local below, and every write to the map is guarded by `isCurrent`.
+    let tile: Tile | undefined;
+    const isCurrent = (): boolean => tile !== undefined && this.tiles.get(profileId) === tile;
+
     const client = this.deps.createClient({
       profileId,
       onUpdate: (sessionId, update) => {
@@ -125,7 +136,7 @@ export class TileRegistry {
       },
     });
 
-    const tile: Tile = {
+    const newTile: Tile = {
       profileId,
       win,
       client,
@@ -138,18 +149,18 @@ export class TileRegistry {
       queue: greeting === null ? [] : [greeting],
       ready: Promise.resolve(),
     };
-    const isCurrent = (): boolean => this.tiles.get(profileId) === tile;
-    this.tiles.set(profileId, tile);
+    tile = newTile;
+    this.tiles.set(profileId, newTile);
 
     // `did-finish-load` is the happy path: it flushes the queue and marks the
     // tile ready to draw. A window can also fail to load, or be destroyed
     // before it ever loads — without an escape on those, `await ready`
     // downstream would hang forever and "every failure path lands on a fresh
     // session" would be a lie. Resolving twice is harmless.
-    tile.ready = new Promise<void>((resolve) => {
+    newTile.ready = new Promise<void>((resolve) => {
       win.onceLoaded(() => {
-        tile.loaded = true;
-        for (const text of tile.queue.splice(0)) win.send('tile:opening', text);
+        newTile.loaded = true;
+        for (const text of newTile.queue.splice(0)) win.send('tile:opening', text);
         resolve();
       });
       win.onceFailedLoad(() => resolve());
@@ -174,21 +185,27 @@ export class TileRegistry {
         profileId,
         session,
         emit: (update) => this.emit(win, update),
-        tileReady: tile.ready,
+        tileReady: newTile.ready,
         isCurrent,
-        sendPrompt: (sessionId, text) => this.send(tile, sessionId, text),
+        sendPrompt: (sessionId, text) => this.send(newTile, sessionId, text),
       });
     } catch (err) {
       client.stop();
       if (!isCurrent()) return;
-      this.tiles.delete(profileId);
-      // Closes the launch window before anything else is drawn, so a message
-      // typed after this point is refused out loud rather than held for a
-      // session that is never coming.
+      // Deliberately does not delete the tile: the window is still on screen
+      // with an enabled input, and removing the map entry here would leave it
+      // orphaned — reachable by nothing (`prompt`, `close`, `raise`,
+      // `profileForSender` all key off this map) while still accepting
+      // keystrokes, and a second `launch()` for the same profile would miss
+      // the existing window and stack a second one on top of it. The session
+      // is reset instead, so `prompt`'s own `no-session` branch is what
+      // answers anything typed from here on, and the window's own `closed`
+      // handler — not this catch — is what eventually removes the entry, when
+      // the user acts on "close this tile and start over" below.
       const unsent = session.failLaunch();
       session.reset();
       const message = err instanceof Error ? err.message : String(err);
-      this.say(tile,
+      this.say(newTile,
         "I couldn't reach the Hermes agent behind this tile, so I can't respond yet. " +
           'Check that Hermes is installed and set up (`hermes setup` in a terminal), ' +
           `then close this tile and start over.\n\n(${message})`,
@@ -197,7 +214,7 @@ export class TileRegistry {
       // user's own bubble. Saying nothing would leave it sitting unanswered
       // forever, which is the silence the holding pen exists to avoid.
       if (unsent.length > 0) {
-        this.say(tile,
+        this.say(newTile,
           unsent.length === 1
             ? "The message you typed while it was starting wasn't sent."
             : "The messages you typed while it was starting weren't sent.",
