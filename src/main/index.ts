@@ -17,12 +17,10 @@ let tiles: TileRegistry;
 let fleetWatch: (() => void) | null = null;
 /**
  * The profile `activate` should raise last, so the tile the user expects in
- * front is the one that ends up in front. Set once, by `openFleet`, from the
- * same `mainProfileId` `readStartup` resolved — never re-derived, so it can
- * only ever agree with what actually booted. Stays null for the onboarding
- * handoff (`openWizard`'s `launching` handler launches its own tile directly,
- * without going through `openFleet`), where a single tile makes the ordering
- * moot.
+ * front is the one that ends up in front. Set by whichever path actually
+ * opens the first tile — `openFleet` on a cold-fleet boot, or the wizard's
+ * `launching` handler on a first run — from the id that path resolved, never
+ * re-derived, so it can only ever agree with what actually booted.
  */
 let mainProfileId: string | null = null;
 
@@ -91,6 +89,17 @@ function openWizard(): void {
     // at the call site instead of inside `launch`.
     wizardWin?.close();
     wizardWin = null;
+    mainProfileId = s.profileId;
+    // A brand-new orchestrator's very first act is usually to create a
+    // specialist, and that can happen minutes into the first conversation —
+    // long before the *next* app restart, which is the only other place a
+    // watch gets started. Without one here, the orchestrator writes
+    // `profiles/<id>/SOUL.md`, reports success, and nothing appears: the
+    // product's premise fails silently for the person least equipped to
+    // notice why. Seeded with just this profile's id, not a re-enumeration —
+    // `openFleet` hasn't run on this path, so there is nothing else to seed
+    // with, and this id is already accounted for by the `tiles.launch` above.
+    startFleetWatch([s.profileId]);
   });
 }
 
@@ -154,6 +163,18 @@ function boot(): Promise<void> {
 }
 
 async function doBoot(): Promise<void> {
+  // Stopped before `hermes`/`tiles` are reassigned below, not after
+  // `openFleet` settles: a watch left running from a previous boot stays
+  // subscribed to the *old* `RealHermes.watchHome` while its `isOpen`/
+  // `onProfile` closures read the *module* bindings — which this function is
+  // about to repoint at a new registry. `readStartup` plus a full sequential
+  // launch loop can run tens of seconds; a filesystem event landing in that
+  // window would have the stale watch launch a tile concurrently with this
+  // boot's own loop, which is exactly the concurrent-spawn stall this task
+  // exists to prevent, and it could steal focus from the main operator too.
+  fleetWatch?.();
+  fleetWatch = null;
+
   hermes = new RealHermes();
   tiles = createRegistry();
   registerIpc();
@@ -198,29 +219,42 @@ async function doBoot(): Promise<void> {
  * this needs nothing else from it.
  */
 async function openFleet(mainId: string): Promise<void> {
-  mainProfileId = mainId;
-
   const profiles = await tileableProfiles(hermes);
   const main = profiles.find((p) => p.id === mainId) ??
     profiles.find((p) => p.id === 'default') ??
     { id: mainId, displayName: mainId, model: null, isReal: true };
+  // Set from `main.id`, the id actually resolved and launched — not the
+  // requested `mainId` — so a stale `last-launch.json` naming a profile that
+  // no longer enumerates can't leave `activate` trying to raise an id with no
+  // tile. `main.id` always has a tile by the time this assignment runs.
+  mainProfileId = main.id;
   const ordered = [...profiles.filter((p) => p.id !== main.id), main];
 
   for (const profile of ordered) {
     await tiles.launch(await characterFor(hermes, profile), profile.id);
   }
 
-  // Stopped before being replaced, not after: re-running `openFleet` (a
-  // second `activate` racing a slow first boot, say) must never leave the
-  // earlier watch's `hermes.watchHome` subscription running alongside the
-  // new one.
+  // Exactly what this call just launched — not re-enumerated — so the
+  // watch's seen-set agrees with the registry from its very first sweep and
+  // never re-reports a profile whose tile is already open.
+  startFleetWatch(ordered.map((p) => p.id));
+}
+
+/**
+ * (Re)starts the fleet watch, seeded with the profile ids the caller already
+ * has tiles open for. Shared by `openFleet` (cold-fleet boot) and the wizard
+ * handoff (first run ever) — both are "a set of tiles just opened; watch for
+ * the next one" and neither should re-implement the seeding or the
+ * stop-before-replace.
+ */
+function startFleetWatch(seed: Iterable<string>): void {
+  // Stopped before being replaced, not after: a second call (a re-boot via
+  // `activate`, say) must never leave an earlier watch's `hermes.watchHome`
+  // subscription running alongside the new one.
   fleetWatch?.();
   fleetWatch = new FleetWatch({
     hermes,
-    // Exactly what this call just launched — not re-enumerated — so the
-    // watch's seen-set agrees with the registry from its very first sweep
-    // and never re-reports a profile whose tile is already open.
-    alreadyTiled: ordered.map((p) => p.id),
+    alreadyTiled: seed,
     isOpen: (id) => tiles.has(id),
     onProfile: async (profile) => {
       await tiles.launch(await characterFor(hermes, profile), profile.id);
@@ -277,8 +311,10 @@ app.on('activate', () => {
     // focused — not necessarily the main operator the user expects to see
     // (§6.6). The others go first; the main operator, if it still has a
     // tile, goes last. `raise` no-ops on an id with no tile, which covers
-    // both "the main operator's tile is closed" and the pre-`openFleet`
-    // (wizard-handoff) boot where `mainProfileId` is still null.
+    // "the main operator's tile is closed" (nothing to raise last, but
+    // nothing throws) as well as the sliver of time between `boot()` starting
+    // and either `openFleet` or the wizard handoff actually setting
+    // `mainProfileId`.
     for (const id of openIds) {
       if (id !== mainProfileId) tiles.raise(id);
     }
