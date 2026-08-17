@@ -1,6 +1,7 @@
 import { BrowserWindow, screen } from 'electron';
 import { join } from 'node:path';
 import type { Character } from '../shared/types';
+import type { TileWindow } from './tiles';
 
 const WIZARD_W = 640;
 const WIZARD_H = 560;
@@ -60,4 +61,30 @@ export function createTileWindow(character: Character, profileId: string): Brows
     query: { profile: profileId, character: JSON.stringify(character) },
   });
   return win;
+}
+
+/**
+ * Presents a real window as the narrow surface `tiles.ts` consumes. The
+ * registry imports no Electron; this is the one place the two meet.
+ *
+ * `ownsSender` compares against `webContents` because that is what an
+ * `IpcMainEvent.sender` is — it is how a message is attributed to the window
+ * that actually sent it, rather than to a profile id the renderer names.
+ */
+export function adaptTileWindow(win: BrowserWindow): TileWindow {
+  return {
+    send: (channel, payload) => {
+      if (!win.isDestroyed()) win.webContents.send(channel, payload);
+    },
+    isDestroyed: () => win.isDestroyed(),
+    close: () => win.close(),
+    show: () => win.show(),
+    focus: () => win.focus(),
+    isMinimized: () => win.isMinimized(),
+    restore: () => win.restore(),
+    ownsSender: (sender) => !win.isDestroyed() && sender === win.webContents,
+    onceLoaded: (cb) => win.webContents.once('did-finish-load', cb),
+    onceFailedLoad: (cb) => win.webContents.once('did-fail-load', cb),
+    onceClosed: (cb) => win.once('closed', cb),
+  };
 }
