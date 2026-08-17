@@ -44,7 +44,8 @@ Copied from `~/Code/circe-oss-spec.md` and the design's own rulings; every task'
 | `test/profileTheme.test.ts` (create) | Round-trip, corruption, wrong shape, future version, bad hex, unreadable file. |
 | `test/tiles.test.ts` (create) | Everything in `index.ts` that has never had a test. |
 | `test/fleet.test.ts` (create) | Enumeration, readiness, debounce, dedup. |
-| `test/windows.test.ts` (create) | Placement maths only — the pure part, with no `BrowserWindow`. |
+| `src/main/tileLayout.ts` (create) | Tile size constants and cascade placement maths. Imports nothing, so it is testable. |
+| `test/tileLayout.test.ts` (create) | Placement maths — anchoring, cascade, wrap, clamping. |
 | `test/fake/hermes.ts` (modify) | Gains `watchHome` and a manual trigger. |
 
 ---
@@ -58,7 +59,7 @@ Copied from `~/Code/circe-oss-spec.md` and the design's own rulings; every task'
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
-- Produces: `DEFAULT_PALETTE: Palette` from `./palette`; `profileFilePath(profileId: string, file: string): string`; `THEME_FILE = 'circe.json'`; `serializeProfileTheme(palette: Palette): string`; `parseProfileTheme(json: string | null): Palette | null`; `readProfilePalette(hermes: HermesRuntime, profileId: string): Promise<Palette>`.
+- Produces: `DEFAULT_PALETTE: Palette` from `./palette`; `profileFilePath(profileId: string, file: string): string`; `THEME_FILE = 'circe.json'`; `serializeProfileTheme(palette: Palette): string`; `parseProfileTheme(json: string | null): Palette | null`; `readProfilePalette(hermes: HermesRuntime, profileId: string): Promise<Palette>`; `writeProfileTheme(hermes: HermesRuntime, profileId: string, palette: Palette): Promise<void>` (consumed by Tasks 2 and 4).
 
 **Why two constants is a defect, not a detail:** `startup.ts` defines `DEFAULT_PALETTE` as `#1c1c1e/#8a8a8e/#c9c9ce` and `src/renderer/tile/main.ts:26` defines a *different* one as `#1e1e2a/#4b5563/#9ca3af`. A tile falling back in the main process and a tile falling back in the renderer are two different colours today. This phase makes the fallback path common, so they have to agree first.
 
@@ -1055,7 +1056,12 @@ class FakeClient implements TileClient {
   started = false;
   stopped = 0;
   readonly prompts: Array<{ sessionId: string; text: string }> = [];
-  startError: Error | null = null;
+  /**
+   * Armed by the harness at construction, never set afterwards: `launch` calls
+   * `start()` before it returns to the test, so a test that assigns this after
+   * calling `launch` would arm a gun already fired.
+   */
+  constructor(readonly startError: Error | null = null) {}
   /** Resolves `prompt`; a test can hold a turn open by not calling it. */
   private resolvePrompt: (() => void) | null = null;
   onUpdate: (sessionId: string, update: Record<string, unknown>) => void = () => {};
@@ -1097,7 +1103,12 @@ interface Harness {
   hermes: FakeHermes;
 }
 
-function harness(over: Partial<TileDeps> = {}): Harness {
+/**
+ * `startError` arms the *next* client to fail its handshake. It is a harness
+ * argument rather than a field a test sets afterwards because `launch` calls
+ * `client.start()` synchronously, before its promise ever returns to the test.
+ */
+function harness(startError: Error | null = null): Harness {
   const windows: FakeWindow[] = [];
   const clients: FakeClient[] = [];
   const hermes = new FakeHermes(INSTALLED_EMPTY);
@@ -1109,13 +1120,12 @@ function harness(over: Partial<TileDeps> = {}): Harness {
       return w;
     },
     createClient: (opts) => {
-      const c = new FakeClient();
+      const c = new FakeClient(startError);
       c.onUpdate = opts.onUpdate;
       c.onExit = opts.onExit;
       clients.push(c);
       return c;
     },
-    ...over,
   };
   return { registry: new TileRegistry(deps), windows, clients, hermes };
 }
@@ -1292,7 +1302,9 @@ describe('prompting', () => {
     expect(h.windows[0]!.openings().some((t) => t.includes('connection closed'))).toBe(true);
   });
 
-  it('says so rather than going quiet when there is no tile', async () => {
+  // There is no window to say anything into, so silence is the only option
+  // here. Every branch that *does* have a tile ends in something visible.
+  it('does nothing for a profile with no tile', async () => {
     const h = harness();
     await expect(h.registry.prompt('nobody', 'hello')).resolves.toBeUndefined();
   });
@@ -1363,9 +1375,8 @@ describe('supersession', () => {
 
 describe('a launch that cannot reach its agent', () => {
   it('reaps the client and explains itself in the tile', async () => {
-    const h = harness();
+    const h = harness(new Error('spawn ENOENT'));
     const launch = h.registry.launch(character('default'), 'default');
-    h.clients[0]!.startError = new Error('spawn ENOENT');
     h.windows[0]!.fireLoaded();
     await launch;
 
@@ -1376,15 +1387,25 @@ describe('a launch that cannot reach its agent', () => {
   });
 
   it('reports a message typed while it was starting as unsent', async () => {
-    const h = harness();
+    const h = harness(new Error('spawn ENOENT'));
     const launch = h.registry.launch(character('default'), 'default');
-    h.clients[0]!.startError = new Error('spawn ENOENT');
-    h.registry.prompt('default', 'are you there?'); // held: launch in flight
+    void h.registry.prompt('default', 'are you there?'); // held: launch in flight
     h.windows[0]!.fireLoaded();
     await launch;
 
     const text = h.windows[0]!.openings().join('\n');
     expect(text).toMatch(/message you typed while it was starting wasn't sent/i);
+  });
+
+  // The tile is gone from the registry, so a later message has nowhere to go
+  // and must not resurrect it.
+  it('forgets the tile, so the profile can be launched again', async () => {
+    const h = harness(new Error('spawn ENOENT'));
+    const launch = h.registry.launch(character('default'), 'default');
+    h.windows[0]!.fireLoaded();
+    await launch;
+
+    expect(h.registry.openProfileIds()).toEqual([]);
   });
 });
 
@@ -1933,12 +1954,15 @@ commit is reviewable as the same behaviour rewired, not as new behaviour."
 ### Task 7: Tiles open where the user is looking
 
 **Files:**
-- Modify: `src/main/windows.ts:46-63` (`createTileWindow`)
-- Test: `test/windows.test.ts` (create) — the placement maths only
+- Create: `src/main/tileLayout.ts` (the placement maths and the size constants)
+- Modify: `src/main/windows.ts:46-63` (`createTileWindow`), `src/main/tiles.ts` (`createWindow` gains an index), `src/main/index.ts` (forward it)
+- Test: `test/tileLayout.test.ts` (create)
 
 **Interfaces:**
-- Consumes: nothing from earlier tasks.
-- Produces: `tilePosition(workArea: Rect, index: number): { x: number; y: number }`; `createTileWindow(character, profileId, index?)`.
+- Consumes: `TileDeps` (Task 5).
+- Produces: `interface Rect`; `TILE_W`, `TILE_H`; `tilePosition(workArea: Rect, index: number): { x: number; y: number }` — all from `./tileLayout`, re-exported by `windows.ts` for existing importers; `createTileWindow(character, profileId, index?)`.
+
+**Why a separate module and not just an exported function:** `src/main/windows.ts` imports `electron` at module scope, and `vitest.config.ts` runs `environment: 'node'` — so a test importing `windows.ts` throws before any test body runs, exactly as `index.ts` does. The maths has to live somewhere with no Electron import to be testable at all. `windows.ts` re-exports `TILE_W`/`TILE_H` so nothing that imports them today has to change.
 
 **The two defects, both observed live on 2026-08-16 and both invisible to the suite (§4.6):**
 
@@ -1949,11 +1973,11 @@ commit is reviewable as the same behaviour rewired, not as new behaviour."
 
 - [ ] **Step 1: Write the failing test**
 
-Create `test/windows.test.ts`:
+Create `test/tileLayout.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { tilePosition, TILE_H, TILE_W } from '../src/main/windows';
+import { tilePosition, TILE_H, TILE_W } from '../src/main/tileLayout';
 
 /** A 1920×1080 display whose work area starts below a menu bar. */
 const WORK_AREA = { x: 0, y: 25, width: 1920, height: 1055 };
@@ -2001,14 +2025,18 @@ describe('tilePosition', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `npx vitest run test/windows.test.ts`
-Expected: FAIL — `tilePosition` is not exported. (If the import of `windows.ts` itself throws on `electron`, that is the signal to keep `tilePosition` free of any `screen` reference; it takes a plain rect for exactly that reason. Should Vitest still refuse to load the module, move `tilePosition` and the two size constants into a new `src/main/tileLayout.ts` with no Electron import, re-export them from `windows.ts`, and point the test at the new module.)
+Run: `npx vitest run test/tileLayout.test.ts`
+Expected: FAIL — `Failed to resolve import "../src/main/tileLayout"`.
 
-- [ ] **Step 3: Implement**
+- [ ] **Step 3: Implement the layout module**
 
-In `src/main/windows.ts`, add above `createTileWindow`:
+Create `src/main/tileLayout.ts`. It must import nothing — no Electron, no Node — so a test can load it.
 
 ```ts
+export const TILE_W = 430;
+export const TILE_H = 480;
+
+
 /** The rectangle part of an Electron `Display.workArea`, with no Electron types. */
 export interface Rect {
   x: number;
@@ -2051,6 +2079,14 @@ export function tilePosition(workArea: Rect, index: number): { x: number; y: num
     y: Math.max(workArea.y, Math.min(rawY, workArea.y + workArea.height - TILE_H)),
   };
 }
+```
+
+In `src/main/windows.ts`, delete the `TILE_W`/`TILE_H` declarations and re-export them from the new module so existing importers are unaffected:
+
+```ts
+import { tilePosition, TILE_H, TILE_W } from './tileLayout';
+
+export { TILE_H, TILE_W };
 ```
 
 Then replace `createTileWindow`'s first line and its `x`/`y`, and raise the window before returning:
@@ -2109,13 +2145,13 @@ In `test/tiles.test.ts`'s harness, the `createWindow` fake already ignores its a
 
 - [ ] **Step 5: Run the tests**
 
-Run: `npx vitest run test/windows.test.ts test/tiles.test.ts && npm run typecheck`
+Run: `npx vitest run test/tileLayout.test.ts test/tiles.test.ts && npm run typecheck`
 Expected: PASS, clean.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/main/windows.ts src/main/tiles.ts src/main/index.ts test/windows.test.ts
+git add src/main/tileLayout.ts src/main/windows.ts src/main/tiles.ts src/main/index.ts test/tileLayout.test.ts
 git commit -m "fix: open tiles on the display the user is looking at, in front
 
 Two defects seen live on 2026-08-16 and invisible to the suite: tiles anchored
@@ -2189,10 +2225,19 @@ describe('tileableProfiles', () => {
 });
 
 describe('FleetWatch', () => {
-  const CONFIGURED = {
-    ...INSTALLED_EMPTY,
-    files: { 'SOUL.md': '# Trillian — the one who keeps the plot\n' },
-  };
+  /**
+   * A function, not a shared const: these tests add a profile mid-run by
+   * mutating `scenarioModels`, and a spread copies `models` by reference — so a
+   * shared fixture would leak `ford` into `INSTALLED_EMPTY` itself and into
+   * every other test file that imports it.
+   */
+  function configured() {
+    return {
+      ...INSTALLED_EMPTY,
+      models: { ...INSTALLED_EMPTY.models },
+      files: { 'SOUL.md': '# Trillian — the one who keeps the plot\n' },
+    };
+  }
 
   function watcher(hermes: FakeHermes, isOpen: (id: string) => boolean = () => false) {
     const opened: string[] = [];
@@ -2208,7 +2253,7 @@ describe('FleetWatch', () => {
   }
 
   it('opens a tile for a profile that becomes real', async () => {
-    const hermes = new FakeHermes(CONFIGURED);
+    const hermes = new FakeHermes(configured());
     const { watch, opened } = watcher(hermes);
     const stop = watch.start();
 
@@ -2223,7 +2268,7 @@ describe('FleetWatch', () => {
   // fs.watch fires on directory creation, before SOUL.md exists. Tiling then
   // spawns an agent against a persona that is not there yet (cf. 8733673).
   it('does not tile a directory that has no persona yet', async () => {
-    const hermes = new FakeHermes(CONFIGURED);
+    const hermes = new FakeHermes(configured());
     const { watch, opened } = watcher(hermes);
     const stop = watch.start();
 
@@ -2236,7 +2281,7 @@ describe('FleetWatch', () => {
   });
 
   it('tiles it once the persona lands on a later event', async () => {
-    const hermes = new FakeHermes(CONFIGURED);
+    const hermes = new FakeHermes(configured());
     const { watch, opened } = watcher(hermes);
     const stop = watch.start();
 
@@ -2251,7 +2296,7 @@ describe('FleetWatch', () => {
   });
 
   it('never opens a second tile for a profile that already has one', async () => {
-    const hermes = new FakeHermes(CONFIGURED);
+    const hermes = new FakeHermes(configured());
     const open = new Set<string>();
     const { watch, opened } = watcher(hermes, (id) => open.has(id));
     const stop = watch.start();
@@ -2270,7 +2315,7 @@ describe('FleetWatch', () => {
   });
 
   it('coalesces a burst of events into one enumeration', async () => {
-    const hermes = new FakeHermes(CONFIGURED);
+    const hermes = new FakeHermes(configured());
     const { watch, opened } = watcher(hermes);
     const stop = watch.start();
     hermes.scenarioModels.ford = 'claude-opus-5';
@@ -2286,7 +2331,7 @@ describe('FleetWatch', () => {
   // The home also carries state.db, logs and session files, which change
   // constantly. Re-enumerating profiles on every one of those is waste.
   it('ignores changes outside the profiles directory', async () => {
-    const hermes = new FakeHermes(CONFIGURED);
+    const hermes = new FakeHermes(configured());
     const { watch, opened } = watcher(hermes);
     const stop = watch.start();
 
@@ -2299,7 +2344,7 @@ describe('FleetWatch', () => {
   });
 
   it('stops watching when told to', async () => {
-    const hermes = new FakeHermes(CONFIGURED);
+    const hermes = new FakeHermes(configured());
     const { watch, opened } = watcher(hermes);
     const stop = watch.start();
     stop();
@@ -2314,7 +2359,7 @@ describe('FleetWatch', () => {
 
   // A watch that dies on one bad enumeration stops the core loop silently.
   it('survives an enumeration that throws', async () => {
-    const hermes = new FakeHermes(CONFIGURED);
+    const hermes = new FakeHermes(configured());
     const { watch, opened } = watcher(hermes);
     const stop = watch.start();
     const realList = hermes.listProfiles.bind(hermes);
