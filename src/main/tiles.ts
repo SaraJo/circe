@@ -39,7 +39,7 @@ export interface TileClientOptions {
 
 export interface TileDeps {
   hermes: HermesRuntime;
-  createWindow(character: Character, profileId: string): TileWindow;
+  createWindow(character: Character, profileId: string, index: number): TileWindow;
   createClient(opts: TileClientOptions): TileClient;
 }
 
@@ -104,7 +104,7 @@ export class TileRegistry {
     // Opened before the window exists, so there is no instant in which the tile
     // is on screen with an enabled input and nowhere for a message to go.
     session.beginLaunch();
-    const win = this.deps.createWindow(character, profileId);
+    const win = this.deps.createWindow(character, profileId, this.tiles.size);
 
     // Declared before `createClient` so its callbacks close over a real guard
     // rather than a temporal-dead-zone reference — a client implementation

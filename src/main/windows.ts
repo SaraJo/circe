@@ -2,11 +2,12 @@ import { BrowserWindow, screen } from 'electron';
 import { join } from 'node:path';
 import type { Character } from '../shared/types';
 import type { TileWindow } from './tiles';
+import { tilePosition, TILE_H, TILE_W } from './tileLayout';
+
+export { TILE_H, TILE_W };
 
 const WIZARD_W = 640;
 const WIZARD_H = 560;
-export const TILE_W = 430;
-export const TILE_H = 480;
 
 /**
  * Pins a window to the document it was created with. Both renderers load a
@@ -44,13 +45,20 @@ export function createWizardWindow(): BrowserWindow {
   return win;
 }
 
-export function createTileWindow(character: Character, profileId: string): BrowserWindow {
-  const { workArea } = screen.getPrimaryDisplay();
+export function createTileWindow(
+  character: Character,
+  profileId: string,
+  index = 0,
+): BrowserWindow {
+  // The display holding the cursor, not the primary one. Onboarding finished on
+  // a laptop screen used to put the tile on a 3840-wide external display.
+  const { workArea } = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const { x, y } = tilePosition(workArea, index);
   const win = new BrowserWindow({
     width: TILE_W,
     height: TILE_H,
-    x: workArea.x + workArea.width - TILE_W - 40,
-    y: workArea.y + 40,
+    x,
+    y,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
@@ -60,6 +68,11 @@ export function createTileWindow(character: Character, profileId: string): Brows
   win.loadFile(join(__dirname, '../renderer/tile/index.html'), {
     query: { profile: profileId, character: JSON.stringify(character) },
   });
+  // Nothing raised a tile on creation, so a frameless, transparent, chrome-less
+  // window opened behind whatever the user had in front. `show()` on an
+  // already-visible window raises it.
+  win.show();
+  win.focus();
   return win;
 }
 

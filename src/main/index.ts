@@ -43,7 +43,8 @@ function openExternalSafely(url: string): void {
 function createRegistry(): TileRegistry {
   return new TileRegistry({
     hermes,
-    createWindow: (character, profileId) => adaptTileWindow(createTileWindow(character, profileId)),
+    createWindow: (character, profileId, index) =>
+      adaptTileWindow(createTileWindow(character, profileId, index)),
     createClient: (opts) => new AcpClient(opts),
   });
 }
