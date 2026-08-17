@@ -56,6 +56,31 @@ describe('the orchestrator skill', () => {
     expect(text).not.toContain('~/.hermes');
     expect(text).toContain('HERMES_HOME');
   });
+
+  // R1: `${HERMES_HOME:-$HOME/.hermes}` is shell parameter expansion. Naming
+  // it in a "Write <path>" instruction is not enough — an agent that
+  // satisfies "write a file" with a file-write tool passes that path through
+  // unexpanded and creates a literal `${HERMES_HOME:-$HOME/.hermes}`
+  // directory, reproducing C1's exact symptom (no SOUL.md where Hermes looks,
+  // so isReal stays false and no tile appears) even though the skill now
+  // "mentions" HERMES_HOME. The skill must tell the agent to resolve it to a
+  // concrete path first.
+  it('tells the agent to resolve HERMES_HOME to a concrete path before writing, not just name the variable', async () => {
+    const text = await readFile(SKILL_SOURCE_PATH, 'utf8');
+    expect(text).toMatch(/echo\s+"\$\{HERMES_HOME/);
+    expect(text).toMatch(/absolute path/i);
+  });
+
+  // The load-bearing half of R1: no "Write `<path>`" instruction may itself
+  // contain the raw expansion syntax, however clearly the surrounding prose
+  // explains it — a model asked to write that literal string will write it
+  // literally.
+  it('never asks the agent to write a path containing shell expansion syntax', async () => {
+    const text = await readFile(SKILL_SOURCE_PATH, 'utf8');
+    const writeTargets = [...text.matchAll(/Write `([^`]+)`/g)].map((m) => m[1]);
+    expect(writeTargets.length).toBeGreaterThan(0);
+    for (const target of writeTargets) expect(target).not.toContain('${');
+  });
 });
 
 describe('installOrchestratorSkill', () => {

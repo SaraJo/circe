@@ -32,16 +32,19 @@ Once the user has said yes:
 1. Pick the profile id: lowercase, `[a-z0-9-]`, at most 32 characters, derived from
    the name.
 2. `hermes profile create <id> --description "<the one-sentence domain>"`
-3. Write `"${HERMES_HOME:-$HOME/.hermes}/profiles/<id>/SOUL.md"`, starting with
-   `# <Name> — <domain>`. The heading matters: it is how the profile is
-   recognised as configured rather than as an untouched scaffold. Use
-   `$HERMES_HOME` when it is set — never a hardcoded path under the operator's
-   home directory — the same way `hermes profile create` above already does:
-   you inherit the same environment it runs in, and a hardcoded path writes
-   into the operator's real home even when everything else here is running
-   inside a sandbox.
-4. Write `"${HERMES_HOME:-$HOME/.hermes}/profiles/<id>/circe.json"` — the
-   agent's colours:
+3. Resolve the profile's real location once, then use it for both file writes
+   below: run `echo "${HERMES_HOME:-$HOME/.hermes}"` and use the absolute path
+   it prints as `<home>`. Never write the literal text
+   `${HERMES_HOME:-$HOME/.hermes}` into a path you hand to a file-write tool —
+   that syntax only expands inside a shell command, and a tool that just
+   writes the file you asked for will create a directory with that literal
+   name instead of honouring `HERMES_HOME`, the same way `hermes profile
+   create` above already does (you inherit the same environment it runs in).
+   Write `<home>/profiles/<id>/SOUL.md`, starting with `# <Name> — <domain>`.
+   The heading matters: it is how the profile is recognised as configured
+   rather than as an untouched scaffold.
+4. Write `<home>/profiles/<id>/circe.json` — using the same `<home>` you
+   resolved above — the agent's colours:
 
    ```json
    {
