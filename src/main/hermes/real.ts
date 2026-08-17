@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { watch } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
@@ -140,6 +141,27 @@ export class RealHermes implements HermesRuntime {
     const abs = join(this.p.home, relPath);
     await mkdir(dirname(abs), { recursive: true });
     await writeFile(abs, contents, 'utf8');
+  }
+
+  watchHome(onChange: (relPath: string) => void): () => void {
+    let watcher: import('node:fs').FSWatcher;
+    try {
+      watcher = watch(this.p.home, { recursive: true, persistent: false }, (_event, filename) => {
+        // `filename` is null on some events; there is nothing to attribute
+        // them to, and the caller re-enumerates anyway on the ones we forward.
+        if (filename) onChange(filename.toString());
+      });
+    } catch (err) {
+      // A home that cannot be watched costs the live-update half of the fleet:
+      // tiles still open at boot, new agents just need a restart to appear.
+      // Failing the app over it would be worse.
+      console.warn(`Could not watch the Hermes home; new agents will need a restart.`, err);
+      return () => {};
+    }
+    watcher.on('error', (err) => {
+      console.warn('Stopped watching the Hermes home.', err);
+    });
+    return () => watcher.close();
   }
 
   /**

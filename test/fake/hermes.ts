@@ -49,8 +49,15 @@ export class FakeHermes implements HermesRuntime {
   /** Every query the code under test made, for assertions. */
   readonly queries: Array<{ profileId: string; prompt: string }> = [];
 
-  constructor(private scenario: Scenario) {
+  private homeWatchers = new Set<(relPath: string) => void>();
+
+  constructor(public scenario: Scenario) {
     this.files = new Map(Object.entries(scenario.files));
+  }
+
+  /** Mutable so a test can add a profile mid-run, as `hermes profile create` would. */
+  get scenarioModels(): Record<string, string> {
+    return this.scenario.models;
   }
 
   paths(): HermesPaths {
@@ -95,5 +102,15 @@ export class FakeHermes implements HermesRuntime {
 
   async writeHomeFile(relPath: string, contents: string): Promise<void> {
     this.files.set(relPath, contents);
+  }
+
+  watchHome(onChange: (relPath: string) => void): () => void {
+    this.homeWatchers.add(onChange);
+    return () => this.homeWatchers.delete(onChange);
+  }
+
+  /** Fires what a real `fs.watch` would fire. */
+  fireHomeChange(relPath: string): void {
+    for (const cb of this.homeWatchers) cb(relPath);
   }
 }

@@ -52,4 +52,13 @@ export interface HermesRuntime {
   readHomeFile(relPath: string): Promise<string | null>;
   /** Write a file under the Hermes home, creating parent directories. */
   writeHomeFile(relPath: string, contents: string): Promise<void>;
+  /**
+   * Watches the Hermes home for changes, calling back with the path that
+   * changed, relative to the home. Returns a function that stops watching.
+   *
+   * Recursive, because `profiles/` does not exist on a fresh install and
+   * watching a directory that is not there fails rather than waiting for it.
+   * macOS only (constraint 1), which is where recursive watching works.
+   */
+  watchHome(onChange: (relPath: string) => void): () => void;
 }
