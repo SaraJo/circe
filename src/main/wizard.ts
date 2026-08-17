@@ -6,6 +6,7 @@ import { writeSoul } from './soul';
 import { loadTemplate, renderOrchestratorSoul } from './orchestrator/soulTemplate';
 import { installOrchestratorSkill } from './orchestrator/skill';
 import { LAST_LAUNCH_PATH, serializeLastLaunch } from './startup';
+import { writeProfileTheme } from './profileTheme';
 
 /**
  * States from which submitting a fandom makes sense: the fresh question, a
@@ -230,6 +231,16 @@ export class Wizard {
         personaReplaced,
       });
       return;
+    }
+    // Deliberately outside the block above, and deliberately swallowed. The
+    // persona is already on disk; failing the launch now would trade a working
+    // agent for its colours, and would leave the user with a `write-failed`
+    // screen for a file the agent never reads. A profile with no `circe.json`
+    // falls back to the neutral palette and is otherwise complete.
+    try {
+      await writeProfileTheme(this.hermes, 'default', character.palette);
+    } catch (err) {
+      console.warn("Could not write the profile's colours (circe.json):", err);
     }
     // Deliberately outside the block above, and deliberately swallowed. This
     // record only caches the tile's colours for the next cold start — the way

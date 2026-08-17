@@ -102,6 +102,37 @@ describe('a fresh Hermes install', () => {
 
     expect(w.state).toMatchObject({ kind: 'launching', profileId: 'default' });
   });
+
+  it("writes the character's colours into the profile", async () => {
+    const { hermes, w } = await toMeet(INSTALLED_EMPTY);
+
+    await w.accept();
+
+    const theme = JSON.parse((await hermes.readHomeFile('circe.json'))!);
+    expect(theme).toEqual({
+      version: 1,
+      palette: { bg: '#1e2952', border: '#c7d2fe', accent: '#a5b4fc' },
+    });
+  });
+
+  it('still launches when the colours cannot be written', async () => {
+    // Colours are not worth trading a working agent for. The persona is already
+    // on disk by this point and must not be rolled back (ruling F-1).
+    const hermes = new FakeHermes(scenario(INSTALLED_EMPTY));
+    const realWrite = hermes.writeHomeFile.bind(hermes);
+    hermes.writeHomeFile = async (rel: string, contents: string) => {
+      if (rel === 'circe.json') throw new Error('EACCES');
+      return realWrite(rel, contents);
+    };
+    const w = new Wizard(hermes);
+    await w.start();
+    await w.submitFandom("Hitchhiker's Guide to the Galaxy");
+
+    await w.accept();
+
+    expect(w.state).toMatchObject({ kind: 'launching', profileId: 'default' });
+    expect(await hermes.readHomeFile('SOUL.md')).toContain('# Trillian');
+  });
 });
 
 describe('a machine that already has agents', () => {
