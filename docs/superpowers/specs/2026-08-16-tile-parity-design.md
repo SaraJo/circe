@@ -222,6 +222,50 @@ reasoning still holds and is now stronger, since there is no wizard route to fal
 `activate` reopens the fleet from saved state. Non-darwin platforms quit on last close, as
 today.
 
+### 4.3.1 The tile registry, and the seam that makes it testable
+
+Every piece of tile state in `index.ts` today is a module-level singleton: `tileWin`, `acp`,
+`tileLoaded`, `tileQueue`, `tileReady`, `tileSession`, `lastLaunch`. Fleet tiles make each of
+them per-profile. That is a rewrite of the one main-process file no test can import — `index.ts`
+pulls in `electron` at module scope and calls `app.setName` there, so the import throws under
+Vitest before any test body runs. The untested surface is not incidental: `launchTile`'s window
+and client wiring, the three-way `tileReady` race, `sendToTile`'s queue-until-loaded,
+`sendPrompt`'s turn-end-on-both-outcomes contract, the `onUpdate` session filter, `onExit`, the
+`closed` handler's reset, `tile:prompt`'s dispatch, and `tile:close`. `restore.ts` *depends* on
+the turn-end contract and can only test it against a fake.
+
+So the per-profile state moves to `src/main/tiles.ts`, which imports no Electron and takes its
+collaborators as constructor parameters — a window factory, an ACP client factory, `hermes`, and
+the restore function. A narrow `TileWindow` interface covers what the registry actually needs
+(`send`, `isDestroyed`, `close`, `show`, `focus`, `isMinimized`, `restore`, and the three
+lifecycle subscriptions); `windows.ts` satisfies it with a real `BrowserWindow` and tests satisfy
+it with an object. This is the same treatment `restore.ts` got in the Phase 1 fix wave, applied
+to what stayed behind. `index.ts` keeps the wizard IPC, `boot`, and the app lifecycle.
+
+**Supersession generalises per profile.** Phase 1 established the discipline that a launch writes
+shared state only while it is still the current one — the `acp === client` guard at
+`index.ts:191`, which stops a tile closed and reopened mid-launch from having its live session
+cleared by the superseded launch's handlers. With one client per profile the test becomes
+`registry.get(profileId)?.client === client`. The guard must survive the move intact; it is
+timing-dependent, was never exercised by hand, and is exactly the kind of cross-module contract
+that per-task review misses.
+
+**Launching a profile that already has a tile focuses it.** Today `launchTile` opens with
+`if (tileWin) return` — a silent no-op, correct when there is one tile and the only second caller
+is `activate`. Under a directory watch, a profile whose files are touched again must produce no
+second tile, and §4.3's own test says duplicates don't tile. Returning silently would also make
+`activate` unable to raise a specific tile. So the guard becomes: an existing tile for that
+profile is shown and focused, not reopened.
+
+**`tile:prompt` and `tile:close` are routed by sender, not by a renderer-supplied id.** Both
+channels carry only their payload today (`preload/tile.ts`), because there has only ever been one
+tile. The main process resolves which tile spoke by matching `event.sender` against the
+registry's windows, and drops a message from a `webContents` it does not recognise. The
+alternative — having the preload pass its own `profileId` — would let a compromised renderer
+prompt *another* agent, and `windows.ts`'s `pinToItsOwnDocument` exists precisely because an
+agent reply can render a live link into a window holding `send()`. A window may only ever speak
+for itself.
+
 ### 4.4 Permission consent surface
 
 Three modes on a header button, persisted per profile, defaulting to **`ask`**:
@@ -294,8 +338,16 @@ Two defects observed live on 2026-08-16, both invisible to the test suite:
 
 ## 6. Testing
 
-The existing 157 tests must stay green. New coverage:
+The existing tests must stay green — 227 as of the end of Phase 1, up from the 157 this design
+was written against. New coverage:
 
+- **Tile registry (§4.3.1):** the behaviour that has never had a test, now that it is importable —
+  launch wiring; the `tileReady` race resolving on each of `did-finish-load`, `did-fail-load` and
+  `closed`; the queue flushing in order to the window it was queued for; turn-end firing on both
+  prompt outcomes; the update filter dropping another session's updates; `onExit`; the `closed`
+  reset; launch failure reaping the client and reporting unsent messages; per-profile supersession;
+  focus-don't-reopen; and sender-routed `tile:prompt`/`tile:close`, including a message from an
+  unrecognised `webContents` being dropped.
 - **State store:** round-trip, corruption, wrong shape, future version, absent file.
 - **Update routing:** an update for session B never lands in tab A; outer/inner shape asserted
   against the captured payloads in §2.
@@ -317,6 +369,13 @@ required, covering: cold start restoring a conversation, a second tab, a permiss
 appearing and being answered, a new profile producing a tile, and tile placement on the active
 display.
 
+Each phase walks the subset it shipped, not the whole list (§9). **Phase 2's walkthrough:** a
+profile created outside Circe — at a terminal, with `hermes profile create` plus two file
+writes — produces exactly one correctly-themed tile without a restart; the orchestrator creating
+a specialist mid-conversation does the same; tiles open on the display holding the cursor and
+come up in front; and the `circe/replay-abandoned` notice and the held-message flow, both of
+which Phase 1 shipped without anyone watching them run.
+
 ## 7. Out of scope
 
 - **Re-onboarding route.** The startup change removed the only path back to the wizard: cold
@@ -332,3 +391,25 @@ The permission gate is a consent and visibility surface, not a sandbox. It answe
 requests Hermes chooses to surface — verified to include `write_file` and to exclude
 `terminal`. A user who wants to constrain what an agent can reach does it with
 `hermes skills config` and `hermes tools`, at the source. The tile's copy says so.
+
+## 9. Phasing
+
+This design is delivered in four phases. The cut is dependency-driven, not arbitrary: themed
+fleet tiles are impossible before the palette leaves Circe's record (§3), and §3.1 on its own
+changes nothing the user can see.
+
+| Phase | Covers | Status |
+|---|---|---|
+| 1 | Session restore — ACP session lifecycle, `circe/state.json`, replayed transcript | **Done** 2026-08-16, walkthrough passed, fix wave landed |
+| 2 | The core loop — §3.1 + §4.7 (palette into the profile), §4.3 + §4.3.1 (fleet tiles and the registry seam), §4.6 (active display, raise) | Planned |
+| 3 | §4.2 tabs, §4.5 tile chrome | Not started |
+| 4 | §4.4 permission consent surface | Not started |
+
+Phase 2 ends at the product's thesis: the orchestrator creates a specialist in conversation, and
+a correctly-themed tile for it appears on the display the user is actually looking at, with no
+Circe involvement in its creation. That is also constraint 10's own test, run for real.
+
+The renderer's update switch stays shadowed by a hand-maintained copy in `test/restore.test.ts`
+until Phase 3, which rewrites the renderer for tabs and chrome. Extracting it in Phase 2 would be
+redone there. This is a knowing gap, recorded in the build decision record, and the reason Phase
+2 still requires a walkthrough by eye before merge.
