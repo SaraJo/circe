@@ -1,4 +1,17 @@
-* { box-sizing: border-box; }
+/**
+ * Ported wholesale from the prototype at `~/Code/circe/styles.css`, which is
+ * the reference for how a tile should look and feel. Where a rule here differs
+ * from that file, the difference is deliberate and noted — everything else is
+ * the prototype's, including the values that look arbitrary.
+ *
+ * The class names are this build's (`.msg.md` / `.msg.plain` rather than the
+ * prototype's single `.msg.agent`), because the renderer emits them and this
+ * is a restyle, not a rewrite.
+ */
+
+* {
+  box-sizing: border-box;
+}
 
 /**
  * The window is transparent and larger than the card by `SHADOW_GUTTER` on
@@ -8,13 +21,14 @@
  * shows, and a filled body is a rectangle with square corners no matter what
  * radius the card has.
  */
+html,
 body {
   margin: 0;
   padding: 18px;
   height: 100vh;
   background: transparent;
-  font: 14px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
 }
@@ -24,13 +38,18 @@ body {
  * white body text has to be readable on them — and at that lightness a
  * straight blur leaves them looking like grey. Saturating what shows through
  * is what makes a dark colour still read as *its* colour, which is the whole
- * point of theming a tile to its character. Ported from the prototype, where
- * the same value is what makes an almost-black teal still look teal.
+ * point of theming a tile to its character. It is what keeps the prototype's
+ * own almost-black teal reading as teal.
+ *
+ * The generous top padding is the drag strip: the card is draggable as a
+ * whole, with the parts you interact with opted out below, so there is
+ * somewhere to grab that is not a control.
  */
 .tile {
   height: 100%;
   display: flex;
   flex-direction: column;
+  padding: 38px 16px 16px;
   background: var(--tile-bg);
   border: 1px solid var(--tile-border);
   border-radius: 20px;
@@ -38,81 +57,233 @@ body {
   backdrop-filter: blur(24px) saturate(140%);
   -webkit-backdrop-filter: blur(24px) saturate(140%);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  -webkit-app-region: drag;
+}
+#bar,
+#log,
+footer {
+  -webkit-app-region: no-drag;
 }
 
+/**
+ * A name, not a label. The previous treatment — 12px, uppercase, letterspaced,
+ * over a divider rule — is the chrome of a settings panel, and it is what made
+ * an otherwise correct tile look cheap. The prototype gives the agent's name
+ * the weight of a name and lets the card's own edge do the separating.
+ */
 #bar {
-  -webkit-app-region: drag;
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--tile-border);
-  font-size: 12px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--accent);
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+#who {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
 }
 #close {
   -webkit-app-region: no-drag;
-  background: none; border: none; color: var(--muted);
-  font-size: 18px; line-height: 1; cursor: pointer;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--tile-border);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s;
+}
+#close:hover {
+  background: rgba(0, 0, 0, 0.4);
 }
 
-#log { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
-.msg { padding: 9px 12px; border-radius: 10px; max-width: 88%; overflow-wrap: anywhere; }
-.msg.user { background: var(--user-bg); align-self: flex-end; }
-.msg.agent { background: var(--agent-bg); align-self: flex-start; }
-.msg.error { background: var(--agent-bg); align-self: flex-start; color: var(--muted); font-style: italic; }
+#log {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 4px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+#log::-webkit-scrollbar {
+  width: 6px;
+}
+#log::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.msg {
+  padding: 8px 10px;
+  border-radius: 12px;
+  max-width: 92%;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+.msg.user {
+  background: var(--user-bg);
+  align-self: flex-end;
+}
+.msg.agent {
+  background: var(--agent-bg);
+  align-self: flex-start;
+}
+
+/* An error is not a quiet aside: it gets the colour of one. */
+.msg.error {
+  background: rgba(220, 38, 38, 0.35);
+  color: #ffe4e4;
+  align-self: flex-start;
+}
 .msg.tool {
-  background: none; align-self: flex-start; padding: 0 2px;
-  color: var(--muted); font-size: 12px; opacity: 0.8;
+  background: rgba(255, 255, 255, 0.06);
+  align-self: flex-start;
+  color: var(--muted);
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 11px;
 }
 
 /* Only bubbles that are literally plain text keep their newlines this way.
    Applying it to the Markdown-rendered bubble too would render the newlines
    *between* block elements as blank lines on top of the elements' own
    margins. */
-.msg.plain { white-space: pre-wrap; }
+.msg.plain {
+  white-space: pre-wrap;
+}
 
 /* The rendered agent reply. `marked` emits real block elements, so they need
    real block styling — margins collapsed at the bubble's edges so a
    single-paragraph reply is the same height it was as plain text. */
-.msg.md > :first-child { margin-top: 0; }
-.msg.md > :last-child { margin-bottom: 0; }
-.msg.md p, .msg.md ul, .msg.md ol, .msg.md pre, .msg.md blockquote { margin: 0 0 8px; }
-.msg.md ul, .msg.md ol { padding-left: 20px; }
+.msg.md > :first-child {
+  margin-top: 0;
+}
+.msg.md > :last-child {
+  margin-bottom: 0;
+}
+.msg.md p {
+  margin: 0 0 8px;
+}
+.msg.md h1,
+.msg.md h2,
+.msg.md h3,
+.msg.md h4 {
+  margin: 10px 0 6px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.msg.md h1 { font-size: 16px; }
+.msg.md h2 { font-size: 14px; }
+.msg.md h3 { font-size: 13px; }
+.msg.md h4 { font-size: 12px; color: var(--muted); }
+.msg.md ul,
+.msg.md ol {
+  margin: 4px 0 8px;
+  padding-left: 20px;
+}
 .msg.md li { margin: 2px 0; }
-.msg.md h1, .msg.md h2, .msg.md h3, .msg.md h4 {
-  margin: 12px 0 6px; font-size: 14px; font-weight: 600; color: var(--accent);
+.msg.md li > p { margin: 0; }
+.msg.md a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
-.msg.md a { color: var(--accent); }
-.msg.md blockquote {
-  padding-left: 10px; border-left: 2px solid var(--tile-border); color: var(--muted);
-}
-.msg.md blockquote > :last-child, .msg.md li > :last-child { margin-bottom: 0; }
-.msg.md hr { border: none; border-top: 1px solid var(--tile-border); margin: 10px 0; }
+.msg.md strong { font-weight: 600; }
+.msg.md em { font-style: italic; }
 .msg.md code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 12px;
 }
-.msg.md :not(pre) > code {
-  background: rgba(255, 255, 255, 0.12); padding: 1px 4px; border-radius: 4px;
-}
-/* The tile is 430px wide and never resizes: anything wider scrolls inside its
-   own bubble rather than pushing the layout out. */
+/* The tile never resizes, so anything wider than it scrolls inside its own
+   bubble rather than pushing the layout out. */
 .msg.md pre {
-  background: rgba(0, 0, 0, 0.28); padding: 8px 10px; border-radius: 8px;
-  overflow-x: auto; max-width: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 6px 0;
+  overflow-x: auto;
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 1.45;
 }
-.msg.md pre code { white-space: pre; overflow-wrap: normal; }
-.msg.md table { display: block; overflow-x: auto; max-width: 100%; border-collapse: collapse; }
-.msg.md th, .msg.md td { padding: 3px 8px; border: 1px solid var(--tile-border); }
-.msg.md img { max-width: 100%; }
+.msg.md pre code {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+.msg.md blockquote {
+  margin: 6px 0;
+  padding: 2px 10px;
+  border-left: 2px solid var(--accent-soft);
+  color: var(--muted);
+}
+.msg.md blockquote > :last-child,
+.msg.md li > :last-child {
+  margin-bottom: 0;
+}
+.msg.md hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  margin: 8px 0;
+}
+.msg.md table {
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+  border-collapse: collapse;
+  margin: 6px 0;
+  font-size: 12px;
+}
+.msg.md th,
+.msg.md td {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 4px 8px;
+  text-align: left;
+}
+.msg.md th {
+  background: rgba(255, 255, 255, 0.06);
+  font-weight: 600;
+}
+.msg.md img {
+  max-width: 100%;
+}
 
-footer { padding: 10px 12px; border-top: 1px solid var(--tile-border); }
+/* No divider above the composer either — the card's own edge is the frame. */
+footer {
+  display: flex;
+}
 textarea {
-  width: 100%; resize: none; font: inherit; color: inherit;
+  flex: 1;
+  resize: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
   background: var(--input-bg);
   border: 1px solid var(--tile-border);
-  border-radius: 8px; padding: 9px 11px;
+  border-radius: 10px;
+  padding: 8px 12px;
+  outline: none;
 }
-textarea:focus { outline: none; border-color: var(--accent-soft); box-shadow: 0 0 0 3px var(--accent-glow); }
+textarea::placeholder {
+  color: var(--muted);
+}
+textarea:focus {
+  border-color: var(--accent-soft);
+}
