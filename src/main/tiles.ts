@@ -56,6 +56,17 @@ interface Tile {
 
 export class TileRegistry {
   private readonly tiles = new Map<string, Tile>();
+  /**
+   * Only ever increases — never derived from `this.tiles.size`. Size drops
+   * when a tile closes, so a caller opening four tiles (indices 0-3), closing
+   * the second, then opening a fifth would hand the new tile `size` (3),
+   * landing it on the exact coordinates of the tile still open at index 3 and
+   * hiding it completely. `tilePosition` cycling through its own grid over a
+   * long session is fine and expected; a predictable *immediate* collision
+   * with a tile that's currently on screen is the bug this counter closes
+   * (I3).
+   */
+  private nextIndex = 0;
 
   constructor(private readonly deps: TileDeps) {}
 
@@ -104,7 +115,7 @@ export class TileRegistry {
     // Opened before the window exists, so there is no instant in which the tile
     // is on screen with an enabled input and nowhere for a message to go.
     session.beginLaunch();
-    const win = this.deps.createWindow(character, profileId, this.tiles.size);
+    const win = this.deps.createWindow(character, profileId, this.nextIndex++);
 
     // Declared before `createClient` so its callbacks close over a real guard
     // rather than a temporal-dead-zone reference — a client implementation

@@ -187,6 +187,8 @@ interface Harness {
   windows: FakeWindow[];
   clients: FakeClient[];
   hermes: FakeHermes;
+  /** The cascade `index` each `createWindow` call was given, in call order. */
+  indices: number[];
   /**
    * Arms the *next* client `createClient` produces, then resets. Necessary
    * because `launch` creates and starts a client synchronously, before its
@@ -205,13 +207,15 @@ function harness(startError: Error | null = null): Harness {
   const windows: FakeWindow[] = [];
   const clients: FakeClient[] = [];
   const hermes = new FakeHermes(INSTALLED_EMPTY);
+  const indices: number[] = [];
   let nextStartError = startError;
   let nextHoldStart = false;
   const deps: TileDeps = {
     hermes,
-    createWindow: () => {
+    createWindow: (_character, _profileId, index) => {
       const w = new FakeWindow();
       windows.push(w);
+      indices.push(index);
       return w;
     },
     createClient: (opts) => {
@@ -230,6 +234,7 @@ function harness(startError: Error | null = null): Harness {
     windows,
     clients,
     hermes,
+    indices,
     armNext(opts) {
       if ('startError' in opts) nextStartError = opts.startError ?? null;
       if ('holdStart' in opts) nextHoldStart = opts.holdStart ?? false;
@@ -511,6 +516,40 @@ describe('closing a tile', () => {
 
     expect(h.registry.openProfileIds()).toEqual(['default']);
     expect(h.clients[0]!.stopped).toBe(0);
+  });
+});
+
+// I3: the cascade index used to be `this.tiles.size`, which drops when a
+// tile closes and can then repeat — landing a new tile on the exact
+// coordinates of one still open. A monotonic counter fixes it; these tests
+// are written to go red against `this.tiles.size` (see the report for the
+// mutation proof).
+describe('cascade index', () => {
+  it('never repeats the index of a tile that is still open, even after one closes', async () => {
+    const h = harness();
+    await launched(h, 'a');
+    await launched(h, 'b');
+    await launched(h, 'c');
+    await launched(h, 'd');
+    expect(h.indices).toEqual([0, 1, 2, 3]);
+
+    h.registry.close('b'); // frees up nothing an index-by-size scheme wouldn't reuse
+
+    await launched(h, 'e');
+
+    const liveIndices = [h.indices[0], h.indices[2], h.indices[3]]; // a, c, d
+    expect(liveIndices).not.toContain(h.indices[4]);
+  });
+
+  it('keeps handing out increasing indices across many opens and closes', async () => {
+    const h = harness();
+    for (const id of ['a', 'b', 'c']) await launched(h, id);
+    h.registry.close('a');
+    h.registry.close('b');
+    await launched(h, 'd');
+    await launched(h, 'e');
+
+    expect(h.indices).toEqual([0, 1, 2, 3, 4]);
   });
 });
 
