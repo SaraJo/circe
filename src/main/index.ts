@@ -3,6 +3,7 @@ import { RealHermes } from './hermes/real';
 import { Wizard } from './wizard';
 import { adaptTileWindow, createTileWindow, createWizardWindow } from './windows';
 import { AcpClient } from './acp';
+import { FleetWatch, tileableProfiles } from './fleet';
 import { openingMessage } from './orchestrator/opening';
 import { characterFor, readStartup } from './startup';
 import { TileRegistry } from './tiles';
@@ -13,6 +14,17 @@ let wizardWin: BrowserWindow | null = null;
 let hermes: RealHermes;
 let wizard: Wizard | null = null;
 let tiles: TileRegistry;
+let fleetWatch: (() => void) | null = null;
+/**
+ * The profile `activate` should raise last, so the tile the user expects in
+ * front is the one that ends up in front. Set once, by `openFleet`, from the
+ * same `mainProfileId` `readStartup` resolved — never re-derived, so it can
+ * only ever agree with what actually booted. Stays null for the onboarding
+ * handoff (`openWizard`'s `launching` handler launches its own tile directly,
+ * without going through `openFleet`), where a single tile makes the ordering
+ * moot.
+ */
+let mainProfileId: string | null = null;
 
 /**
  * Only `https:` links may be handed to `shell.openExternal` — parsed, not
@@ -160,12 +172,21 @@ async function doBoot(): Promise<void> {
 }
 
 /**
- * Opens a tile for the main operator. Task 9 widens this to the whole fleet.
+ * Opens a tile for every agent on disk, and keeps watching for more.
  *
- * `listProfiles` answers `[]` both for a home with no profiles *and* for a
- * hermes binary that is missing or broken (`RealHermes.listProfiles` catches
- * the exec failure and returns the empty array either way) — so `main` can be
- * undefined even when `SOUL.md` holds a real persona. Falling back to the
+ * The main operator is opened last because `createTileWindow` raises each
+ * window as it appears, so the last one lands in front — and that is the
+ * tile the user expects to be looking at (spec §6.6).
+ *
+ * Tiles open in sequence rather than in parallel: each one spawns a `hermes
+ * acp` child and waits on a handshake, and a seven-agent fleet starting seven
+ * subprocesses at once on a cold machine is how a launch turns into a stall.
+ *
+ * `tileableProfiles` answers `[]` both for a home with no other profiles
+ * *and* for a hermes binary that is missing or broken (`RealHermes.
+ * listProfiles`, which it filters, catches the exec failure and returns the
+ * empty array either way) — so the resolved profile list can omit the main
+ * operator even when `SOUL.md` holds a real persona. Falling back to the
  * wizard here would be wrong: the wizard's next move once a provider
  * reappears is to overwrite that persona, and a user whose persona is intact
  * must never be walked toward replacing it just because their binary broke.
@@ -176,12 +197,35 @@ async function doBoot(): Promise<void> {
  * a profile whose `SOUL.md` can't be read (falls back to `displayName`), so
  * this needs nothing else from it.
  */
-async function openFleet(mainProfileId: string): Promise<void> {
-  const profiles = await hermes.listProfiles();
-  const main = profiles.find((p) => p.id === mainProfileId) ??
+async function openFleet(mainId: string): Promise<void> {
+  mainProfileId = mainId;
+
+  const profiles = await tileableProfiles(hermes);
+  const main = profiles.find((p) => p.id === mainId) ??
     profiles.find((p) => p.id === 'default') ??
-    { id: mainProfileId, displayName: mainProfileId, model: null, isReal: true };
-  await tiles.launch(await characterFor(hermes, main), main.id);
+    { id: mainId, displayName: mainId, model: null, isReal: true };
+  const ordered = [...profiles.filter((p) => p.id !== main.id), main];
+
+  for (const profile of ordered) {
+    await tiles.launch(await characterFor(hermes, profile), profile.id);
+  }
+
+  // Stopped before being replaced, not after: re-running `openFleet` (a
+  // second `activate` racing a slow first boot, say) must never leave the
+  // earlier watch's `hermes.watchHome` subscription running alongside the
+  // new one.
+  fleetWatch?.();
+  fleetWatch = new FleetWatch({
+    hermes,
+    // Exactly what this call just launched — not re-enumerated — so the
+    // watch's seen-set agrees with the registry from its very first sweep
+    // and never re-reports a profile whose tile is already open.
+    alreadyTiled: ordered.map((p) => p.id),
+    isOpen: (id) => tiles.has(id),
+    onProfile: async (profile) => {
+      await tiles.launch(await characterFor(hermes, profile), profile.id);
+    },
+  }).start();
 }
 
 app.whenReady().then(() => {
@@ -189,6 +233,12 @@ app.whenReady().then(() => {
 });
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+// Stops `hermes.watchHome`'s filesystem subscription so it doesn't outlive
+// the app it was watching for.
+app.on('will-quit', () => {
+  fleetWatch?.();
+  fleetWatch = null;
 });
 // macOS keeps the app alive with no windows (see `window-all-closed`), and
 // without this there was no way back in: closing the tile left Circe inert
@@ -219,8 +269,20 @@ app.on('activate', () => {
     void boot();
     return;
   }
-  if (tiles.openProfileIds().length > 0) {
-    for (const id of tiles.openProfileIds()) tiles.raise(id);
+  const openIds = tiles.openProfileIds();
+  if (openIds.length > 0) {
+    // Raised in two passes, not in map order: every window's `show()`/
+    // `focus()` lands it on top of whatever came before, so raising in map
+    // order left whichever tile happened to be last in the registry
+    // focused — not necessarily the main operator the user expects to see
+    // (§6.6). The others go first; the main operator, if it still has a
+    // tile, goes last. `raise` no-ops on an id with no tile, which covers
+    // both "the main operator's tile is closed" and the pre-`openFleet`
+    // (wizard-handoff) boot where `mainProfileId` is still null.
+    for (const id of openIds) {
+      if (id !== mainProfileId) tiles.raise(id);
+    }
+    if (mainProfileId !== null) tiles.raise(mainProfileId);
     return;
   }
   if (wizardWin && !wizardWin.isDestroyed()) {
