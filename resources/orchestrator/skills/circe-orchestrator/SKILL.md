@@ -35,10 +35,24 @@ Once the user has said yes:
 3. Write `~/.hermes/profiles/<id>/SOUL.md`, starting with `# <Name> — <domain>`.
    The heading matters: it is how the profile is recognised as configured rather
    than as an untouched scaffold.
-4. Prune its loadout: `hermes skills config` then `hermes tools`, in that order.
+4. Write `~/.hermes/profiles/<id>/circe.json` — the agent's colours:
+
+   ```json
+   {
+     "version": 1,
+     "palette": { "bg": "#1e2952", "border": "#c7d2fe", "accent": "#a5b4fc" }
+   }
+   ```
+
+   Three six-digit hex colours: a dark background, a light border, and a bright
+   accent readable against the background. Choose them for the character, from
+   the same world their name came from. **Do not ask the user to pick colours** —
+   this is part of giving the agent a face, like the name is. A profile without
+   this file still works; it just appears in a neutral grey.
+5. Prune its loadout: `hermes skills config` then `hermes tools`, in that order.
    A new profile inherits everything; leaving it unpruned means the new agent is
    the same unpruned setup under a different name.
-5. Tell the user it exists, what it owns, and what you turned off.
+6. Tell the user it exists, what it owns, and what you turned off.
 
 The same confirmation that authorised creating the agent also authorises recording
 it in your own SOUL.md, under the list of specialists — that is one change, not

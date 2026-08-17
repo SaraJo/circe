@@ -23,6 +23,28 @@ describe('the circe-orchestrator skill file', () => {
   });
 });
 
+describe('the orchestrator skill', () => {
+  it('tells the orchestrator how to theme an agent it creates', async () => {
+    const text = await readFile(SKILL_SOURCE_PATH, 'utf8');
+
+    // The convention itself: without this the fleet grows in grey.
+    expect(text).toContain('circe.json');
+    expect(text).toMatch(/"version":\s*1/);
+    expect(text).toContain('"palette"');
+    for (const channel of ['bg', 'border', 'accent']) expect(text).toContain(`"${channel}"`);
+  });
+
+  it('tells the orchestrator not to ask the user for colours', async () => {
+    const text = await readFile(SKILL_SOURCE_PATH, 'utf8');
+    expect(text).toMatch(/Do not ask the user to pick colours/i);
+  });
+
+  it('still tells it to write a heading, which is what makes a profile real', async () => {
+    const text = await readFile(SKILL_SOURCE_PATH, 'utf8');
+    expect(text).toContain('# <Name> — <domain>');
+  });
+});
+
 describe('installOrchestratorSkill', () => {
   it('writes the skill into the default profile', async () => {
     const h = new FakeHermes(INSTALLED_EMPTY);
