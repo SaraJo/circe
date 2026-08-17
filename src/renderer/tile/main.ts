@@ -1,6 +1,6 @@
 import { marked } from 'marked';
-import type { Character, Palette } from '../../shared/types';
-import { DEFAULT_PALETTE, paletteVars } from '../../main/palette';
+import type { Character } from '../../shared/types';
+import { DEFAULT_PALETTE, isPalette, paletteVars } from '../../main/palette';
 
 /**
  * The tile and the wizard each load their own preload bridge and never share
@@ -33,7 +33,13 @@ function parseCharacter(raw: string | null): Character | null {
 const params = new URLSearchParams(location.search);
 const character = parseCharacter(params.get('character'));
 
-for (const [k, v] of Object.entries(paletteVars(character?.palette ?? DEFAULT_PALETTE))) {
+// `character?.palette` came through `parseCharacter`, which only checked
+// `name` — a malformed value (`"palette": 5`, a partial object, a channel
+// that isn't a hex string) must fall back the same way a *missing* one does,
+// not reach `paletteVars` and throw at module top level, which would kill
+// this whole script before `circe.onUpdate`/`onOpening` are ever wired up.
+const palette = isPalette(character?.palette) ? character.palette : DEFAULT_PALETTE;
+for (const [k, v] of Object.entries(paletteVars(palette))) {
   document.documentElement.style.setProperty(k, v);
 }
 document.getElementById('who')!.textContent = character?.name ?? 'Circe';

@@ -243,9 +243,11 @@ export class Wizard {
       console.warn("Could not write the profile's colours (circe.json):", err);
     }
     // Deliberately outside the block above, and deliberately swallowed. This
-    // record only caches the tile's colours for the next cold start — the way
-    // back to the agent is `SOUL.md`, which is already written by now. Failing
-    // the launch over a cache write would trade a working agent for nothing.
+    // record now holds only which profile is the main operator, so its tile
+    // foregrounds on the next cold start (`LastLaunch`, startup.ts) — the way
+    // back to the agent itself is `SOUL.md`, which is already written by now.
+    // Failing the launch over this record would trade a working agent for
+    // nothing.
     try {
       await this.hermes.writeHomeFile(LAST_LAUNCH_PATH, serializeLastLaunch('default'));
     } catch (err) {

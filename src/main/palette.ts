@@ -17,6 +17,26 @@ export const DEFAULT_PALETTE: Palette = {
   accent: '#c9c9ce',
 };
 
+const HEX = /^#[0-9a-fA-F]{6}$/;
+
+/**
+ * True for a well-formed six-digit-hex palette. The tile reads
+ * `character?.palette` out of a JSON blob smuggled through a URL query
+ * param (`parseCharacter` in `src/renderer/tile/main.ts`), which only
+ * validates that `name` is a string — a malformed `palette` (`5`, a partial
+ * object, a channel that isn't a hex string) is otherwise handed straight to
+ * `paletteVars`, which throws at module top level and kills the whole tile
+ * script before any listener is wired up, leaving a blank window with no
+ * input. Nothing produces that today, but the fallback guard needs to match
+ * the "missing or malformed" claim it makes, not just "missing".
+ */
+export function isPalette(v: unknown): v is Palette {
+  if (typeof v !== 'object' || v === null) return false;
+  const { bg, border, accent } = v as Record<string, unknown>;
+  const isHex = (x: unknown): x is string => typeof x === 'string' && HEX.test(x);
+  return isHex(bg) && isHex(border) && isHex(accent);
+}
+
 export function hexToRgb(hex: string): [number, number, number] {
   return [
     parseInt(hex.slice(1, 3), 16),
