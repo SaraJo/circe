@@ -247,10 +247,7 @@ export class Wizard {
     // back to the agent is `SOUL.md`, which is already written by now. Failing
     // the launch over a cache write would trade a working agent for nothing.
     try {
-      await this.hermes.writeHomeFile(
-        LAST_LAUNCH_PATH,
-        serializeLastLaunch(character, 'default'),
-      );
+      await this.hermes.writeHomeFile(LAST_LAUNCH_PATH, serializeLastLaunch('default'));
     } catch (err) {
       console.warn(`Could not record the launch (${LAST_LAUNCH_PATH}):`, err);
     }

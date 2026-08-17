@@ -77,11 +77,7 @@ describe('a fresh Hermes install', () => {
     await w.accept();
 
     const record = JSON.parse((await hermes.readHomeFile(LAST_LAUNCH_PATH))!);
-    expect(record).toMatchObject({
-      version: 1,
-      profileId: 'default',
-      character: { name: 'Trillian', palette: { bg: '#1e2952' } },
-    });
+    expect(record).toEqual({ version: 2, mainProfileId: 'default' });
   });
 
   it('still launches when the record cannot be written', async () => {

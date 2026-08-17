@@ -1,168 +1,169 @@
 import { describe, expect, it } from 'vitest';
 import {
+  characterFor,
   DEFAULT_PALETTE,
   LAST_LAUNCH_PATH,
-  readStartup,
+  migrateV1Palette,
+  parseLastLaunch,
   resolveStartup,
   serializeLastLaunch,
 } from '../src/main/startup';
-import { FakeHermes, INSTALLED_EMPTY } from './fake/hermes';
-import type { Character } from '../src/shared/types';
+import { serializeProfileTheme } from '../src/main/profileTheme';
+import { FakeHermes, INSTALLED_EMPTY, SCAFFOLD_SOUL } from './fake/hermes';
+import type { HermesProfile, Palette } from '../src/shared/types';
 
-const VETINARI: Character = {
-  name: 'Lord Havelock Vetinari',
-  profileId: 'lord-havelock-vetinari',
-  tagline: 'Patrician who orchestrates the city',
-  palette: { bg: '#1a1a1a', border: '#8b7355', accent: '#c9a961' },
-  why: 'He runs Ankh-Morpork by delegating to exactly the right person.',
-  fandom: "Terry Pratchett's Discworld",
-};
+const PALETTE: Palette = { bg: '#1e2952', border: '#c7d2fe', accent: '#a5b4fc' };
+const REAL_SOUL = '# Trillian — the one who keeps the plot\n\nYou are **Trillian**.\n';
 
-const CIRCE_SOUL = `# Lord Havelock Vetinari — Patrician who orchestrates the city\n\nYou are **Lord Havelock Vetinari**, the coordinator of this person's agent network.\n`;
-
-/** What Hermes itself writes into a fresh home. No heading, so not a persona. */
-const STOCK_SOUL =
-  'You are Hermes Agent, an intelligent AI assistant created by Nous Research. ' +
-  'You are helpful, knowledgeable, and direct.';
-
-const record = (c: Character, profileId = 'default') =>
-  serializeLastLaunch(c, profileId);
+function profile(over: Partial<HermesProfile> = {}): HermesProfile {
+  return { id: 'default', displayName: 'Trillian', model: 'claude-opus-5', isReal: true, ...over };
+}
 
 describe('resolveStartup', () => {
-  it('opens the wizard when there is no persona at all', () => {
+  it('opens onboarding when SOUL.md is the stock scaffold', () => {
+    expect(resolveStartup(null, SCAFFOLD_SOUL)).toEqual({ kind: 'wizard' });
+  });
+
+  it('opens onboarding when there is no SOUL.md at all', () => {
     expect(resolveStartup(null, null)).toEqual({ kind: 'wizard' });
   });
 
-  it('opens the wizard when the persona is only the stock Hermes scaffold', () => {
-    // A fresh HERMES_HOME already contains this — hermes writes it on first
-    // use — so "file exists" is not the same as "an orchestrator exists".
-    expect(resolveStartup(null, STOCK_SOUL)).toEqual({ kind: 'wizard' });
+  // SOUL.md is the authority: a hand-edited persona keeps its agent rather than
+  // being sent back through a wizard whose next move is to overwrite it.
+  it('opens the fleet when a persona exists, with no record at all', () => {
+    expect(resolveStartup(null, REAL_SOUL)).toEqual({ kind: 'fleet', mainProfileId: 'default' });
   });
 
-  it('opens the wizard when a record survives but the persona is gone', () => {
-    // The persona is the truth; the record is only presentation.
-    expect(resolveStartup(record(VETINARI), null)).toEqual({ kind: 'wizard' });
+  it('foregrounds the profile the record names', () => {
+    const record = serializeLastLaunch('ford');
+    expect(resolveStartup(record, REAL_SOUL)).toEqual({ kind: 'fleet', mainProfileId: 'ford' });
   });
 
-  it('opens the tile on the recorded character when persona and record agree', () => {
-    expect(resolveStartup(record(VETINARI), CIRCE_SOUL)).toEqual({
-      kind: 'tile',
-      profileId: 'default',
-      character: VETINARI,
+  it('falls back to default for a corrupt record', () => {
+    expect(resolveStartup('{ broken', REAL_SOUL)).toEqual({
+      kind: 'fleet',
+      mainProfileId: 'default',
     });
   });
 
-  it('follows a hand-edited persona rather than the record', () => {
-    // The user renamed their own coordinator. That is a legitimate edit to
-    // their identity file, and the tile must show who the agent actually is —
-    // not send them back through onboarding, which would overwrite it.
-    const edited = '# Granny Weatherwax — headology, mostly\n\nYou are Granny.\n';
-
-    const startup = resolveStartup(record(VETINARI), edited);
-
-    expect(startup).toMatchObject({
-      kind: 'tile',
-      character: { name: 'Granny Weatherwax', tagline: 'headology, mostly' },
-    });
-  });
-
-  it('keeps the recorded palette when following an edited persona', () => {
-    // Colours live nowhere but the record — the persona file has none.
-    const edited = '# Granny Weatherwax — headology, mostly\n';
-
-    const startup = resolveStartup(record(VETINARI), edited);
-
-    expect(startup).toMatchObject({ character: { palette: VETINARI.palette } });
-  });
-
-  it('opens the tile on a persona Circe never wrote, with a default palette', () => {
-    // Someone else's coordinator — a hand-written SOUL.md, or one from before
-    // Circe recorded anything. It is still a real coordinator, and offering to
-    // replace it is the wrong opening move.
-    const trillian = '# Trillian — Central Coordinator\n\nYou are **Trillian**.\n';
-
-    expect(resolveStartup(null, trillian)).toEqual({
-      kind: 'tile',
-      profileId: 'default',
-      character: {
-        name: 'Trillian',
-        profileId: 'default',
-        tagline: 'Central Coordinator',
-        palette: DEFAULT_PALETTE,
-        why: '',
-        fandom: '',
-      },
-    });
-  });
-
-  it('treats a corrupt record as no record rather than failing to start', () => {
-    expect(resolveStartup('{not json', CIRCE_SOUL)).toMatchObject({
-      kind: 'tile',
-      character: { palette: DEFAULT_PALETTE },
-    });
-  });
-
-  it('treats a record of the wrong shape as no record', () => {
-    expect(resolveStartup('{"version":1}', CIRCE_SOUL)).toMatchObject({
-      kind: 'tile',
-      character: { palette: DEFAULT_PALETTE },
-    });
-  });
-
-  it('ignores a record written by a future version', () => {
-    const future = JSON.stringify({ version: 2, profileId: 'default', character: VETINARI });
-
-    expect(resolveStartup(future, CIRCE_SOUL)).toMatchObject({
-      kind: 'tile',
-      character: { palette: DEFAULT_PALETTE },
-    });
-  });
-
-  it('carries a persona with a name but no tagline', () => {
-    expect(resolveStartup(null, '# Marvin\n\nYou are Marvin.\n')).toMatchObject({
-      character: { name: 'Marvin', tagline: '' },
-    });
+  // A v1 record carries a `character` block this build would half-read.
+  it('falls back to default for a v1 record', () => {
+    const v1 = JSON.stringify({ version: 1, profileId: 'ford', character: { name: 'Ford' } });
+    expect(resolveStartup(v1, REAL_SOUL)).toEqual({ kind: 'fleet', mainProfileId: 'default' });
   });
 });
 
-describe('readStartup', () => {
-  it('reads the persona and record out of the Hermes home', async () => {
-    const hermes = new FakeHermes(INSTALLED_EMPTY);
-    await hermes.writeHomeFile('SOUL.md', CIRCE_SOUL);
-    await hermes.writeHomeFile(LAST_LAUNCH_PATH, serializeLastLaunch(VETINARI, 'default'));
+describe('serializeLastLaunch', () => {
+  it('records the main operator and nothing about who they are', () => {
+    const record = JSON.parse(serializeLastLaunch('ford'));
+    expect(record).toEqual({ version: 2, mainProfileId: 'ford' });
+  });
+});
 
-    expect(await readStartup(hermes)).toEqual({
-      kind: 'tile',
+describe('characterFor', () => {
+  it('takes identity from SOUL.md and colours from the profile', async () => {
+    const hermes = new FakeHermes(INSTALLED_EMPTY);
+    await hermes.writeHomeFile('SOUL.md', REAL_SOUL);
+    await hermes.writeHomeFile('circe.json', serializeProfileTheme(PALETTE));
+
+    expect(await characterFor(hermes, profile())).toEqual({
+      name: 'Trillian',
+      tagline: 'the one who keeps the plot',
       profileId: 'default',
-      character: VETINARI,
+      palette: PALETTE,
+      why: '',
+      fandom: '',
     });
   });
 
-  it('falls back to the wizard when the persona exists but cannot be read', async () => {
-    // `readHomeFile` rejects rather than returning null for an unreadable
-    // file. Starting the wizard is safe: its own write path refuses to
-    // overwrite a persona it could not read first.
+  it('falls back to the neutral palette for a profile with no colours', async () => {
+    const hermes = new FakeHermes(INSTALLED_EMPTY);
+    await hermes.writeHomeFile('profiles/ford/SOUL.md', '# Ford — the one who finds the exit\n');
+
+    const c = await characterFor(hermes, profile({ id: 'ford', displayName: 'Ford' }));
+    expect(c).toMatchObject({ name: 'Ford', profileId: 'ford', palette: DEFAULT_PALETTE });
+  });
+
+  // A profile whose SOUL.md cannot be parsed still has an agent behind it.
+  it('falls back to the profile’s display name when the heading cannot be read', async () => {
     const hermes = new FakeHermes(INSTALLED_EMPTY);
     hermes.readHomeFile = async () => {
       throw new Error('EACCES');
     };
 
-    expect(await readStartup(hermes)).toEqual({ kind: 'wizard' });
-  });
-
-  it('opens the wizard on a home with nothing in it', async () => {
-    expect(await readStartup(new FakeHermes(INSTALLED_EMPTY))).toEqual({ kind: 'wizard' });
+    const c = await characterFor(hermes, profile({ id: 'ford', displayName: 'ford' }));
+    expect(c).toMatchObject({ name: 'ford', tagline: '', palette: DEFAULT_PALETTE });
   });
 });
 
-describe('serializeLastLaunch', () => {
-  it('round-trips through resolveStartup', () => {
-    const written = serializeLastLaunch(VETINARI, 'default');
+describe('migrateV1Palette', () => {
+  const V1 = JSON.stringify({
+    version: 1,
+    profileId: 'default',
+    character: { name: 'Trillian', palette: PALETTE },
+  });
 
-    expect(resolveStartup(written, CIRCE_SOUL)).toEqual({
-      kind: 'tile',
-      profileId: 'default',
-      character: VETINARI,
+  it('moves a v1 record’s colours into the profile', async () => {
+    const hermes = new FakeHermes(INSTALLED_EMPTY);
+
+    await migrateV1Palette(hermes, V1);
+
+    expect(JSON.parse((await hermes.readHomeFile('circe.json'))!)).toEqual({
+      version: 1,
+      palette: PALETTE,
     });
+  });
+
+  it('does not overwrite colours the profile already has', async () => {
+    const hermes = new FakeHermes(INSTALLED_EMPTY);
+    const mine: Palette = { bg: '#000000', border: '#111111', accent: '#222222' };
+    await hermes.writeHomeFile('circe.json', serializeProfileTheme(mine));
+
+    await migrateV1Palette(hermes, V1);
+
+    expect(JSON.parse((await hermes.readHomeFile('circe.json'))!).palette).toEqual(mine);
+  });
+
+  it('does nothing for a v2 record', async () => {
+    const hermes = new FakeHermes(INSTALLED_EMPTY);
+    await migrateV1Palette(hermes, serializeLastLaunch('default'));
+    expect(await hermes.readHomeFile('circe.json')).toBeNull();
+  });
+
+  it('does nothing when there is no record', async () => {
+    const hermes = new FakeHermes(INSTALLED_EMPTY);
+    await migrateV1Palette(hermes, null);
+    expect(await hermes.readHomeFile('circe.json')).toBeNull();
+  });
+
+  // Best-effort: a migration that throws would take the whole boot with it.
+  it('swallows a write failure', async () => {
+    const hermes = new FakeHermes(INSTALLED_EMPTY);
+    hermes.writeHomeFile = async () => {
+      throw new Error('EACCES');
+    };
+
+    await expect(migrateV1Palette(hermes, V1)).resolves.toBeUndefined();
+  });
+});
+
+describe('parseLastLaunch', () => {
+  it('reads a v2 record', () => {
+    expect(parseLastLaunch(serializeLastLaunch('ford'))).toEqual({
+      version: 2,
+      mainProfileId: 'ford',
+    });
+  });
+
+  it('rejects anything else', () => {
+    expect(parseLastLaunch(null)).toBeNull();
+    expect(parseLastLaunch('{ broken')).toBeNull();
+    expect(parseLastLaunch(JSON.stringify({ version: 2 }))).toBeNull();
+  });
+});
+
+describe('LAST_LAUNCH_PATH', () => {
+  it('lives inside the Hermes home so HERMES_HOME redirects it', () => {
+    expect(LAST_LAUNCH_PATH).toBe('circe/last-launch.json');
   });
 });
