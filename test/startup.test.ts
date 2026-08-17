@@ -5,6 +5,7 @@ import {
   LAST_LAUNCH_PATH,
   migrateV1Palette,
   parseLastLaunch,
+  readStartup,
   resolveStartup,
   serializeLastLaunch,
 } from '../src/main/startup';
@@ -144,6 +145,55 @@ describe('migrateV1Palette', () => {
     };
 
     await expect(migrateV1Palette(hermes, V1)).resolves.toBeUndefined();
+  });
+});
+
+describe('readStartup', () => {
+  it('opens the fleet for a configured install', async () => {
+    const hermes = new FakeHermes(INSTALLED_EMPTY);
+    await hermes.writeHomeFile('SOUL.md', REAL_SOUL);
+
+    expect(await readStartup(hermes)).toEqual({ kind: 'fleet', mainProfileId: 'default' });
+  });
+
+  it("honours the record's main operator", async () => {
+    const hermes = new FakeHermes(INSTALLED_EMPTY);
+    await hermes.writeHomeFile('SOUL.md', REAL_SOUL);
+    await hermes.writeHomeFile(LAST_LAUNCH_PATH, serializeLastLaunch('ford'));
+
+    expect(await readStartup(hermes)).toEqual({ kind: 'fleet', mainProfileId: 'ford' });
+  });
+
+  // Pins the wiring itself: migrateV1Palette runs, and runs before the result
+  // comes back, not just that it exists as a separate function.
+  it('runs the migration on the way through', async () => {
+    const hermes = new FakeHermes(INSTALLED_EMPTY);
+    await hermes.writeHomeFile('SOUL.md', REAL_SOUL);
+    const v1 = JSON.stringify({
+      version: 1,
+      profileId: 'default',
+      character: { name: 'Trillian', palette: PALETTE },
+    });
+    await hermes.writeHomeFile(LAST_LAUNCH_PATH, v1);
+
+    await readStartup(hermes);
+
+    expect(JSON.parse((await hermes.readHomeFile('circe.json'))!)).toEqual({
+      version: 1,
+      palette: PALETTE,
+    });
+  });
+
+  // The wizard is the safe landing: its own write path refuses to overwrite a
+  // persona it could not read first, so an unreadable SOUL.md still can't be
+  // destroyed.
+  it('lands on the wizard rather than throwing when the home cannot be read', async () => {
+    const hermes = new FakeHermes(INSTALLED_EMPTY);
+    hermes.readHomeFile = async () => {
+      throw new Error('EACCES');
+    };
+
+    expect(await readStartup(hermes)).toEqual({ kind: 'wizard' });
   });
 });
 
