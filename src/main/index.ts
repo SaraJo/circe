@@ -119,15 +119,28 @@ function registerIpc(): void {
   });
 }
 
-// `activate` re-runs `boot()` when nothing is open (see below), and `boot()`
-// used to register this handler itself — so every "reopen with nothing open"
-// cycle stacked a second `activate` listener, which on the *next* activation
-// would rerun `boot()` twice, reassigning `hermes`/`tiles` out from under any
-// registry that call created. Same class of bug `registerIpc` guards against
-// with `ipcRegistered`; this guard is the same fix applied to this handler.
-let activateHandlerRegistered = false;
+/**
+ * Gates re-entry with the in-flight promise itself, not a boolean: `activate`
+ * can call `boot()` again while an earlier call is still awaiting
+ * `readStartup`/`openFleet` (nothing has reached the screen yet, so there is
+ * nothing for `activate`'s other branches to raise). A flag would only stop a
+ * *second* concurrent call from starting a *third* boot; returning the
+ * in-flight promise makes every concurrent call resolve together with the one
+ * already running, so two dock clicks during a slow cold start produce one
+ * wizard, not two. Assigned before `doBoot`'s first `await`, so the window in
+ * which a second call could slip through and start its own is zero.
+ */
+let booting: Promise<void> | null = null;
 
-async function boot(): Promise<void> {
+function boot(): Promise<void> {
+  if (booting) return booting;
+  booting = doBoot().finally(() => {
+    booting = null;
+  });
+  return booting;
+}
+
+async function doBoot(): Promise<void> {
   hermes = new RealHermes();
   tiles = createRegistry();
   registerIpc();
@@ -143,39 +156,30 @@ async function boot(): Promise<void> {
   } else {
     openWizard();
   }
-
-  if (activateHandlerRegistered) return;
-  activateHandlerRegistered = true;
-  // macOS keeps the app alive with no windows (see `window-all-closed`), and
-  // without this there was no way back in: closing the tile left Circe inert
-  // in the dock, and relaunching from Finder did nothing — while the
-  // `provider-missing` screen tells the user to "reopen Circe", which could
-  // never work. What "reopen" means depends on how far onboarding got: once
-  // the persona is written the tile *is* the app, so reopening it (a fresh
-  // ACP session against the agent already on disk) is right, and re-running
-  // the wizard would only offer to overwrite the persona it just wrote. If
-  // onboarding never finished, nothing has been written and starting it over
-  // is exactly what the user wants.
-  app.on('activate', () => {
-    if (tiles.openProfileIds().length > 0) {
-      for (const id of tiles.openProfileIds()) tiles.raise(id);
-      return;
-    }
-    if (wizardWin && !wizardWin.isDestroyed()) {
-      if (wizardWin.isMinimized()) wizardWin.restore();
-      wizardWin.show();
-      wizardWin.focus();
-      return;
-    }
-    void boot();
-  });
 }
 
-/** Opens a tile for the main operator. Task 9 widens this to the whole fleet. */
+/**
+ * Opens a tile for the main operator. Task 9 widens this to the whole fleet.
+ *
+ * `listProfiles` answers `[]` both for a home with no profiles *and* for a
+ * hermes binary that is missing or broken (`RealHermes.listProfiles` catches
+ * the exec failure and returns the empty array either way) — so `main` can be
+ * undefined even when `SOUL.md` holds a real persona. Falling back to the
+ * wizard here would be wrong: the wizard's next move once a provider
+ * reappears is to overwrite that persona, and a user whose persona is intact
+ * must never be walked toward replacing it just because their binary broke.
+ * Synthesising the profile record and launching its tile anyway is what puts
+ * the tile's own launch-failure copy ("I couldn't reach the Hermes agent
+ * behind this tile...") back on screen — the alternative is an app with no
+ * windows and nothing to click. `characterFor` already degrades correctly for
+ * a profile whose `SOUL.md` can't be read (falls back to `displayName`), so
+ * this needs nothing else from it.
+ */
 async function openFleet(mainProfileId: string): Promise<void> {
   const profiles = await hermes.listProfiles();
-  const main = profiles.find((p) => p.id === mainProfileId) ?? profiles.find((p) => p.id === 'default');
-  if (!main) return;
+  const main = profiles.find((p) => p.id === mainProfileId) ??
+    profiles.find((p) => p.id === 'default') ??
+    { id: mainProfileId, displayName: mainProfileId, model: null, isReal: true };
   await tiles.launch(await characterFor(hermes, main), main.id);
 }
 
@@ -184,4 +188,45 @@ app.whenReady().then(() => {
 });
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+// macOS keeps the app alive with no windows (see `window-all-closed`), and
+// without this there was no way back in: closing the tile left Circe inert
+// in the dock, and relaunching from Finder did nothing — while the
+// `provider-missing` screen tells the user to "reopen Circe", which could
+// never work. What "reopen" means depends on how far onboarding got: once
+// the persona is written the tile *is* the app, so reopening it (a fresh
+// ACP session against the agent already on disk) is right, and re-running
+// the wizard would only offer to overwrite the persona it just wrote. If
+// onboarding never finished, nothing has been written and starting it over
+// is exactly what the user wants.
+//
+// Registered at module scope, not inside `boot()`: attaching it there meant
+// it existed only after the *previous* boot had fully resolved — i.e. after
+// `client.start()`'s 30s handshake and a full session restore on a cold
+// start — so a dock click during exactly the window a user is most likely to
+// make one did nothing at all. It also meant every re-run of `boot()` that
+// reached this point added a second listener, stacking without bound. Module
+// scope means it exists exactly once, from process start, independent of
+// where `boot()` currently is in its own lifecycle.
+app.on('activate', () => {
+  // `boot()` hasn't been called yet, or is still in its synchronous setup
+  // before `tiles`/`hermes` are assigned — nothing exists to raise yet, so
+  // starting (or joining) a boot is the only sensible move. `boot()`'s own
+  // in-flight guard makes this safe to call even while one is already
+  // running.
+  if (!tiles) {
+    void boot();
+    return;
+  }
+  if (tiles.openProfileIds().length > 0) {
+    for (const id of tiles.openProfileIds()) tiles.raise(id);
+    return;
+  }
+  if (wizardWin && !wizardWin.isDestroyed()) {
+    if (wizardWin.isMinimized()) wizardWin.restore();
+    wizardWin.show();
+    wizardWin.focus();
+    return;
+  }
+  void boot();
 });
