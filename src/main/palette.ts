@@ -1,5 +1,22 @@
 import type { Palette } from '../shared/types';
 
+/**
+ * Used for any profile whose colours Circe cannot read — someone else's
+ * coordinator, a specialist created at a terminal before it was themed, or a
+ * `circe.json` that failed to parse. Deliberately neutral: it should read as
+ * "not themed yet", not as a character choice.
+ *
+ * Lives here, next to the functions that consume it, because both the main
+ * process and the renderer fall back to it and they must agree. They did not:
+ * `startup.ts` and `src/renderer/tile/main.ts` each had their own, with
+ * different colours.
+ */
+export const DEFAULT_PALETTE: Palette = {
+  bg: '#1c1c1e',
+  border: '#8a8a8e',
+  accent: '#c9c9ce',
+};
+
 export function hexToRgb(hex: string): [number, number, number] {
   return [
     parseInt(hex.slice(1, 3), 16),

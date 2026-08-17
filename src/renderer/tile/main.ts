@@ -1,6 +1,6 @@
 import { marked } from 'marked';
 import type { Character, Palette } from '../../shared/types';
-import { paletteVars } from '../../main/palette';
+import { DEFAULT_PALETTE, paletteVars } from '../../main/palette';
 
 /**
  * The tile and the wizard each load their own preload bridge and never share
@@ -17,13 +17,6 @@ interface TileApi {
   openExternal(url: string): void;
 }
 const circe = (window as unknown as { circe: TileApi }).circe;
-
-/**
- * Falls back to when the `character` query parameter is missing or malformed
- * (Amendment 4) — a tile with default colours and a visible error beats a
- * blank window.
- */
-const DEFAULT_PALETTE: Palette = { bg: '#1e1e2a', border: '#4b5563', accent: '#9ca3af' };
 
 /** `createTileWindow` passes the character as JSON in the URL; guard the parse. */
 function parseCharacter(raw: string | null): Character | null {

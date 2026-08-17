@@ -1,7 +1,10 @@
-import type { Character, Palette } from '../shared/types';
+import type { Character } from '../shared/types';
 import { soulPath, type HermesRuntime } from './hermes/runtime';
 import { isRealSoul } from './profiles';
 import { parseSoulHeading } from './soul';
+import { DEFAULT_PALETTE } from './palette';
+
+export { DEFAULT_PALETTE };
 
 /**
  * What Circe remembers about the last agent it launched. Only ever a cache of
@@ -20,13 +23,6 @@ const RECORD_VERSION = 1;
 
 /** Where the record lives, relative to the Hermes home. */
 export const LAST_LAUNCH_PATH = 'circe/last-launch.json';
-
-/** Used for a persona Circe has no record of — someone else's coordinator. */
-export const DEFAULT_PALETTE: Palette = {
-  bg: '#1c1c1e',
-  border: '#8a8a8e',
-  accent: '#c9c9ce',
-};
 
 export type Startup =
   | { kind: 'wizard' }

@@ -22,6 +22,16 @@ export function soulPath(home: string, profileId: string): string {
     : join(home, 'profiles', profileId, 'SOUL.md');
 }
 
+/**
+ * A file inside one profile's own directory, relative to the Hermes home.
+ * The root profile keeps its files at the home root, exactly as `soulPath`
+ * does and as `installOrchestratorSkill` already hand-rolls. Relative because
+ * that is what `readHomeFile`/`writeHomeFile` take.
+ */
+export function profileFilePath(profileId: string, file: string): string {
+  return profileId === 'default' ? file : `profiles/${profileId}/${file}`;
+}
+
 /** Everything Circe is allowed to ask of Hermes. Nothing else may shell out. */
 export interface HermesRuntime {
   paths(): HermesPaths;
