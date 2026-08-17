@@ -15,6 +15,13 @@ export async function tileableProfiles(hermes: HermesRuntime): Promise<HermesPro
 
 export interface FleetWatchDeps {
   hermes: HermesRuntime;
+  /**
+   * Profile ids the caller already has a tile open for — normally everything
+   * `openFleet` enumerated and launched at boot. Seeds the watch's own record
+   * of who has already been notified, so it never asks Hermes to confirm what
+   * the caller already knows, and never re-derives it (and races doing so).
+   */
+  alreadyTiled: Iterable<string>;
   /** True when this profile already has a tile. */
   isOpen(profileId: string): boolean;
   /** Called once per profile that has become tileable. */
@@ -43,23 +50,22 @@ export class FleetWatch {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
   /**
-   * Profiles that were already tileable the instant the watch started.
-   * Opening tiles for those is whatever enumerated the fleet at boot; this
-   * watch's job is only the ones that show up afterwards. `onProfile` is
-   * documented as firing once per profile, so a profile real at start must
-   * never reach it — `isOpen` alone can't provide that guarantee, since the
-   * caller only learns a profile exists by way of this watch calling
-   * `onProfile` for it in the first place.
+   * Every profile id this watch has ever reported, plus whatever
+   * `deps.alreadyTiled` seeded it with. Grows on every `onProfile` call —
+   * seeding it once at construction and never adding to it would let a
+   * profile whose tile the user later *closes* resurrect itself the next
+   * time its agent writes anything under its own directory (memory, session
+   * state, `circe.json`), since `isOpen` would report it closed and nothing
+   * else would remember it was ever handled. A profile that has been
+   * reported once stays reported for this watch's whole lifetime.
    */
-  private alreadyTiled: Promise<Set<string>> = Promise.resolve(new Set());
+  private readonly tiled: Set<string>;
 
-  constructor(private readonly deps: FleetWatchDeps) {}
+  constructor(private readonly deps: FleetWatchDeps) {
+    this.tiled = new Set(deps.alreadyTiled);
+  }
 
   start(): () => void {
-    this.alreadyTiled = tileableProfiles(this.deps.hermes)
-      .then((profiles) => new Set(profiles.map((p) => p.id)))
-      .catch(() => new Set<string>());
-
     const unwatch = this.deps.hermes.watchHome((relPath) => {
       // The home also carries `state.db`, logs, and session files, all of which
       // change constantly during a conversation. Only a profile directory can
@@ -86,8 +92,6 @@ export class FleetWatch {
 
   private async sweep(): Promise<void> {
     if (this.stopped) return;
-    const baseline = await this.alreadyTiled;
-    if (this.stopped) return;
     let profiles: HermesProfile[];
     try {
       profiles = await tileableProfiles(this.deps.hermes);
@@ -99,7 +103,12 @@ export class FleetWatch {
     }
     for (const profile of profiles) {
       if (this.stopped) return;
-      if (baseline.has(profile.id) || this.deps.isOpen(profile.id)) continue;
+      if (this.tiled.has(profile.id) || this.deps.isOpen(profile.id)) continue;
+      // Marked before the call, not after: two overlapping sweeps (a burst
+      // that outran the debounce, or two profiles becoming real in the same
+      // sweep) must not both decide this profile is unhandled and both
+      // launch it.
+      this.tiled.add(profile.id);
       try {
         await this.deps.onProfile(profile);
       } catch (err) {

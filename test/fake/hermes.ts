@@ -51,7 +51,7 @@ export class FakeHermes implements HermesRuntime {
 
   private homeWatchers = new Set<(relPath: string) => void>();
 
-  constructor(public scenario: Scenario) {
+  constructor(private scenario: Scenario) {
     this.files = new Map(Object.entries(scenario.files));
   }
 
