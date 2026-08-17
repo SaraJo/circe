@@ -50,6 +50,96 @@ export function rgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+/** Hue in degrees, or 0 for a colour with no hue to speak of. */
+export function hueOf(hex: string): number {
+  const [r, g, b] = hexToRgb(hex).map((v) => v / 255) as [number, number, number];
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  if (max === min) return 0;
+  const d = max - min;
+  const h =
+    max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return (h * 60 + 360) % 360;
+}
+
+/** HSL lightness, 0-1. */
+export function lightnessOf(hex: string): number {
+  const [r, g, b] = hexToRgb(hex).map((v) => v / 255);
+  return (Math.max(r!, g!, b!) + Math.min(r!, g!, b!)) / 2;
+}
+
+/** HSL saturation, 0-1. */
+export function saturationOf(hex: string): number {
+  const [r, g, b] = hexToRgb(hex).map((v) => v / 255);
+  const max = Math.max(r!, g!, b!);
+  const min = Math.min(r!, g!, b!);
+  if (max === min) return 0;
+  const l = (max + min) / 2;
+  return l > 0.5 ? (max - min) / (2 - max - min) : (max - min) / (max + min);
+}
+
+function toHex(r: number, g: number, b: number): string {
+  const c = (v: number) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, '0');
+  return `#${c(r)}${c(g)}${c(b)}`;
+}
+
+/** HSL back to hex. Hue in degrees, saturation and lightness 0-1. */
+function fromHsl(h: number, s: number, l: number): string {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  const [r, g, b] =
+    h < 60 ? [c, x, 0]
+    : h < 120 ? [x, c, 0]
+    : h < 180 ? [0, c, x]
+    : h < 240 ? [0, x, c]
+    : h < 300 ? [x, 0, c]
+    : [c, 0, x];
+  return toHex((r + m) * 255, (g + m) * 255, (b + m) * 255);
+}
+
+/**
+ * Floors below which a background has stopped being a colour: a black, a
+ * white, or a true grey. Deliberately far beneath the range the reference
+ * implementation's own hand-picked palettes occupy — its least saturated is
+ * deep-thought at 36.8%, and its darkest is that same colour at 7.5%
+ * lightness. A floor anywhere near those would start overruling the model on
+ * colours that are working perfectly well.
+ *
+ * This exists to rescue `#000000` and `#1c1c1e`, not to enforce taste. When a
+ * derived tile looks black, suspect the card before suspecting the colour:
+ * the palette that prompted this guard turned out to be more saturated than
+ * half the prototype's, and what was actually missing was the floating card
+ * and its `saturate(140%)` backdrop.
+ */
+const MIN_SATURATION = 0.15;
+const MIN_LIGHTNESS = 0.06;
+
+/**
+ * Returns the colour unchanged unless it is degenerate, in which case it is
+ * given the smallest nudge that makes it a colour again — keeping its hue, so
+ * a desaturated blue-grey comes back blue rather than becoming a house default.
+ *
+ * A hueless input (a true grey or a black) has no hue to keep; it takes the
+ * neutral slate the default palette already uses, so the result is a
+ * deliberate colour rather than an accident of rounding.
+ *
+ * **Lightness is only ever raised, never lowered.** Darkening here would let a
+ * light grey — which `derive.ts` must reject as unreadable under white text —
+ * arrive at the luminance check already dimmed enough to pass, turning a
+ * validation failure into a silent repair. This function rescues colours that
+ * are too dark or too grey; deciding a colour is too *light* is not its job.
+ */
+export function liftDegenerateBackground(hex: string): string {
+  const s = saturationOf(hex);
+  const l = lightnessOf(hex);
+  if (s >= MIN_SATURATION && l >= MIN_LIGHTNESS) return hex;
+  // A true grey carries no hue to preserve. 220° is the blue-slate the neutral
+  // default already reads as, so a colourless answer lands somewhere chosen.
+  const hue = s === 0 ? 220 : hueOf(hex);
+  return fromHsl(hue, Math.max(s, MIN_SATURATION), Math.max(l, MIN_LIGHTNESS));
+}
+
 /**
  * The variable set the tile stylesheet consumes. The alpha values match the
  * prototype's hand-written per-profile blocks, so a derived tile lands on the

@@ -7,9 +7,15 @@
     <link rel="stylesheet" href="./tile.css" />
   </head>
   <body>
-    <header id="bar"><span id="who"></span><button id="close">×</button></header>
-    <div id="log"></div>
-    <footer><textarea id="input" rows="1" placeholder="Message…"></textarea></footer>
+    <!-- The card, not the window, carries the colour. `body` stays transparent
+         so the shadow has somewhere to fall and the rounded corners actually
+         read as corners — a tile has to look like an object sitting on the
+         desktop, not like a rectangle painted over it. -->
+    <div class="tile">
+      <header id="bar"><span id="who"></span><button id="close">×</button></header>
+      <div id="log"></div>
+      <footer><textarea id="input" rows="1" placeholder="Message…"></textarea></footer>
+    </div>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

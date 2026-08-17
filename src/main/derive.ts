@@ -1,4 +1,5 @@
 import type { Character, Palette } from '../shared/types';
+import { liftDegenerateBackground } from './palette';
 import type { HermesRuntime } from './hermes/runtime';
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -16,7 +17,10 @@ export function DERIVATION_PROMPT(fandom: string): string {
     'rather than a fiction, invent a fitting name in its idiom.',
     '',
     'Then choose three colours drawn from that character — their world, their',
-    'palette, their temperament.',
+    'palette, their temperament. Make them saturated: the tile is dark by',
+    'necessity, and a dark colour that is also near-grey reads as black. Pick a',
+    'colour that is unmistakably *a* colour — a deep green, a burnt orange, a',
+    'bruised purple — not a neutral brown or charcoal.',
     '',
     'Reply with ONLY a JSON object and no other text:',
     '{',
@@ -31,7 +35,7 @@ export function DERIVATION_PROMPT(fandom: string): string {
     '}',
     '',
     'All three colours must be six-digit hex. "bg" must be dark enough that white',
-    'text is readable on it.',
+    'text is readable on it, and must not be a grey, a black, or a near-black.',
   ].join('\n');
 }
 
@@ -85,7 +89,12 @@ function validate(raw: unknown, fandom: string): Character {
     }
   }
   const palette: Palette = {
-    bg: (p.bg as string).toLowerCase(),
+    // Repaired rather than rejected. A background that came back as a black or
+    // a true grey is a cosmetic failure, and failing the whole derivation over
+    // it would make the user re-roll their character to fix a colour. The lift
+    // is a no-op for anything that is already a colour — including palettes
+    // considerably darker than this one.
+    bg: liftDegenerateBackground((p.bg as string).toLowerCase()),
     border: (p.border as string).toLowerCase(),
     accent: (p.accent as string).toLowerCase(),
   };

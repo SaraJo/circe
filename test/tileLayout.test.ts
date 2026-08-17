@@ -57,21 +57,31 @@ describe('tilePosition', () => {
     expect(new Set(positions.map((p) => `${p.x},${p.y}`)).size).toBe(positions.length);
   });
 
-  // This is the scale that exposed the round-1 wrap-collision bug: on the
-  // short fixture, perColumn is 5. Round 2's colStep (which accounts for the
-  // full row drift, not just a tile width) changed columns from 3 to 2, so
-  // the whole grid now holds 10 slots rather than 15 — that shift is expected
-  // and is why the full-cycle count below is 10, not 15.
+  // This is the scale that exposed the round-1 wrap-collision bug. The grid's
+  // capacity is *derived*, not written down: it moves whenever `perColumn` or
+  // `colStep` does — round 2's wider `colStep` took it from 15 to 10, and
+  // giving the window a shadow gutter moved it again. A hardcoded count makes
+  // this test fail for a dimension change while saying nothing about the
+  // collision it exists to catch, so find the cycle by asking the function.
+  function gridCapacity(area: Parameters<typeof tilePosition>[0]): number {
+    const first = tilePosition(area, 0);
+    for (let i = 1; i < 512; i++) {
+      const p = tilePosition(area, i);
+      if (p.x === first.x && p.y === first.y) return i;
+    }
+    throw new Error('tilePosition never cycled — the grid is not finite.');
+  }
+
   it('does not collide across columns at the scale that exposed the bug', () => {
     const short = { x: 0, y: 25, width: 1440, height: 700 };
-    const positions = Array.from({ length: 10 }, (_, i) => tilePosition(short, i));
+    const positions = Array.from({ length: gridCapacity(short) }, (_, i) => tilePosition(short, i));
     for (const { x, y } of positions) {
       expect(x).toBeGreaterThanOrEqual(short.x);
       expect(y).toBeGreaterThanOrEqual(short.y);
       expect(x + TILE_W).toBeLessThanOrEqual(short.x + short.width);
       expect(y + TILE_H).toBeLessThanOrEqual(short.y + short.height);
     }
-    // A full grid's worth of tiles must occupy 10 distinct positions, not fewer.
+    // A full grid's worth of tiles must all occupy distinct positions.
     expect(new Set(positions.map((p) => `${p.x},${p.y}`)).size).toBe(positions.length);
 
     // The exact pair the round-1 reviewer found colliding under the old clamp.

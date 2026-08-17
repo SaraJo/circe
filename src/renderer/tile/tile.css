@@ -1,18 +1,43 @@
 * { box-sizing: border-box; }
 
+/**
+ * The window is transparent and larger than the card by `SHADOW_GUTTER` on
+ * every side (see `tileLayout.ts` — the two must agree, or the shadow is
+ * clipped by the window edge and the card stops looking like it is floating).
+ * Nothing here may paint a background: whatever `body` fills, the window
+ * shows, and a filled body is a rectangle with square corners no matter what
+ * radius the card has.
+ */
 body {
   margin: 0;
+  padding: 18px;
   height: 100vh;
-  display: flex;
-  flex-direction: column;
+  background: transparent;
   font: 14px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: var(--text);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/**
+ * `saturate(140%)` is not decoration. These palettes are dark by necessity —
+ * white body text has to be readable on them — and at that lightness a
+ * straight blur leaves them looking like grey. Saturating what shows through
+ * is what makes a dark colour still read as *its* colour, which is the whole
+ * point of theming a tile to its character. Ported from the prototype, where
+ * the same value is what makes an almost-black teal still look teal.
+ */
+.tile {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   background: var(--tile-bg);
   border: 1px solid var(--tile-border);
-  border-radius: 12px;
+  border-radius: 20px;
   overflow: hidden;
-  backdrop-filter: blur(20px);
-  -webkit-font-smoothing: antialiased;
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
 }
 
 #bar {
