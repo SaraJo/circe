@@ -186,13 +186,26 @@ circe.onUpdate((update) => {
     // belong to a session this tile is not on and the live agent has no memory
     // of, so they go: a tile showing a conversation that isn't there is the
     // tile lying by omission. What replaces them says only what is known.
-    case 'circe/replay-abandoned':
+    //
+    // What the user typed themselves is not part of that lie. Those bubbles
+    // were drawn locally by the input handler below, the messages behind them
+    // were held for the fresh session, and they are about to be answered — so
+    // clearing without putting them back leaves the agent replying to a
+    // question no longer on screen, which is the same misleading transcript
+    // this notice exists to prevent, reached from the other side. `held`
+    // carries them, in order, as of the moment the log was cleared.
+    case 'circe/replay-abandoned': {
       replaying = false;
       streaming = null;
       toolBubble = null;
       log.replaceChildren();
       appendText('agent', "Couldn't reopen the previous conversation — starting a new one.");
+      const held = (update as { held?: unknown }).held;
+      if (Array.isArray(held)) {
+        for (const text of held) if (typeof text === 'string') appendText('user', text);
+      }
       return;
+    }
     case 'circe/turn-end':
       endTurn();
       return;

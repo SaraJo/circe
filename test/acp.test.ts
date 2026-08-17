@@ -159,6 +159,139 @@ describe('AcpClient session lifecycle', () => {
     await expect(c.loadSession('gone')).resolves.toBe(false);
   });
 
+  /**
+   * `session/load` cannot tell a live session from a dead one: probed against
+   * Hermes 0.14.0, a fabricated session id answers `{}` with no error. Listing
+   * is what makes the saved id checkable, so how the capability is *read*
+   * matters — the runtime advertises it as `sessionCapabilities: { fork: {},
+   * list: {}, resume: {} }` (spec §2), nested and valued with an empty object,
+   * not as a boolean sibling of `loadSession`.
+   */
+  describe('session listing', () => {
+    it('reads the capability out of the nested sessionCapabilities block', async () => {
+      const c = client();
+      vi.spyOn(c as unknown as WithRequest, 'request').mockResolvedValue({
+        agentCapabilities: {
+          loadSession: true,
+          sessionCapabilities: { fork: {}, list: {}, resume: {} },
+        },
+      });
+
+      await (c as unknown as WithHandshake).handshake();
+
+      // `list === true` would read the captured `{}` as unsupported and
+      // silently disable the check the saved id depends on.
+      expect(c.canListSessions).toBe(true);
+    });
+
+    it('does not mistake a sibling of loadSession for the nested capability', async () => {
+      const c = client();
+      vi.spyOn(c as unknown as WithRequest, 'request').mockResolvedValue({
+        agentCapabilities: { loadSession: true, list: {} },
+      });
+
+      await (c as unknown as WithHandshake).handshake();
+
+      expect(c.canListSessions).toBe(false);
+    });
+
+    it('honours an explicit refusal', async () => {
+      const c = client();
+      vi.spyOn(c as unknown as WithRequest, 'request').mockResolvedValue({
+        agentCapabilities: { sessionCapabilities: { list: false } },
+      });
+
+      await (c as unknown as WithHandshake).handshake();
+
+      expect(c.canListSessions).toBe(false);
+    });
+
+    async function listing(c: AcpClient): Promise<AcpClient> {
+      const spy = vi.spyOn(c as unknown as WithRequest, 'request');
+      spy.mockResolvedValue({ agentCapabilities: { sessionCapabilities: { list: {} } } });
+      await (c as unknown as WithHandshake).handshake();
+      spy.mockReset();
+      return c;
+    }
+
+    it('returns the ids out of the captured response shape', async () => {
+      const c = running(client());
+      await listing(c);
+      const request = vi.spyOn(c as unknown as WithRequest, 'request').mockResolvedValue({
+        sessions: [
+          {
+            sessionId: '9a72aa86-0000-0000-0000-000000000000',
+            title: 'Spock First Officer Role Introduction',
+            cwd: '/Users/sarachipps',
+            updatedAt: '2026-08-16T21:54:37+00:00',
+          },
+        ],
+      });
+
+      await expect(c.listSessions()).resolves.toEqual(['9a72aa86-0000-0000-0000-000000000000']);
+      expect(request).toHaveBeenCalledWith(
+        'session/list',
+        { cwd: expect.any(String) },
+        expect.any(Number),
+      );
+    });
+
+    // `[]` is a real answer — an agent with no stored sessions at all — and the
+    // caller acts on it by refusing to resume. Everything that means "could not
+    // tell" has to be distinguishable from it, or one failed request would
+    // throw away a live conversation.
+    it('reports an agent with no sessions as an empty list, not as unknown', async () => {
+      const c = running(client());
+      await listing(c);
+      vi.spyOn(c as unknown as WithRequest, 'request').mockResolvedValue({ sessions: [] });
+
+      await expect(c.listSessions()).resolves.toEqual([]);
+    });
+
+    it('answers null, not an empty list, when the request fails', async () => {
+      const c = running(client());
+      await listing(c);
+      vi.spyOn(c as unknown as WithRequest, 'request').mockRejectedValue(new Error('boom'));
+
+      await expect(c.listSessions()).resolves.toBeNull();
+    });
+
+    it('answers null, not an empty list, when the response is not the documented shape', async () => {
+      const c = running(client());
+      await listing(c);
+      vi.spyOn(c as unknown as WithRequest, 'request').mockResolvedValue({ nothing: 'useful' });
+
+      await expect(c.listSessions()).resolves.toBeNull();
+    });
+
+    it('answers null without asking when the agent never advertised listing', async () => {
+      const c = running(client());
+      const request = vi.spyOn(c as unknown as WithRequest, 'request');
+
+      await expect(c.listSessions()).resolves.toBeNull();
+      expect(request).not.toHaveBeenCalled();
+    });
+
+    // Same reasoning as loadSession's: the caller's fallback is session/new on
+    // this same dead client, which cannot work either.
+    it('refuses to list against a client that is not running', async () => {
+      const c = client();
+      await listing(c);
+
+      await expect(c.listSessions()).rejects.toThrow('ACP client is not running');
+    });
+
+    it('forgets the capability on stop, so a later call refuses instead of writing nowhere', async () => {
+      const c = client();
+      await listing(c);
+      expect(c.canListSessions).toBe(true);
+
+      c.stop();
+
+      expect(c.canListSessions).toBe(false);
+    });
+  });
+
   it('returns the id from session/new', async () => {
     const c = running(client());
     vi.spyOn(c as unknown as WithRequest, 'request').mockResolvedValue({ sessionId: 'sess-9' });

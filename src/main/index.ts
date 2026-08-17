@@ -100,9 +100,14 @@ function sendTileUpdate(update: Record<string, unknown>): void {
  * (it answers with `{ stopReason }`), and it is what the working prototype keys
  * off too (renderer.js:591). Both outcomes end the turn, so a failed prompt
  * doesn't leave the previous bubble open forever.
+ *
+ * Returns a promise that resolves when the turn is over — on either outcome, so
+ * it never rejects. `restore.ts` awaits it to send messages held during the
+ * launch window one at a time; two prompts in flight against one session
+ * interleave into the tile's single streaming bubble.
  */
-function sendPrompt(client: AcpClient, sessionId: string, text: string): void {
-  void client.prompt(sessionId, text).then(
+function sendPrompt(client: AcpClient, sessionId: string, text: string): Promise<void> {
+  return client.prompt(sessionId, text).then(
     () => sendTileUpdate({ sessionUpdate: 'circe/turn-end' }),
     (err: unknown) => {
       sendTileUpdate({ sessionUpdate: 'circe/turn-end' });
@@ -134,6 +139,10 @@ function sendPrompt(client: AcpClient, sessionId: string, text: string): void {
  * left open behind a broken tile is worse than a tile that clearly explains
  * it couldn't start. The tile is the one true state once launch begins; there
  * is no useful "back to the wizard" once the character has been handed off.
+ * It closes *before* the session work rather than after it, because that work
+ * now includes sending anything the user typed while the tile was starting and
+ * waiting for each answer — a real agent turn, minutes if it wants to be. The
+ * wizard sitting on screen for the length of the first reply is not a handoff.
  */
 async function launchTile(
   character: Character,
@@ -220,6 +229,11 @@ async function launchTile(
     tileWin = null;
   });
 
+  // The handoff is done: the tile exists and owns this character from here on.
+  // See the note above on why this no longer waits for the session work.
+  wizardWin?.close();
+  wizardWin = null;
+
   try {
     await client.start();
     await restoreOrCreateSession({
@@ -259,9 +273,6 @@ async function launchTile(
       }
     }
   }
-
-  wizardWin?.close();
-  wizardWin = null;
 }
 
 /** Creates the wizard and its window, and wires the one to the other. */
@@ -323,7 +334,9 @@ function registerIpc(): void {
       sendToTile("Your message wasn't sent — this tile has no agent session right now.");
       return;
     }
-    sendPrompt(client, route.sessionId, text);
+    // Deliberately not awaited: this is a live turn, and the IPC handler must
+    // return now. `sendPrompt` reports both outcomes into the tile itself.
+    void sendPrompt(client, route.sessionId, text);
   });
   ipcMain.on('tile:close', () => {
     acp?.stop();

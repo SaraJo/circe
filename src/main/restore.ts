@@ -13,6 +13,12 @@ export const REPLAY_END = 'circe/replay-end';
  * history *before* it answers `session/load` (spec §2), so by the time we learn
  * the resume failed the bubbles are already on screen — belonging to a session
  * the live agent has no memory of. The renderer clears the log on this.
+ *
+ * It carries a `held` array of the messages the user typed while the tile was
+ * starting. Those were drawn locally by the renderer's input handler, so the
+ * clear wipes them too — and they are about to be sent to the fresh session,
+ * which would answer a question no longer on screen. The renderer redraws them
+ * after the clear so every reply stays attached to a visible question.
  */
 export const REPLAY_ABANDONED = 'circe/replay-abandoned';
 
@@ -23,7 +29,10 @@ export const REPLAY_ABANDONED = 'circe/replay-abandoned';
  */
 export interface SessionClient {
   readonly canLoadSession: boolean;
+  readonly canListSessions: boolean;
   loadSession(sessionId: string): Promise<boolean>;
+  /** The agent's own session ids, or `null` when the answer is unknown. */
+  listSessions(): Promise<string[] | null>;
   newSession(): Promise<string>;
 }
 
@@ -58,6 +67,17 @@ export class TileSession {
   /** The session whose updates this tile draws. Updates for any other are dropped. */
   get activeSessionId(): string | null {
     return this.active;
+  }
+
+  /**
+   * What is waiting to be sent, without consuming it. The renderer drew these
+   * as the user's own bubbles when they were typed, so anything that clears the
+   * log has to put them back — see `REPLAY_ABANDONED`. Read-only on purpose:
+   * `openSession`/`failLaunch` remain the only ways to take the messages out,
+   * so nothing can drain the pen by looking at it.
+   */
+  get heldMessages(): readonly string[] {
+    return this.held;
   }
 
   /** A tile is opening. Anything typed from here on is held, never dropped. */
@@ -119,8 +139,13 @@ export interface RestoreDeps {
    * never write over the launch that replaced it.
    */
   isCurrent(): boolean;
-  /** Sends a message that was held during the launch window. */
-  sendPrompt(sessionId: string, text: string): void;
+  /**
+   * Sends a message that was held during the launch window, resolving when that
+   * turn is over. The returned promise is what makes serial delivery possible
+   * (see `deliver`), so an implementation that reports failures itself should
+   * resolve rather than reject — a rejection here is not a launch failure.
+   */
+  sendPrompt(sessionId: string, text: string): Promise<void>;
 }
 
 /**
@@ -136,6 +161,11 @@ export interface RestoreDeps {
  * sitting under a transcript from the session that failed to load, so the
  * fallback path tells the renderer to clear what the replay already drew.
  *
+ * The saved id is checked against `session/list` first, because a *successful*
+ * load is not evidence the conversation exists — Hermes 0.14.0 answers `{}` for
+ * an id it has never seen, which made the "failed load" path above unreachable
+ * for the commonest reason a saved id goes bad. See `savedSessionIsGone`.
+ *
  * Lives outside `index.ts` and takes its collaborators as parameters so it can
  * be tested for real: the previous shape reached for module-level state and
  * could only be checked by a test that reimplemented it.
@@ -146,7 +176,11 @@ export async function restoreOrCreateSession(deps: RestoreDeps): Promise<void> {
   const saved = stateFor(file, profileId);
   const prior = saved.tabs[saved.activeIndex] ?? null;
 
-  if (prior && client.canLoadSession) {
+  if (!isCurrent()) return;
+  // The staleness check runs before anything is drawn, so a saved id the agent
+  // no longer has costs nothing on screen: no replay bracket, no abandoned
+  // notice, just a fresh session and a healed `state.json`.
+  if (prior && client.canLoadSession && !(await savedSessionIsGone(client, prior))) {
     if (!isCurrent()) return;
     session.expectReplay(prior); // set first: the replay's updates carry this id
     await deps.tileReady;
@@ -161,27 +195,81 @@ export async function restoreOrCreateSession(deps: RestoreDeps): Promise<void> {
       // cleared the same way before the error travels on to the launcher.
       if (isCurrent()) {
         emit({ sessionUpdate: REPLAY_END });
-        emit({ sessionUpdate: REPLAY_ABANDONED });
+        emit({ sessionUpdate: REPLAY_ABANDONED, held: [...session.heldMessages] });
       }
       throw err;
     }
     if (!isCurrent()) return;
     emit({ sessionUpdate: REPLAY_END });
     if (resumed) {
-      flush(deps, prior);
+      await deliver(deps, prior, session.openSession(prior));
       return;
     }
-    emit({ sessionUpdate: REPLAY_ABANDONED });
+    emit({ sessionUpdate: REPLAY_ABANDONED, held: [...session.heldMessages] });
   }
 
   if (!isCurrent()) return;
   const sessionId = await client.newSession();
   if (!isCurrent()) return;
-  flush(deps, sessionId);
+  // Taken from the holding pen before the write, so the launch window closes
+  // the instant a session exists — exactly as it did when this was one call.
+  const held = session.openSession(sessionId);
+  // Persisted before the messages go out, not after: `deliver` now waits for
+  // each turn to finish, and a turn can legitimately run for minutes. Leaving
+  // the write behind it would mean a cold start that crashed or was quit
+  // mid-answer forgot the session it had just created.
   await writeTileState(hermes, withActiveSession(file, profileId, sessionId));
+  await deliver(deps, sessionId, held);
 }
 
-/** Opens the session for routing and sends anything typed while it was starting. */
-function flush(deps: RestoreDeps, sessionId: string): void {
-  for (const text of deps.session.openSession(sessionId)) deps.sendPrompt(sessionId, text);
+/**
+ * Whether the agent's own session list says this id is gone.
+ *
+ * `session/load` cannot answer this: Hermes 0.14.0 returns success for an id it
+ * has never seen, which is what let a dead id survive in `circe/state.json`
+ * forever. Listing is the only thing that actually knows.
+ *
+ * Two ways of not knowing, both answered "not gone" so the caller attempts the
+ * load exactly as it did before listing existed: the agent does not advertise
+ * `session/list` at all, and the request failed. Neither is evidence the
+ * conversation is missing, and acting as if it were would throw away a live
+ * session id — the file is rewritten with the fresh one on that path, so a
+ * single failed request would permanently lose the conversation it was meant to
+ * protect. The defect this guards against is recoverable on the next launch;
+ * that one would not be.
+ */
+async function savedSessionIsGone(client: SessionClient, sessionId: string): Promise<boolean> {
+  if (!client.canListSessions) return false;
+  const ids = await client.listSessions();
+  if (ids === null) return false;
+  return !ids.includes(sessionId);
+}
+
+/**
+ * Sends the held messages, one at a time, waiting for each turn to finish.
+ *
+ * Not a loop of unawaited calls: two `session/prompt` requests in flight against
+ * one session interleave their replies into the renderer's single streaming
+ * bubble, and each resolution fires its own `circe/turn-end`, so the second
+ * reply lands inside the first one's bubble and the turn ends before it is
+ * finished. Two messages typed during the launch window is all it takes.
+ *
+ * `isCurrent` is re-checked between messages because each `await` here is a
+ * whole agent turn long — easily enough time for the tile to be closed and
+ * reopened, which stops this launch's client. Anything still queued belongs to
+ * a launch that no longer owns the tile.
+ */
+async function deliver(deps: RestoreDeps, sessionId: string, held: string[]): Promise<void> {
+  for (const text of held) {
+    if (!deps.isCurrent()) return;
+    try {
+      await deps.sendPrompt(sessionId, text);
+    } catch (err) {
+      // A failed send is the sender's business to report — it is the only thing
+      // that knows why — and it is not a failed launch. Letting it out of here
+      // would reach `launchTile`'s catch, which tells the user the tile could
+      // not reach its agent and tears down a session that is running fine.
+      console.warn(`Could not send a message held during launch of ${sessionId}.`, err);
+    }
+  }
 }

@@ -20,11 +20,18 @@ type WithHandle = { handle(msg: Record<string, unknown>): void };
  * `src/renderer/tile/main.ts`'s switch: user messages only while replaying, an
  * agent chunk after a replayed message starts a new bubble, replay-end closes
  * the last one.
+ *
+ * `onScreen` is what the log already holds when this stream starts — the tile's
+ * log is not cleared between turns, and one thing it can hold is a bubble the
+ * *input handler* drew locally, which no update stream will ever describe. The
+ * abandoned-replay case below is the one that has to know about those.
  */
 type Bubble = { role: 'user' | 'agent'; text: string };
 
-function render(updates: Array<Record<string, unknown>>): Bubble[] {
-  const out: Bubble[] = [];
+const ABANDONED_NOTICE = "Couldn't reopen the previous conversation — starting a new one.";
+
+function render(updates: Array<Record<string, unknown>>, onScreen: Bubble[] = []): Bubble[] {
+  const out: Bubble[] = [...onScreen];
   let replaying = false;
   let streaming: Bubble | null = null;
   for (const u of updates) {
@@ -49,6 +56,19 @@ function render(updates: Array<Record<string, unknown>>): Bubble[] {
           out.push(streaming);
         }
         streaming.text += piece;
+        break;
+      }
+      // The orphaned transcript goes, the notice replaces it — and the messages
+      // the user typed while the tile was starting are redrawn, because the
+      // clear took those too and the fresh session is about to answer them.
+      case 'circe/replay-abandoned': {
+        replaying = false;
+        streaming = null;
+        out.length = 0;
+        out.push({ role: 'agent', text: ABANDONED_NOTICE });
+        for (const text of (u.held as string[] | undefined) ?? []) {
+          out.push({ role: 'user', text });
+        }
         break;
       }
     }
@@ -210,6 +230,43 @@ describe('resuming a conversation', () => {
       { role: 'agent', text: "I'm Spock." },
     ]);
   });
+
+  /**
+   * The end state R2 is about. The abandoned-replay clear is indiscriminate:
+   * it wipes the whole log, including the bubble the *input handler* drew for a
+   * message typed while the tile was starting. That message was held, not
+   * dropped, so the fresh session answers it moments later — and the answer
+   * arrived under a question that had just been erased, which is the same
+   * misleading transcript the notice exists to prevent.
+   *
+   * The three things that must be true afterwards: the notice is visible, the
+   * user's own words are visible, and the reply is attached to a visible
+   * question.
+   */
+  it('keeps the user’s own words when an abandoned replay clears the log', () => {
+    const onScreen: Bubble[] = [
+      // Replayed by Hermes before the load failed — orphaned, and must go.
+      { role: 'user', text: 'who are you?' },
+      { role: 'agent', text: "I'm Spock." },
+      // Typed into the tile while it was starting; drawn by the input handler,
+      // held by `TileSession`, and about to be sent to the fresh session.
+      { role: 'user', text: 'are you there?' },
+    ];
+
+    const end = render(
+      [
+        { sessionUpdate: 'circe/replay-abandoned', held: ['are you there?'] },
+        { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'I am now.' } },
+      ],
+      onScreen,
+    );
+
+    expect(end).toEqual([
+      { role: 'agent', text: ABANDONED_NOTICE },
+      { role: 'user', text: 'are you there?' },
+      { role: 'agent', text: 'I am now.' },
+    ]);
+  });
 });
 
 /**
@@ -232,6 +289,20 @@ describe('restoreOrCreateSession', () => {
 
   class FakeClient implements SessionClient {
     canLoadSession = true;
+    /**
+     * Hermes 0.14.0 advertises `session/list` (spec §2), so that is the default
+     * here: the ordinary path this decision runs on checks the saved id before
+     * resuming it. Tests for an agent without listing set this false.
+     */
+    canListSessions = true;
+    /**
+     * What `session/list` answers. `null` is the "could not tell" reply —
+     * listing failed, or the response wasn't the documented shape — and is
+     * deliberately distinct from `[]`, which is a real agent with no sessions
+     * at all. The default holds the id `SAVED` names, i.e. a live conversation.
+     */
+    sessionIds: string[] | null = ['sess-prior'];
+    listCalls = 0;
     loadResult: boolean | Error = true;
     newSessionId = 'sess-new';
     newSessionCalls = 0;
@@ -243,6 +314,12 @@ describe('restoreOrCreateSession', () => {
 
     /** Records the order of everything the decision did, emits included. */
     constructor(private steps: string[]) {}
+
+    async listSessions(): Promise<string[] | null> {
+      this.listCalls += 1;
+      this.steps.push('list');
+      return this.sessionIds;
+    }
 
     async loadSession(sessionId: string): Promise<boolean> {
       this.loadedIds.push(sessionId);
@@ -275,22 +352,28 @@ describe('restoreOrCreateSession', () => {
     // is open for the whole of this call.
     session.beginLaunch();
     const sent: Array<{ sessionId: string; text: string }> = [];
+    /** Every synthetic update in full, not just its kind — see `steps`. */
+    const emitted: Array<Record<string, unknown>> = [];
     let current = true;
     const deps: RestoreDeps = {
       hermes,
       client,
       profileId: 'default',
       session,
-      emit: (u) => void steps.push(String(u.sessionUpdate)),
+      emit: (u) => {
+        emitted.push(u);
+        steps.push(String(u.sessionUpdate));
+      },
       tileReady: Promise.resolve(),
       isCurrent: () => current,
-      sendPrompt: (sessionId, text) => void sent.push({ sessionId, text }),
+      sendPrompt: async (sessionId, text) => void sent.push({ sessionId, text }),
     };
     return {
       hermes,
       client,
       session,
       steps,
+      emitted,
       sent,
       deps,
       supersede: () => {
@@ -311,7 +394,11 @@ describe('restoreOrCreateSession', () => {
 
     await restoreOrCreateSession(h.deps);
 
-    expect(h.steps).toEqual([REPLAY_START, 'load:sess-prior', REPLAY_END]);
+    // 'list' comes first: the saved id is checked against the agent's own
+    // session list before anything is drawn, because a successful
+    // `session/load` is not evidence the conversation exists (Hermes 0.14.0
+    // answers `{}` for an id it has never seen).
+    expect(h.steps).toEqual(['list', REPLAY_START, 'load:sess-prior', REPLAY_END]);
     expect(h.client.newSessionCalls).toBe(0);
     expect(h.session.activeSessionId).toBe('sess-prior');
   });
@@ -338,7 +425,14 @@ describe('restoreOrCreateSession', () => {
 
     await restoreOrCreateSession(h.deps);
 
-    expect(h.steps).toEqual([REPLAY_START, 'load:sess-prior', REPLAY_END, REPLAY_ABANDONED, 'new']);
+    expect(h.steps).toEqual([
+      'list',
+      REPLAY_START,
+      'load:sess-prior',
+      REPLAY_END,
+      REPLAY_ABANDONED,
+      'new',
+    ]);
     expect(await h.persisted()).toEqual({
       version: 1,
       profiles: { default: { tabs: ['sess-new'], activeIndex: 0 } },
@@ -354,7 +448,7 @@ describe('restoreOrCreateSession', () => {
 
     await expect(restoreOrCreateSession(h.deps)).rejects.toThrow('ACP client is not running');
 
-    expect(h.steps).toEqual([REPLAY_START, 'load:sess-prior', REPLAY_END, REPLAY_ABANDONED]);
+    expect(h.steps).toEqual(['list', REPLAY_START, 'load:sess-prior', REPLAY_END, REPLAY_ABANDONED]);
     expect(h.client.newSessionCalls).toBe(0);
   });
 
@@ -364,6 +458,116 @@ describe('restoreOrCreateSession', () => {
     await restoreOrCreateSession(h.deps);
 
     expect(h.steps).toEqual(['new']);
+  });
+
+  /**
+   * R3. `session/load` is not a existence check: probed against Hermes 0.14.0,
+   * a fabricated session id answers `{}` — success, no error. So the design's
+   * "the load fails and we fall back" never happened for the commonest reason a
+   * saved id goes bad. What happened instead: the tile opened empty with no
+   * explanation, `loadSession` returned true so the fallback never ran, and the
+   * dead id stayed in `circe/state.json` *permanently*, retried on every later
+   * cold start. The agent's own session list is the only thing that knows.
+   */
+  describe('checking the saved id against the agent’s session list', () => {
+    const RECORD = { version: 1, profiles: { default: { tabs: ['sess-new'], activeIndex: 0 } } };
+
+    it('resumes the saved session when the agent still lists it', async () => {
+      const h = harness(SAVED);
+      h.client.sessionIds = ['sess-other', 'sess-prior'];
+
+      await restoreOrCreateSession(h.deps);
+
+      expect(h.client.listCalls).toBe(1);
+      expect(h.client.loadedIds).toEqual(['sess-prior']);
+      expect(h.steps).toEqual(['list', REPLAY_START, 'load:sess-prior', REPLAY_END]);
+      expect(h.session.activeSessionId).toBe('sess-prior');
+    });
+
+    // The defect, closed: no load at all, so nothing is drawn and nothing has
+    // to be un-drawn — and the file heals, which is what stops the next cold
+    // start from retrying the same corpse.
+    it('never loads a saved id the agent no longer has, and heals the record', async () => {
+      const h = harness(SAVED);
+      h.client.sessionIds = ['sess-somebody-else'];
+
+      await restoreOrCreateSession(h.deps);
+
+      expect(h.client.loadedIds).toEqual([]);
+      expect(h.client.newSessionCalls).toBe(1);
+      expect(h.steps).toEqual(['list', 'new']);
+      expect(h.session.activeSessionId).toBe('sess-new');
+      expect(await h.persisted()).toEqual(RECORD);
+    });
+
+    // An agent that has been reset has no sessions at all. `[]` is a real
+    // answer — the saved id is definitely gone — and reading it as "could not
+    // tell" would re-open the defect for its likeliest cause.
+    it('treats an empty session list as an answer, not as a failure to answer', async () => {
+      const h = harness(SAVED);
+      h.client.sessionIds = [];
+
+      await restoreOrCreateSession(h.deps);
+
+      expect(h.client.loadedIds).toEqual([]);
+      expect(h.steps).toEqual(['list', 'new']);
+      expect(await h.persisted()).toEqual(RECORD);
+    });
+
+    // Listing is not a hard requirement: an agent that cannot list is left on
+    // exactly the behaviour every build before this one had.
+    it('attempts the load anyway when the agent cannot list sessions', async () => {
+      const h = harness(SAVED);
+      h.client.canListSessions = false;
+
+      await restoreOrCreateSession(h.deps);
+
+      expect(h.client.listCalls).toBe(0);
+      expect(h.client.loadedIds).toEqual(['sess-prior']);
+      expect(h.steps).toEqual([REPLAY_START, 'load:sess-prior', REPLAY_END]);
+    });
+
+    /**
+     * The judgement call. A *failed* list is not evidence the conversation is
+     * missing, and the fresh-session path rewrites `state.json` with the new
+     * id — so treating a failed request as "gone" would permanently discard a
+     * live conversation because one request went wrong. The defect this check
+     * closes costs an empty tile that heals on the next launch; getting it
+     * wrong this way costs the conversation itself. So a failure falls through
+     * to attempting the load, exactly as if listing were unsupported.
+     */
+    it('attempts the load anyway when listing fails, rather than discarding a live id', async () => {
+      const h = harness(SAVED);
+      h.client.sessionIds = null; // "could not tell"
+
+      await restoreOrCreateSession(h.deps);
+
+      expect(h.client.listCalls).toBe(1);
+      expect(h.client.loadedIds).toEqual(['sess-prior']);
+      expect(h.steps).toEqual(['list', REPLAY_START, 'load:sess-prior', REPLAY_END]);
+      expect(h.session.activeSessionId).toBe('sess-prior');
+      // And the record still names the conversation it was protecting.
+      expect(await h.persisted()).toEqual({ version: 1, profiles: { default: SAVED } });
+    });
+
+    it('does not list when there is nothing saved to check', async () => {
+      const h = harness();
+
+      await restoreOrCreateSession(h.deps);
+
+      expect(h.client.listCalls).toBe(0);
+      expect(h.steps).toEqual(['new']);
+    });
+
+    it('does not list when the agent cannot resume a conversation at all', async () => {
+      const h = harness(SAVED);
+      h.client.canLoadSession = false;
+
+      await restoreOrCreateSession(h.deps);
+
+      expect(h.client.listCalls).toBe(0);
+      expect(h.steps).toEqual(['new']);
+    });
   });
 
   describe('every fresh-session case', () => {
@@ -457,6 +661,136 @@ describe('restoreOrCreateSession', () => {
       ]);
       // The window is closed now: the next message goes straight out.
       expect(h.session.route('third')).toEqual({ kind: 'send', sessionId: 'sess-new' });
+    });
+
+    /**
+     * R1. `sendPrompt` is fire-and-forget, so a loop of un-awaited calls put
+     * two `session/prompt` requests in flight against one session at once. The
+     * tile has a single streaming bubble and each resolution fires its own
+     * `circe/turn-end`, so the two replies concatenate into one bubble and the
+     * turn ends before the second one has finished. Two messages typed during
+     * the launch window was the whole cost of entry.
+     *
+     * The fake below is asynchronous on purpose: the harness's default records
+     * synchronously and could not tell a serial send from a concurrent one.
+     */
+    it('sends held messages one at a time, never with two prompts in flight', async () => {
+      const h = harness();
+      h.session.route('first');
+      h.session.route('second');
+
+      const order: string[] = [];
+      let inFlight = 0;
+      let maxInFlight = 0;
+      h.deps.sendPrompt = async (_sessionId, text) => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        order.push(`start:${text}`);
+        // A turn is not over when the request is issued; it is over when the
+        // agent answers. Anything that only awaits the send would still overlap.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        order.push(`end:${text}`);
+        inFlight -= 1;
+      };
+
+      await restoreOrCreateSession(h.deps);
+
+      expect(maxInFlight).toBe(1);
+      expect(order).toEqual(['start:first', 'end:first', 'start:second', 'end:second']);
+    });
+
+    // Each await in that chain is a whole agent turn long — long enough for the
+    // tile to be closed and reopened, which stops this launch's client. What is
+    // still queued belongs to a launch that no longer owns the tile.
+    it('stops sending held messages once its launch has been superseded', async () => {
+      const h = harness();
+      h.session.route('first');
+      h.session.route('second');
+
+      const sent: string[] = [];
+      h.deps.sendPrompt = async (_sessionId, text) => {
+        sent.push(text);
+        h.supersede(); // the tile was closed and reopened while this turn ran
+        await Promise.resolve();
+      };
+
+      await restoreOrCreateSession(h.deps);
+
+      expect(sent).toEqual(['first']);
+    });
+
+    // A send that fails is the sender's business to report, and it is not a
+    // failed launch: letting it out of here reaches `launchTile`'s catch, which
+    // tells the user the tile can't reach its agent and tears down a session
+    // that is running fine.
+    it('keeps going, and does not fail the launch, when one send rejects', async () => {
+      const h = harness();
+      h.session.route('first');
+      h.session.route('second');
+
+      const sent: string[] = [];
+      h.deps.sendPrompt = async (_sessionId, text) => {
+        sent.push(text);
+        if (text === 'first') throw new Error('hermes acp exited (1)');
+      };
+
+      await expect(restoreOrCreateSession(h.deps)).resolves.toBeUndefined();
+
+      expect(sent).toEqual(['first', 'second']);
+      expect(await h.persisted()).toEqual({
+        version: 1,
+        profiles: { default: { tabs: ['sess-new'], activeIndex: 0 } },
+      });
+    });
+
+    /**
+     * R2. The abandoned-replay path clears the log before the held messages are
+     * sent, so the clear wipes the user's own bubble and the fresh session then
+     * answers a question no longer on screen. The main process is the only
+     * thing that knows what was held, so it says so — the renderer redraws
+     * them after the clear (see the mirror test at the top of this file).
+     */
+    it('tells the renderer what the user had already typed when it clears the log', async () => {
+      const h = harness(SAVED);
+      h.client.loadResult = false;
+      let open!: () => void;
+      h.client.gate = new Promise<void>((resolve) => {
+        open = resolve;
+      });
+      const running = restoreOrCreateSession(h.deps);
+      await settle();
+
+      // Typed while the replay was still on screen; drawn locally by the input
+      // handler, which is why the clear would otherwise take it.
+      expect(h.session.route('are you there?')).toEqual({ kind: 'held' });
+      open();
+      await running;
+
+      expect(h.emitted).toContainEqual({
+        sessionUpdate: REPLAY_ABANDONED,
+        held: ['are you there?'],
+      });
+      // And it is the same message the fresh session is answering.
+      expect(h.sent).toEqual([{ sessionId: 'sess-new', text: 'are you there?' }]);
+    });
+
+    // The same clear happens when the load throws mid-replay. There the launch
+    // fails and `launchTile` reports the messages as unsent — but they are
+    // still the user's own words, and still on screen underneath that notice.
+    it('carries the held messages on the abandoned clear when the load throws too', async () => {
+      const h = harness(SAVED);
+      h.client.loadResult = new Error('ACP client is not running');
+      h.client.onLoad = () => void h.session.route('are you there?');
+
+      await expect(restoreOrCreateSession(h.deps)).rejects.toThrow('ACP client is not running');
+
+      expect(h.emitted).toContainEqual({
+        sessionUpdate: REPLAY_ABANDONED,
+        held: ['are you there?'],
+      });
+      // Still held: the launch failed, so `launchTile` collects them and says
+      // they weren't sent rather than this path silently eating them.
+      expect(h.session.heldMessages).toEqual(['are you there?']);
     });
 
     it('is reported as unsent, never silently dropped, when the launch fails', () => {

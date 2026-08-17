@@ -50,6 +50,7 @@ export class AcpClient {
   private nextId = 1;
   private pending = new Map<number, { resolve(v: unknown): void; reject(e: Error): void }>();
   private loadSessionSupported = false;
+  private listSessionsSupported = false;
   private startPromise: Promise<void> | null = null;
 
   constructor(private opts: AcpOptions) {}
@@ -146,13 +147,73 @@ export class AcpClient {
         clientCapabilities: { fs: { readTextFile: false, writeTextFile: false } },
       },
       HANDSHAKE_TIMEOUT_MS,
-    )) as { agentCapabilities?: { loadSession?: unknown } } | null;
+    )) as {
+      agentCapabilities?: { loadSession?: unknown; sessionCapabilities?: { list?: unknown } };
+    } | null;
     this.loadSessionSupported = init?.agentCapabilities?.loadSession === true;
+    // Not a sibling of `loadSession` and not a boolean: Hermes 0.14.0 answers
+    // `sessionCapabilities: { fork: {}, list: {}, resume: {} }` (spec §2), so
+    // the capability is carried by the key's *presence* and its value is an
+    // empty object. `=== true` would therefore read it as unsupported and
+    // silently disable the staleness check below. An explicit `false` is still
+    // honoured as a refusal, in case a later agent spells it that way.
+    const list = init?.agentCapabilities?.sessionCapabilities?.list;
+    this.listSessionsSupported = list === true || (typeof list === 'object' && list !== null);
   }
 
   /** Whether this agent can resume a prior conversation (Hermes 0.14.0: yes). */
   get canLoadSession(): boolean {
     return this.loadSessionSupported;
+  }
+
+  /** Whether this agent can enumerate its stored sessions (Hermes 0.14.0: yes). */
+  get canListSessions(): boolean {
+    return this.listSessionsSupported;
+  }
+
+  /**
+   * The ids of the conversations the agent still has. Used to check a saved id
+   * before resuming it, because `session/load` is not a check: Hermes 0.14.0
+   * answers `{}` — success — for a session id it has never seen. Without this
+   * the tile "resumes" a conversation that does not exist, comes back empty
+   * with no explanation, and keeps the dead id in `circe/state.json` forever,
+   * retrying the same corpse on every later cold start.
+   *
+   * Returns `null`, not `[]`, for every case where the answer is unknown: the
+   * agent does not support listing, the request failed, or the response was
+   * not the documented shape. The distinction is load-bearing — `[]` is a real
+   * answer meaning "this agent has no sessions at all", which is precisely the
+   * cleared-store case the caller must act on, and conflating it with "could
+   * not tell" would either re-open the defect or throw away a live session id
+   * because one request failed.
+   *
+   * A dead client throws, as `loadSession` does and for the same reason: the
+   * caller's fallback is `session/new` on this same client, which cannot work
+   * either, and the launch should fail loudly now rather than 30s from now.
+   */
+  async listSessions(): Promise<string[] | null> {
+    if (!this.listSessionsSupported) return null;
+    this.assertRunning();
+    try {
+      // Answered identically with no params and with `{cwd}` when probed; the
+      // cwd goes with it for the same reason `session/load` carries one — every
+      // request this client makes describes the same working directory.
+      const result = (await this.request(
+        'session/list',
+        { cwd: this.cwd },
+        HANDSHAKE_TIMEOUT_MS,
+      )) as { sessions?: unknown } | null;
+      const sessions = result?.sessions;
+      if (!Array.isArray(sessions)) return null;
+      return sessions
+        .map((s) => (s as { sessionId?: unknown } | null)?.sessionId)
+        .filter((id): id is string => typeof id === 'string');
+    } catch (err) {
+      // Survivable: the caller falls back to attempting the load, which is the
+      // behaviour of every build before listing existed.
+      console.warn('Could not list ACP sessions; resuming without checking the saved id.', err);
+      return null;
+    }
   }
 
   async newSession(): Promise<string> {
@@ -216,8 +277,9 @@ export class AcpClient {
   // Returns the client to a genuinely restartable state and leaves nothing behind
   // for a killed child to act on later. Clearing only `child` would leave
   // `startPromise` cached (so a later start() replays the stale settled promise
-  // instead of spawning), `loadSessionSupported` set (so a later loadSession()
-  // would attempt a request against a null child instead of correctly refusing),
+  // instead of spawning), the capability flags set (so a later loadSession() or
+  // listSessions() would attempt a request against a null child instead of
+  // correctly refusing),
   // `pending` requests waiting on an `exit` event that may arrive late or never
   // (the exit-identity check above would in fact ignore it, since `this.child`
   // is about to become a different process or null), and a trailing partial
@@ -229,6 +291,7 @@ export class AcpClient {
     this.child = null;
     this.startPromise = null;
     this.loadSessionSupported = false;
+    this.listSessionsSupported = false;
     this.buffer = '';
     for (const p of this.pending.values()) p.reject(new Error('ACP client stopped'));
     this.pending.clear();
