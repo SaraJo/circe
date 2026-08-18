@@ -106,11 +106,13 @@ describe('renderOrchestratorSoul', () => {
     expect(soul).toMatch(/speak plainly/i);
   });
 
-  // Voice, not roleplay — the line the whole feature stands on.
+  // Voice, not roleplay — the line the whole feature stands on. Render with a
+  // non-empty voice so the plain-speech fallback text can't satisfy either
+  // assertion by accident.
   it('keeps judgement out of the costume', async () => {
-    const soul = await render();
-    expect(soul).toMatch(/never.*(invent|in-world|in character)/i);
-    expect(soul).toMatch(/drop.*voice|plainly/i);
+    const soul = await render({ ...TRILLIAN, voice: 'Dry, exact, faintly amused.' });
+    expect(soul).toMatch(/never invent facts/i);
+    expect(soul).toMatch(/would obscure the answer, drop it/i);
   });
 
   // The user's answer to the voice question is itself the authorisation, so
