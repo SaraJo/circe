@@ -34,9 +34,33 @@ function initials(name: string): string {
     .join('');
 }
 
+/**
+ * What `fandom.stuck` ("Not sure? Give me some ideas") actually does:
+ * drops one of these into the input, so the escape hatch gives the user a
+ * real, concrete option rather than nothing. Deliberately not a model call —
+ * this has to be instant, and picking from a short curated list is honest
+ * about what it is (a nudge, not a suggestion engine).
+ */
+const FANDOM_IDEAS = [
+  "Terry Pratchett's Discworld",
+  'a decades-long D&D campaign',
+  'competitive bread baking',
+  'a group chat that never sleeps',
+  'Formula 1',
+  'the Marvel universe',
+  'birdwatching',
+  'a college a cappella group',
+];
+
+function randomFandomIdea(current: string): string {
+  const pool = FANDOM_IDEAS.filter((idea) => idea !== current);
+  return pool[Math.floor(Math.random() * pool.length)] ?? FANDOM_IDEAS[0]!;
+}
+
 function renderCharacter(c: Character): HTMLElement {
   const node = el(`
-    <section class="screen">
+    <section class="screen character">
+      <p class="lead">${COPY.meet.lead}</p>
       <div class="preview">
         <div class="avatar"></div>
         <h1></h1>
@@ -49,6 +73,11 @@ function renderCharacter(c: Character): HTMLElement {
       </div>
     </section>
   `);
+  // The character's own colours arrive with the character: a subtle wash
+  // behind this one screen (§7), softened by color-mix in wizard.css so it
+  // reads as a wash rather than a full-bleed colour field standing in front
+  // of the primary action.
+  node.style.setProperty('--agent-bg', c.palette.bg);
   const avatar = node.querySelector<HTMLElement>('.avatar')!;
   avatar.textContent = initials(c.name);
   avatar.style.background = c.palette.bg;
@@ -117,6 +146,7 @@ function render(step: WizardStep): void {
           <h1>${COPY.fandom.title}</h1>
           <p class="lead">${COPY.fandom.lead}</p>
           <input id="fandom" placeholder="${COPY.fandom.placeholder}" autofocus />
+          <button class="link" id="stuck">${COPY.fandom.stuck}</button>
           <div class="actions">
             <button class="primary" id="go">${COPY.fandom.action}</button>
           </div>
@@ -125,6 +155,10 @@ function render(step: WizardStep): void {
       const input = node.querySelector<HTMLInputElement>('#fandom')!;
       const submit = () => window.circe.submitFandom(input.value);
       node.querySelector('#go')!.addEventListener('click', submit);
+      node.querySelector('#stuck')!.addEventListener('click', () => {
+        input.value = randomFandomIdea(input.value);
+        input.focus();
+      });
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') submit();
       });
