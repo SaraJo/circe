@@ -21,6 +21,16 @@ export interface Character {
   why: string;
   /** The fandom the user typed, carried through so the SOUL template can name it. */
   fandom: string;
+  /**
+   * How this character speaks — diction, rhythm, the words they reach for.
+   * Written into the profile's `## Voice` section. Empty means plain-spoken,
+   * which is also what a user who asks for plain speech ends up with.
+   */
+  voice: string;
+  /** The agent's own first message, in voice. Empty falls back to Circe's scripted one. */
+  greeting: string;
+  /** One in-voice sentence asking whether to keep speaking this way. Empty asks nothing. */
+  voiceCheck: string;
 }
 
 /** The `# Name — tagline` line at the top of a SOUL.md. */

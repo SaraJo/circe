@@ -22,6 +22,16 @@ export function DERIVATION_PROMPT(fandom: string): string {
     'colour that is unmistakably *a* colour — a deep green, a burnt orange, a',
     'bruised purple — not a neutral brown or charcoal.',
     '',
+    'Then write their voice. Not a biography — how they *talk*: diction, rhythm,',
+    'the words they reach for, what they never say. Two sentences at most. This',
+    'is the difference between an agent that feels like someone and a themed text',
+    'box.',
+    '',
+    'The voice is a manner of speaking, never a performance. This character is a',
+    'working assistant first: it tells the truth plainly, says "I cannot do that"',
+    'when it cannot, and never invents facts from its own world. Write a voice',
+    'that survives being useful.',
+    '',
     'Reply with ONLY a JSON object and no other text:',
     '{',
     '  "name": "<the character\'s name>",',
@@ -31,7 +41,14 @@ export function DERIVATION_PROMPT(fandom: string): string {
     '    "border": "<#rrggbb, light tile border>",',
     '    "accent": "<#rrggbb, bright, readable on bg>"',
     '  },',
-    '  "why": "<one sentence: why this character coordinates>"',
+    '  "why": "<one sentence: why this character coordinates>",',
+    '  "voice": "<two sentences at most: how they speak>",',
+    '  "greeting": "<their own first message to the user, in that voice: who they',
+    '     are, that they are good for real work today, and one invitation to start',
+    '     small. Three short paragraphs at most. Do NOT ask the user to plan a team',
+    '     or list agents they might want>",',
+    '  "voiceCheck": "<one sentence, in that voice, asking whether the user likes',
+    '     being spoken to this way and offering to speak plainly instead>"',
     '}',
     '',
     'All three colours must be six-digit hex. "bg" must be dark enough that white',
@@ -75,6 +92,22 @@ function extractJson(reply: string): unknown {
   }
 }
 
+/**
+ * A model-supplied string, or `''`. Never throws: per the degradation rule a
+ * bad voice costs flavour, not an agent — and `''` is a meaningful value
+ * everywhere it lands, since a plain-spoken agent is exactly what a user who
+ * dislikes the voice ends up with anyway.
+ *
+ * Over-length is dropped rather than truncated. A voice cut mid-sentence in a
+ * persona file reads as corruption, and a greeting cut mid-word reaches the
+ * user as the agent's first impression.
+ */
+function optionalText(value: unknown, max: number): string {
+  if (typeof value !== 'string') return '';
+  const text = value.trim();
+  return text.length > max ? '' : text;
+}
+
 function validate(raw: unknown, fandom: string): Character {
   const o = raw as Record<string, unknown>;
   const name = typeof o.name === 'string' ? o.name.trim() : '';
@@ -104,7 +137,13 @@ function validate(raw: unknown, fandom: string): Character {
   const profileId = toProfileId(name);
   if (!profileId) throw new Error('Could not read a character out of that reply.');
 
-  return { name, profileId, tagline, palette, why, fandom };
+  const voice = optionalText(o.voice, 400);
+  const greeting = optionalText(o.greeting, 1200);
+  // A check with nothing to check is noise: without a voice there is no accent
+  // to offer to drop.
+  const voiceCheck = voice ? optionalText(o.voiceCheck, 200) : '';
+
+  return { name, profileId, tagline, palette, why, fandom, voice, greeting, voiceCheck };
 }
 
 export interface DeriveOptions {

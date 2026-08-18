@@ -6,7 +6,17 @@ import type { Character } from '../src/shared/types';
 const PALETTE = { bg: '#1e2952', border: '#c7d2fe', accent: '#a5b4fc' };
 
 function character(profileId: string): Character {
-  return { name: profileId, profileId, tagline: '', palette: PALETTE, why: '', fandom: '' };
+  return {
+    name: profileId,
+    profileId,
+    tagline: '',
+    palette: PALETTE,
+    why: '',
+    fandom: '',
+    voice: '',
+    greeting: '',
+    voiceCheck: '',
+  };
 }
 
 /**

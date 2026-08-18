@@ -115,6 +115,13 @@ export async function characterFor(
     palette: await readProfilePalette(hermes, profile.id),
     why: '',
     fandom: '',
+    // Rebuilt from disk, where only the persona and the palette live. The
+    // voice is *in* that SOUL.md and belongs to the agent; Circe does not
+    // parse it back out, because nothing here needs it — the greeting and the
+    // check happen once, at the handoff, for a character just derived.
+    voice: '',
+    greeting: '',
+    voiceCheck: '',
   };
 }
 

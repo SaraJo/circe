@@ -74,6 +74,9 @@ describe('characterFor', () => {
       palette: PALETTE,
       why: '',
       fandom: '',
+      voice: '',
+      greeting: '',
+      voiceCheck: '',
     });
   });
 

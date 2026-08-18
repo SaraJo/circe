@@ -12,6 +12,9 @@ const TRILLIAN: Character = {
   palette: { bg: '#1e2952', border: '#c7d2fe', accent: '#a5b4fc' },
   why: 'She tracks what everyone else is doing.',
   fandom: "Hitchhiker's Guide to the Galaxy",
+  voice: '',
+  greeting: '',
+  voiceCheck: '',
 };
 
 async function render(): Promise<string> {
