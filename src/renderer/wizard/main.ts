@@ -70,7 +70,7 @@ function render(step: WizardStep): void {
         el(`
         <section class="screen">
           <h1>Circe</h1>
-          <p class="lead">A home for your AI agents — assistants that live on your
+          <p class="lead">A home for your AI agents. Assistants that live on your
           desktop, each with its own personality, memory, and job.</p>
           <p class="lead">In the next few minutes you'll meet your first one: a
           coordinator whose job is to help you build the rest.</p>
@@ -106,7 +106,7 @@ function render(step: WizardStep): void {
         <section class="screen">
           <h1>Connect a model</h1>
           <p class="lead">Your agent needs a model to think with. Hermes handles
-          this — run <code>hermes setup</code> in a terminal, then reopen Circe.</p>
+          this. Run <code>hermes setup</code> in a terminal, then reopen Circe.</p>
         </section>
       `),
       );
@@ -117,7 +117,7 @@ function render(step: WizardStep): void {
         <section class="screen">
           <h1>What do you love?</h1>
           <p class="lead">Name a fandom, a universe, or a community. Your agent gets
-          its name and its colours from that world — and so does every agent you add
+          its name and its colours from that world, and so does every agent you add
           later, so the crew hangs together.</p>
           <input id="fandom" placeholder="Hitchhiker's Guide, the Wire, competitive bread baking…" autofocus />
           <div class="actions">
@@ -220,7 +220,7 @@ function render(step: WizardStep): void {
       // user's own data, and it steers them away from the backup that exists.
       node.querySelector('.lead')!.textContent = step.personaReplaced
         ? `Something went wrong setting up ${step.character.name}, and no agent was ` +
-          `started — but your ${step.personaReplaced.path} had already been replaced by ` +
+          `started, but your ${step.personaReplaced.path} had already been replaced by ` +
           `then.` +
           (step.personaReplaced.backedUpTo
             ? ` Your previous version was saved to ${step.personaReplaced.backedUpTo}.`

@@ -7,9 +7,20 @@ description: Use when the user describes their work, asks for a new agent, or me
 
 ## When to reach for this
 
-- The user describes what they spend their time on.
-- The user asks for a new agent, or asks what agents they should have.
+A specialist earns its place out of work that has already happened. You reach
+for this when a real need surfaces, never to go looking for one.
+
+- A task you are doing keeps reaching for expertise, tools, memory, or
+  permissions that do not belong in your own loadout.
 - The user describes a workflow that touches a system you have no tool for.
+- The user asks for a new agent. Answer honestly — including "not yet, and
+  here's what would change my mind."
+
+**Not** because the conversation has gone quiet, because onboarding just
+finished, or because the user has only one agent. One agent is the right number
+to start with. Never ask the user to inventory their work so you can propose a
+roster: you would be planning a fleet for work neither of you has seen, and the
+proposals would be guesses wearing the clothes of a plan.
 
 ## Proposing an agent
 
@@ -58,10 +69,16 @@ Once the user has said yes:
    the same world their name came from. **Do not ask the user to pick colours** —
    this is part of giving the agent a face, like the name is. A profile without
    this file still works; it just appears in a neutral grey.
-5. Prune its loadout: `hermes skills config` then `hermes tools`, in that order.
-   A new profile inherits everything; leaving it unpruned means the new agent is
-   the same unpruned setup under a different name.
-6. Tell the user it exists, what it owns, and what you turned off.
+5. Prune its loadout: `hermes skills config` first, then `hermes tools`. That
+   order, always — skills define what an agent knows how to do, tools define
+   what it can actually touch, and you decide what it is capable of before you
+   give it the hands. This step is not optional. A new profile inherits the
+   entire stack, so an unpruned one is the same bloated setup under a different
+   name, burning tokens on skills it will never use and misleading itself about
+   what it is for.
+6. Tell the user it exists, what it owns, and **what you turned off, by name.**
+   "Pruned its loadout" is not a report. "Left web and file on; turned off
+   browser, terminal, delegation, and the Polymarket skill" is.
 
 The same confirmation that authorised creating the agent also authorises recording
 it in your own SOUL.md, under the list of specialists — that is one change, not
@@ -96,8 +113,15 @@ not always know the option exists.
 
 - Do not create an agent in the same turn you proposed it.
 - Do not create several agents from one confirmation.
-- Do not create an agent for a domain that does not have its own expertise, tools,
-  model, memory boundary, or permission level. Overlapping agents make routing
+- **Do not ask the user to plan their fleet.** No "what do you spend your week
+  on so I can suggest specialists", no menu of agents to pick from. Boring
+  reliability before expanded authority: one workflow made stable and
+  repeatable is worth more than six agents created on a hunch.
+- **Do not propose an agent for work that has not happened yet.** A need you
+  can imagine is not a need. Wait until you have hit it.
+- Do not create an agent unless it has at least one of its own: **domain
+  expertise, model, tools, memory boundary, permission level, or user/access
+  boundary.** Nothing else earns a profile. Overlapping agents make routing
   ambiguous and split memory that should have stayed together.
 - Do not modify your own SOUL.md, skills, or tool configuration without approval,
   beyond the roster entry that comes bundled with an agent's own creation.

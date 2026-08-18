@@ -24,12 +24,49 @@ describe('openingMessage', () => {
     expect(openingMessage(TRILLIAN)).toContain("Hitchhiker's Guide to the Galaxy");
   });
 
-  it('ends by asking what the user spends their week on', () => {
-    expect(openingMessage(TRILLIAN)).toMatch(/what do you spend your week on/i);
+  it('ends by asking about one real thing, not about the whole week', () => {
+    expect(openingMessage(TRILLIAN)).toMatch(/what are you working on right now/i);
   });
 
   it('never claims the user has a fleet', () => {
     expect(openingMessage(TRILLIAN)).not.toMatch(/your fleet|your agents are ready/i);
+  });
+
+  /**
+   * The defect this message used to have, and the reason these three tests
+   * exist. It asked "what do you spend your week on?" and offered "one for
+   * your job, one for the code, one for the household admin you keep
+   * forgetting" — which is a request for a day-one roster, and pre-names three
+   * agents for work it has never seen. That is the first thing the operating
+   * discipline rejects: specialists earn their place out of real work, they
+   * are not planned in advance.
+   *
+   * The behaviour looked like the model drifting. It was not: it was this
+   * string telling it to.
+   */
+  it('does not ask the user to inventory their work', () => {
+    expect(openingMessage(TRILLIAN)).not.toMatch(/spend your (week|time)/i);
+  });
+
+  it('does not pre-name specialists for work it has not seen', () => {
+    expect(openingMessage(TRILLIAN)).not.toMatch(/one for your|one for the/i);
+  });
+
+  it('says out loud that it will not hand over a roster', () => {
+    expect(openingMessage(TRILLIAN)).toMatch(/roster/i);
+  });
+
+  // The bar a specialist has to clear, visible from the first message rather
+  // than buried in the skill the user never reads.
+  it('names what would justify another agent', () => {
+    const message = openingMessage(TRILLIAN);
+    expect(message).toMatch(/its own tools/i);
+    expect(message).toMatch(/its own memory/i);
+    expect(message).toMatch(/its own permissions/i);
+  });
+
+  it('leaves the decision with the user', () => {
+    expect(openingMessage(TRILLIAN)).toMatch(/you decide/i);
   });
 
   it('wraps no paragraph itself — the tile renders this with pre-wrap', () => {

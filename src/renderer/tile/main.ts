@@ -201,7 +201,7 @@ circe.onUpdate((update) => {
       streaming = null;
       toolBubble = null;
       log.replaceChildren();
-      appendText('agent', "Couldn't reopen the previous conversation — starting a new one.");
+      appendText('agent', "Couldn't reopen the previous conversation, so I'm starting a new one.");
       const held = (update as { held?: unknown }).held;
       if (Array.isArray(held)) {
         for (const text of held) if (typeof text === 'string') appendText('user', text);

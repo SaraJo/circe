@@ -248,7 +248,7 @@ export class TileRegistry {
     if (route.kind === 'held') return;
     if (route.kind === 'no-session') {
       this.emit(tile.win, { sessionUpdate: 'circe/turn-end' });
-      this.say(tile, "Your message wasn't sent — this tile has no agent session right now.");
+      this.say(tile, "Your message wasn't sent. This tile has no agent session right now.");
       return;
     }
     await this.send(tile, route.sessionId, text);
