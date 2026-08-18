@@ -717,11 +717,14 @@ describe('the wizard copy helpers', () => {
 
   // M6: the only text the "give me an example" button may overwrite is an
   // example it put there itself. Anything the user typed is theirs.
-  it('treats only an untouched field or its own example as replaceable', () => {
-    expect(isReplaceableExample('')).toBe(true);
-    expect(isReplaceableExample('   ')).toBe(true);
-    expect(isReplaceableExample(FANDOM_IDEAS[0]!)).toBe(true);
-    expect(isReplaceableExample('the Wire')).toBe(false);
+  it('treats only an untouched field or its own last example as replaceable', () => {
+    expect(isReplaceableExample('', null)).toBe(true);
+    expect(isReplaceableExample('   ', null)).toBe(true);
+    expect(isReplaceableExample(FANDOM_IDEAS[0]!, FANDOM_IDEAS[0]!)).toBe(true);
+    expect(isReplaceableExample('the Wire', FANDOM_IDEAS[0]!)).toBe(false);
+    // Typed by the user, not offered by the button — a membership test against
+    // FANDOM_IDEAS could not tell these apart, and would clobber it.
+    expect(isReplaceableExample(FANDOM_IDEAS[0]!, null)).toBe(false);
   });
 
   it('offers a different example each click, so the button keeps working', () => {

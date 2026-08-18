@@ -163,13 +163,17 @@ export const FANDOM_IDEAS = [
 ];
 
 /**
- * True when the input holds nothing but an example this button put there, and
- * so may be overwritten. M6: the button used to clobber whatever the user had
- * typed. Text the user wrote is theirs; `main.ts` hides the button rather than
- * leaving a click that would destroy it.
+ * True when the input holds nothing but the example this button last put there,
+ * and so may be overwritten. M6: the button used to clobber whatever the user
+ * had typed. Text the user wrote is theirs; `main.ts` hides the button rather
+ * than leaving a click that would destroy it.
+ *
+ * Matching against `offered` rather than against `FANDOM_IDEAS` is deliberate:
+ * a user who types "Formula 1" themselves typed it, and a membership test
+ * cannot tell that apart from the button having placed it.
  */
-export function isReplaceableExample(value: string): boolean {
-  return value.trim() === '' || FANDOM_IDEAS.includes(value);
+export function isReplaceableExample(value: string, offered: string | null): boolean {
+  return value.trim() === '' || value === offered;
 }
 
 /** A different example from the one already showing, so clicking twice moves. */

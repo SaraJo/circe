@@ -142,11 +142,13 @@ function render(step: WizardStep): void {
       // neither clobber their answer nor sit there as a click that would
       // (M6).
       const stuck = node.querySelector<HTMLElement>('#stuck')!;
+      let offered: string | null = null;
       const syncStuck = () => {
-        stuck.hidden = !isReplaceableExample(input.value);
+        stuck.hidden = !isReplaceableExample(input.value, offered);
       };
       stuck.addEventListener('click', () => {
-        input.value = nextFandomIdea(input.value);
+        offered = nextFandomIdea(input.value);
+        input.value = offered;
         input.focus();
         syncStuck();
       });
