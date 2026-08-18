@@ -1,5 +1,5 @@
 import type { Character, WizardStep } from '../../shared/types';
-import { COPY } from './copy';
+import { COPY, fill, isReplaceableExample, nextFandomIdea } from './copy';
 
 export { COPY };
 
@@ -34,29 +34,6 @@ function initials(name: string): string {
     .join('');
 }
 
-/**
- * What `fandom.stuck` ("Not sure? Give me some ideas") actually does:
- * drops one of these into the input, so the escape hatch gives the user a
- * real, concrete option rather than nothing. Deliberately not a model call —
- * this has to be instant, and picking from a short curated list is honest
- * about what it is (a nudge, not a suggestion engine).
- */
-const FANDOM_IDEAS = [
-  "Terry Pratchett's Discworld",
-  'a decades-long D&D campaign',
-  'competitive bread baking',
-  'a group chat that never sleeps',
-  'Formula 1',
-  'the Marvel universe',
-  'birdwatching',
-  'a college a cappella group',
-];
-
-function randomFandomIdea(current: string): string {
-  const pool = FANDOM_IDEAS.filter((idea) => idea !== current);
-  return pool[Math.floor(Math.random() * pool.length)] ?? FANDOM_IDEAS[0]!;
-}
-
 function renderCharacter(c: Character): HTMLElement {
   const node = el(`
     <section class="screen character">
@@ -86,7 +63,7 @@ function renderCharacter(c: Character): HTMLElement {
   node.querySelector('h1')!.textContent = c.name;
   node.querySelector('.tagline')!.textContent = c.tagline;
   node.querySelector('.why')!.textContent = c.why;
-  node.querySelector('#accept')!.textContent = COPY.meet.action.replace('{{NAME}}', c.name);
+  node.querySelector('#accept')!.textContent = fill(COPY.meet.action, { NAME: c.name });
   node.querySelector('#accept')!.addEventListener('click', () => window.circe.accept());
   node.querySelector('#another')!.addEventListener('click', () => window.circe.retry());
   return node;
@@ -103,7 +80,7 @@ function render(step: WizardStep): void {
         <section class="screen">
           <h1>${COPY.welcome.title}</h1>
           <p class="lead">${COPY.welcome.lead}</p>
-          <p class="lead">${COPY.welcome.sub}</p>
+          <p class="sub">${COPY.welcome.sub}</p>
           <p class="status">${COPY.welcome.status}</p>
         </section>
       `),
@@ -129,16 +106,21 @@ function render(step: WizardStep): void {
       break;
     }
 
-    case 'provider-missing':
-      screenEl.append(
-        el(`
+    case 'provider-missing': {
+      // The command is a placeholder, not markdown: nothing here renders
+      // markdown, so backticks in the copy reached the screen as literal
+      // characters. Split on it and give the command a real `<code>` (M3).
+      const [providerBefore, providerAfter] = COPY.provider.lead.split('{{COMMAND}}');
+      const node = el(`
         <section class="screen">
           <h1>${COPY.provider.title}</h1>
-          <p class="lead">${COPY.provider.lead}</p>
+          <p class="lead">${providerBefore}<code></code>${providerAfter}</p>
         </section>
-      `),
-      );
+      `);
+      node.querySelector('code')!.textContent = COPY.provider.command;
+      screenEl.append(node);
       break;
+    }
 
     case 'fandom': {
       const node = el(`
@@ -155,10 +137,20 @@ function render(step: WizardStep): void {
       const input = node.querySelector<HTMLInputElement>('#fandom')!;
       const submit = () => window.circe.submitFandom(input.value);
       node.querySelector('#go')!.addEventListener('click', submit);
-      node.querySelector('#stuck')!.addEventListener('click', () => {
-        input.value = randomFandomIdea(input.value);
+      // The button only ever overwrites an example it put there itself, and
+      // hides as soon as the field holds something the user typed — so it can
+      // neither clobber their answer nor sit there as a click that would
+      // (M6).
+      const stuck = node.querySelector<HTMLElement>('#stuck')!;
+      const syncStuck = () => {
+        stuck.hidden = !isReplaceableExample(input.value);
+      };
+      stuck.addEventListener('click', () => {
+        input.value = nextFandomIdea(input.value);
         input.focus();
+        syncStuck();
       });
+      input.addEventListener('input', syncStuck);
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') submit();
       });
@@ -188,10 +180,10 @@ function render(step: WizardStep): void {
     case 'derive-failed': {
       const node = el(`
         <section class="screen">
-          <h1>That didn't work</h1>
+          <h1>${COPY.deriveFailed.title}</h1>
           <p class="lead"></p>
           <div class="actions">
-            <button class="primary" id="retry">Try again</button>
+            <button class="primary" id="retry">${COPY.deriveFailed.action}</button>
           </div>
         </section>
       `);
@@ -204,18 +196,18 @@ function render(step: WizardStep): void {
     case 'claim-default': {
       const node = el(`
         <section class="screen">
-          <h1>You already have an agent here</h1>
+          <h1>${COPY.claimDefault.title}</h1>
           <p class="lead"></p>
           <div class="actions">
-            <button class="primary" id="confirm">Replace it</button>
-            <button class="quiet" id="decline">Keep what I have</button>
+            <button class="primary" id="confirm">${COPY.claimDefault.action}</button>
+            <button class="quiet" id="decline">${COPY.claimDefault.decline}</button>
           </div>
         </section>
       `);
-      node.querySelector('.lead')!.textContent =
-        `This machine's main Hermes agent is ${step.existingName}. Setting up ` +
-        `${step.character.name} replaces it. Your old persona is saved to a backup ` +
-        `file first, and none of your other agents are touched.`;
+      node.querySelector('.lead')!.textContent = fill(COPY.claimDefault.lead, {
+        EXISTING: step.existingName,
+        NAME: step.character.name,
+      });
       node.querySelector('#confirm')!.addEventListener('click', () => window.circe.confirmClaim());
       node.querySelector('#decline')!.addEventListener('click', () => window.circe.declineClaim());
       screenEl.append(node);
@@ -229,12 +221,14 @@ function render(step: WizardStep): void {
     case 'saving': {
       const node = el(`
         <section class="screen">
-          <h1>Setting <span class="name"></span> up…</h1>
-          <p class="lead">Writing the persona and installing the skill.</p>
+          <h1></h1>
+          <p class="lead">${COPY.saving.lead}</p>
           <div class="spinner"></div>
         </section>
       `);
-      node.querySelector('.name')!.textContent = step.character.name;
+      node.querySelector('h1')!.textContent = fill(COPY.saving.title, {
+        NAME: step.character.name,
+      });
       screenEl.append(node);
       break;
     }
@@ -242,26 +236,29 @@ function render(step: WizardStep): void {
     case 'write-failed': {
       const node = el(`
         <section class="screen">
-          <h1>Couldn't finish the setup</h1>
+          <h1>${COPY.writeFailed.title}</h1>
           <p class="lead"></p>
           <p class="status"></p>
           <div class="actions">
-            <button class="primary" id="retry-write">Try again</button>
+            <button class="primary" id="retry-write">${COPY.writeFailed.action}</button>
           </div>
         </section>
       `);
       // Two different truths behind one failure. Claiming "untouched" when the
       // persona has in fact been replaced is a false statement about the
       // user's own data, and it steers them away from the backup that exists.
-      node.querySelector('.lead')!.textContent = step.personaReplaced
-        ? `Something went wrong setting up ${step.character.name}, and no agent was ` +
-          `started, but your ${step.personaReplaced.path} had already been replaced by ` +
-          `then.` +
-          (step.personaReplaced.backedUpTo
-            ? ` Your previous version was saved to ${step.personaReplaced.backedUpTo}.`
-            : ` There was no earlier version worth keeping, so no backup was made.`)
-        : `Something went wrong writing ${step.character.name} to your Hermes home, so ` +
-          `nothing was changed and no agent was started. Your existing setup is untouched.`;
+      const replaced = step.personaReplaced;
+      node.querySelector('.lead')!.textContent = replaced
+        ? [
+            fill(COPY.writeFailed.replaced, {
+              NAME: step.character.name,
+              PATH: replaced.path,
+            }),
+            replaced.backedUpTo
+              ? fill(COPY.writeFailed.backedUp, { BACKUP: replaced.backedUpTo })
+              : COPY.writeFailed.noBackup,
+          ].join(' ')
+        : fill(COPY.writeFailed.untouched, { NAME: step.character.name });
       node.querySelector('.status')!.textContent = step.message;
       node.querySelector('#retry-write')!.addEventListener('click', () => window.circe.accept());
       screenEl.append(node);
@@ -271,10 +268,12 @@ function render(step: WizardStep): void {
     case 'launching': {
       const node = el(`
         <section class="screen">
-          <h1>Starting <span class="name"></span>…</h1>
+          <h1></h1>
         </section>
       `);
-      node.querySelector('.name')!.textContent = step.character.name;
+      node.querySelector('h1')!.textContent = fill(COPY.launching.title, {
+        NAME: step.character.name,
+      });
       screenEl.append(node);
       break;
     }

@@ -41,7 +41,13 @@ h1 { margin: 0; font-size: var(--step); line-height: 1.15; font-weight: 600; let
  */
 .lead { margin: 0; color: var(--ink-soft); max-width: 44ch; max-height: 220px; overflow-y: auto; }
 .sub { margin: 0; color: var(--ink-faint); font-size: 14px; max-width: 44ch; }
-.status { margin: 0; color: var(--ink-faint); font-size: 13px; max-width: 44ch; max-height: 90px; overflow-y: auto; }
+/*
+ * `line-height` is pinned in pixels and `max-height` is a whole multiple of it
+ * (M7): at 13px/1.55 the old 90px cap fell at 4.47 lines, so the overflow cut
+ * the fifth line horizontally through the glyphs and the text read as damaged
+ * rather than as scrollable. Five whole lines, or none of the fifth.
+ */
+.status { margin: 0; color: var(--ink-faint); font-size: 13px; line-height: 20px; max-width: 44ch; max-height: 100px; overflow-y: auto; }
 .why { margin: 0; color: var(--ink-soft); font-style: italic; max-width: 44ch; }
 code { background: rgba(255, 255, 255, 0.1); padding: 2px 6px; border-radius: 4px; }
 

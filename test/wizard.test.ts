@@ -12,7 +12,13 @@ import { LAST_LAUNCH_PATH } from '../src/main/startup';
 // `main.ts` touches `document`/`window.circe` at module load, which does not
 // exist under this suite's `node` test environment. `copy.ts` is pure data,
 // so it can be asserted against directly without a DOM.
-import { COPY } from '../src/renderer/wizard/copy';
+import {
+  COPY,
+  FANDOM_IDEAS,
+  fill,
+  isReplaceableExample,
+  nextFandomIdea,
+} from '../src/renderer/wizard/copy';
 
 const REPLY = JSON.stringify({
   name: 'Trillian',
@@ -572,6 +578,31 @@ describe('onboarding copy (spec §1.4, amended 2026-08-18)', () => {
     expect(all.match(/!/g) ?? []).toHaveLength(0);
   });
 
+  // I9: this rule, `glosses Hermes` and `never cheerleads` all walk `COPY`, so
+  // they only see a screen once that screen's strings live in `COPY`. Five of
+  // the eleven rendered screens kept their strings inline in `main.ts`'s
+  // switch — including `claim-default`, which named Hermes with no gloss, and
+  // `derive-failed`, the screen most likely to be seen. Pin the set, so a
+  // future screen added straight into the switch fails here rather than
+  // quietly opting itself out of every copy rule.
+  it('holds the strings for every screen the wizard renders', () => {
+    expect(Object.keys(COPY).sort()).toEqual(
+      [
+        'claimDefault',
+        'deriveFailed',
+        'deriving',
+        'fandom',
+        'launching',
+        'meet',
+        'provider',
+        'runtime',
+        'saving',
+        'welcome',
+        'writeFailed',
+      ].sort(),
+    );
+  });
+
   // I3: the original version of this test only checked `COPY.runtime.lead`
   // in isolation, so it stayed green even after `welcome.status` — which
   // renders on the very first screen, before `runtime.lead` can ever be
@@ -581,7 +612,19 @@ describe('onboarding copy (spec §1.4, amended 2026-08-18)', () => {
   // within each) and checks whichever string turns out to be the *first*
   // one that names Hermes, whatever screen that happens to be on.
   it('glosses Hermes the first time it names it, wherever in the flow that first happens', () => {
-    const order = ['welcome', 'runtime', 'provider', 'fandom', 'deriving', 'meet'] as const;
+    const order = [
+      'welcome',
+      'runtime',
+      'provider',
+      'fandom',
+      'deriving',
+      'deriveFailed',
+      'claimDefault',
+      'meet',
+      'saving',
+      'writeFailed',
+      'launching',
+    ] as const;
     const fields = order.flatMap((screen) => Object.values(COPY[screen]));
     const firstMention = fields.find((text) => /\bHermes\b/.test(text));
     expect(firstMention).toBeDefined();
@@ -590,5 +633,98 @@ describe('onboarding copy (spec §1.4, amended 2026-08-18)', () => {
 
   it('speaks to the reader, not about the product', () => {
     expect(COPY.welcome.lead).toMatch(/\byou\b|\byour\b/i);
+  });
+
+  /**
+   * I8. §6.2 Step 1 makes the welcome screen answer three questions, and the
+   * third is "what happens next": you will meet a coordinator whose job is
+   * helping you build the others. The warm rewrite traded that for "at the end
+   * you'll meet the first one", which pushed the idea three screens later — so
+   * the one place the spec says Circe gets to explain itself explained less
+   * than the version it replaced.
+   */
+  it('says on the welcome screen that the agent it makes helps build the others', () => {
+    const welcome = Object.values(COPY.welcome).join(' ');
+    expect(welcome).toMatch(/coordinator|orchestrator/i);
+    expect(welcome).toMatch(/build the (others|rest)/i);
+  });
+
+  // It is still one agent, never a fleet — §6.2's framing note governs every
+  // screen, and "helps you build the others" is exactly the line that must not
+  // drift into promising them.
+  it('does not promise the others already exist', () => {
+    const all = Object.values(COPY).flatMap((s) => Object.values(s)).join(' ');
+    expect(all).not.toMatch(/your fleet|your agents are ready|set up your agents/i);
+  });
+
+  /**
+   * M2. `main.ts` splits `deriving.lead` on `{{FANDOM}}` and destructures
+   * `[before, after]`. Drop the placeholder in a copy edit and `after` is
+   * `undefined`, so the screen renders the literal word "undefined" at the end
+   * of the sentence. Same for the provider command, which `main.ts` splits to
+   * wrap in a real `<code>`. `fill` is safe against a missing placeholder, but
+   * silently drops the value, which is its own defect.
+   */
+  it('keeps the placeholders the renderer depends on', () => {
+    expect(COPY.deriving.lead).toContain('{{FANDOM}}');
+    expect(COPY.provider.lead).toContain('{{COMMAND}}');
+    expect(COPY.meet.action).toContain('{{NAME}}');
+    expect(COPY.saving.title).toContain('{{NAME}}');
+    expect(COPY.launching.title).toContain('{{NAME}}');
+    expect(COPY.claimDefault.lead).toContain('{{EXISTING}}');
+    expect(COPY.claimDefault.lead).toContain('{{NAME}}');
+    expect(COPY.writeFailed.untouched).toContain('{{NAME}}');
+    expect(COPY.writeFailed.replaced).toContain('{{NAME}}');
+    expect(COPY.writeFailed.replaced).toContain('{{PATH}}');
+    expect(COPY.writeFailed.backedUp).toContain('{{BACKUP}}');
+  });
+
+  // M3: nothing in the wizard renders markdown, so a backticked command in the
+  // copy reached the screen as literal backticks. The command is its own field
+  // and `main.ts` puts it in a real `<code>`.
+  it('ships no markdown the renderer will not render', () => {
+    const all = Object.values(COPY).flatMap((s) => Object.values(s)).join(' ');
+    expect(all).not.toContain('`');
+    expect(all).not.toMatch(/\*\*/);
+  });
+
+  // M6: the label promised "some ideas" and one click delivered exactly one,
+  // over the top of anything the user had typed. Same defect class as the "I
+  // installed it" label already fixed.
+  it('promises only the one example the button actually gives', () => {
+    expect(COPY.fandom.stuck).not.toMatch(/ideas|some|several/i);
+    expect(COPY.fandom.stuck).toMatch(/an example/i);
+  });
+});
+
+describe('the wizard copy helpers', () => {
+  /**
+   * M1. `COPY.meet.action.replace('{{NAME}}', c.name)` reintroduced the
+   * `$`-pattern hazard `soulTemplate.ts` documents at length: a plain
+   * replacement string still honours `$&`, `$$`, `` $` `` and `$'`, so a
+   * character named `Trillian $&` rendered "Start with Trillian {{NAME}}" on
+   * the primary button of the meet screen. Derived names come from a model and
+   * are not sanitised anywhere — the defence has to be here.
+   */
+  it('substitutes a value containing $-patterns literally', () => {
+    expect(fill('Start with {{NAME}}', { NAME: 'Trillian $&' })).toBe('Start with Trillian $&');
+    expect(fill('{{NAME}} up…', { NAME: "Zaphod $` $' $$" })).toBe("Zaphod $` $' $$ up…");
+  });
+
+  it('fills every occurrence, and every placeholder it is given', () => {
+    expect(fill('{{A}} {{B}} {{A}}', { A: 'one', B: 'two' })).toBe('one two one');
+  });
+
+  // M6: the only text the "give me an example" button may overwrite is an
+  // example it put there itself. Anything the user typed is theirs.
+  it('treats only an untouched field or its own example as replaceable', () => {
+    expect(isReplaceableExample('')).toBe(true);
+    expect(isReplaceableExample('   ')).toBe(true);
+    expect(isReplaceableExample(FANDOM_IDEAS[0]!)).toBe(true);
+    expect(isReplaceableExample('the Wire')).toBe(false);
+  });
+
+  it('offers a different example each click, so the button keeps working', () => {
+    for (const idea of FANDOM_IDEAS) expect(nextFandomIdea(idea)).not.toBe(idea);
   });
 });
