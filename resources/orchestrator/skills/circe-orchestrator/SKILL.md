@@ -62,6 +62,11 @@ Once the user has said yes:
    rather than as an untouched scaffold.
    The clone arrives carrying a copy of *your* persona; overwriting it here is
    what makes the new agent itself rather than a second you.
+   Give it a voice too — two sentences at most on how it talks, drawn from the
+   same world as its name and held to the same standard as yours: truthful,
+   never inventing facts, dropped the moment it would get in the way of the
+   answer. Do not ask the user for it; like the fandom, they answered once
+   for the whole fleet.
 4. Remove your own skill from the clone:
    `rm -rf "<home>/profiles/<id>/skills/circe-orchestrator"`. Cloning copies
    skills wholesale, and the profile you cloned from is yours, so without this

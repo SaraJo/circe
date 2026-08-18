@@ -23,6 +23,15 @@ export async function loadTemplate(): Promise<string> {
   return readFile(ORCHESTRATOR_TEMPLATE_PATH, 'utf8');
 }
 
+/**
+ * What goes under `## Voice`. An empty voice is not a failure — it is the
+ * plain-spoken setting, and the same text a user gets after asking to be
+ * spoken to plainly, so the file reads the same either way.
+ */
+function voiceOrPlain(voice: string): string {
+  return voice.trim() || 'Speak plainly. No accent, no mannerisms, no performance.';
+}
+
 export function renderOrchestratorSoul(c: Character, template: string): string {
   // Replacer functions, not replacement strings: a plain string handed to
   // replaceAll still honours $&, $$, $`, and $' as special patterns, so a
@@ -31,5 +40,6 @@ export function renderOrchestratorSoul(c: Character, template: string): string {
   return template
     .replaceAll('{{NAME}}', () => c.name)
     .replaceAll('{{TAGLINE}}', () => c.tagline)
-    .replaceAll('{{FANDOM}}', () => c.fandom);
+    .replaceAll('{{FANDOM}}', () => c.fandom)
+    .replaceAll('{{VOICE}}', () => voiceOrPlain(c.voice));
 }

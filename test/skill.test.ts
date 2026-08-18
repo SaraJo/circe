@@ -39,6 +39,15 @@ describe('the orchestrator skill', () => {
     expect(text).toMatch(/Do not ask the user to pick colours/i);
   });
 
+  // The voice question is answered once, at onboarding, for the whole fleet —
+  // the same way the fandom is. A specialist created without its own voice
+  // would be the one agent in the network the user never got to hear.
+  it('tells the orchestrator to give a new agent its own voice, and not to ask for it', async () => {
+    const text = await readFile(SKILL_SOURCE_PATH, 'utf8');
+    expect(text).toMatch(/give it a voice/i);
+    expect(text).toMatch(/do not ask the user for it/i);
+  });
+
   it('still tells it to write a heading, which is what makes a profile real', async () => {
     const text = await readFile(SKILL_SOURCE_PATH, 'utf8');
     expect(text).toContain('# <Name> — <domain>');

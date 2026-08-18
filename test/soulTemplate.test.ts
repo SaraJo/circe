@@ -17,8 +17,8 @@ const TRILLIAN: Character = {
   voiceCheck: '',
 };
 
-async function render(): Promise<string> {
-  return renderOrchestratorSoul(TRILLIAN, await readFile(ORCHESTRATOR_TEMPLATE_PATH, 'utf8'));
+async function render(character: Character = TRILLIAN): Promise<string> {
+  return renderOrchestratorSoul(character, await readFile(ORCHESTRATOR_TEMPLATE_PATH, 'utf8'));
 }
 
 describe('renderOrchestratorSoul', () => {
@@ -63,7 +63,7 @@ describe('renderOrchestratorSoul', () => {
   });
 
   it('tells the agent not to roleplay the character', async () => {
-    expect(await render()).toMatch(/do not roleplay/i);
+    expect(await render()).toMatch(/never play the part/i);
   });
 
   it('has a network section recording that no specialists exist yet', async () => {
@@ -89,6 +89,36 @@ describe('renderOrchestratorSoul', () => {
   // sandboxed HERMES_HOME this path is the operator's real home.
   it('never names a literal ~/.hermes path', async () => {
     expect(await render()).not.toContain('~/.hermes');
+  });
+
+  it('writes the derived voice into its own section', async () => {
+    const soul = await render({ ...TRILLIAN, voice: 'Dry, exact, faintly amused.' });
+    expect(soul).toContain('## Voice');
+    expect(soul).toContain('Dry, exact, faintly amused.');
+  });
+
+  // Empty is not a hole in the file: it is the plain-spoken setting, and it is
+  // what a user who asked for plain speech gets.
+  it('falls back to plain speech when no voice was derived', async () => {
+    const soul = await render({ ...TRILLIAN, voice: '' });
+    expect(soul).toContain('## Voice');
+    expect(soul).not.toContain('{{VOICE}}');
+    expect(soul).toMatch(/speak plainly/i);
+  });
+
+  // Voice, not roleplay — the line the whole feature stands on.
+  it('keeps judgement out of the costume', async () => {
+    const soul = await render();
+    expect(soul).toMatch(/never.*(invent|in-world|in character)/i);
+    expect(soul).toMatch(/drop.*voice|plainly/i);
+  });
+
+  // The user's answer to the voice question is itself the authorisation, so
+  // this is the one persona edit that needs no second approval.
+  it('tells it how to drop the voice when asked', async () => {
+    const soul = await render();
+    expect(soul).toContain('## Voice');
+    expect(soul).toMatch(/rewrite/i);
   });
 
   it('substitutes special replacement-pattern characters literally', () => {
