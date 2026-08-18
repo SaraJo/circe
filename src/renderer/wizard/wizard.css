@@ -27,9 +27,21 @@ body {
 }
 
 h1 { margin: 0; font-size: var(--step); line-height: 1.15; font-weight: 600; letter-spacing: -0.02em; }
-.lead { margin: 0; color: var(--ink-soft); max-width: 44ch; }
+/*
+ * `.lead` and `.status` both carry backend-derived text with no length
+ * bound (a thrown error's `.message`, sourced from `derive-failed` and
+ * `write-failed` in `src/main/wizard.ts`) into a fixed, unresizable
+ * 640x560 window. `max-width` alone only wraps; a long-enough string still
+ * grows the box past the viewport and pushes the retry button off-window
+ * with nothing to scroll it back into view — the same failure this
+ * project already shipped once (624px of content in a 520px window). The
+ * `max-height`/`overflow-y` pair caps that growth so the worst case is a
+ * scrollable message, not a vanished button. Chosen generously enough that
+ * no current screen's normal-length copy ever shows a scrollbar.
+ */
+.lead { margin: 0; color: var(--ink-soft); max-width: 44ch; max-height: 220px; overflow-y: auto; }
 .sub { margin: 0; color: var(--ink-faint); font-size: 14px; max-width: 44ch; }
-.status { margin: 0; color: var(--ink-faint); font-size: 13px; }
+.status { margin: 0; color: var(--ink-faint); font-size: 13px; max-width: 44ch; max-height: 90px; overflow-y: auto; }
 .why { margin: 0; color: var(--ink-soft); font-style: italic; max-width: 44ch; }
 code { background: rgba(255, 255, 255, 0.1); padding: 2px 6px; border-radius: 4px; }
 
