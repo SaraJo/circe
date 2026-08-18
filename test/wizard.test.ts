@@ -8,6 +8,11 @@ import {
   type Scenario,
 } from './fake/hermes';
 import { LAST_LAUNCH_PATH } from '../src/main/startup';
+// Pulled from a leaf module (not `../src/renderer/wizard/main`) on purpose:
+// `main.ts` touches `document`/`window.circe` at module load, which does not
+// exist under this suite's `node` test environment. `copy.ts` is pure data,
+// so it can be asserted against directly without a DOM.
+import { COPY } from '../src/renderer/wizard/copy';
 
 const REPLY = JSON.stringify({
   name: 'Trillian',
@@ -551,5 +556,27 @@ describe('a derivation superseded during the profile listing', () => {
     await first;
 
     expect(w.state).toMatchObject({ kind: 'launching', character: { name: 'Trillian' } });
+  });
+});
+
+describe('onboarding copy (spec §1.4, amended 2026-08-18)', () => {
+  // Onboarding explains itself to someone who has used a chatbot and never
+  // configured an agent.
+  it('says what a step is for before asking for it', () => {
+    expect(COPY.fandom.lead).toMatch(/because|so that|so we can/i);
+  });
+
+  it('never cheerleads', () => {
+    const all = Object.values(COPY).flatMap((s) => Object.values(s)).join(' ');
+    expect(all).not.toMatch(/we're so excited|welcome aboard|let's do this!/i);
+    expect(all.match(/!/g) ?? []).toHaveLength(0);
+  });
+
+  it('glosses Hermes the first time it names it', () => {
+    expect(COPY.runtime.lead).toMatch(/Hermes[^.]*(open-source|tool|software)/i);
+  });
+
+  it('speaks to the reader, not about the product', () => {
+    expect(COPY.welcome.lead).toMatch(/\byou\b|\byour\b/i);
   });
 });

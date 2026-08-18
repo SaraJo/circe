@@ -1,4 +1,7 @@
 import type { Character, WizardStep } from '../../shared/types';
+import { COPY } from './copy';
+
+export { COPY };
 
 declare global {
   interface Window {
@@ -42,7 +45,7 @@ function renderCharacter(c: Character): HTMLElement {
       <p class="why"></p>
       <div class="actions">
         <button class="primary" id="accept"></button>
-        <button class="quiet" id="another">Try another character</button>
+        <button class="quiet" id="another">${COPY.meet.another}</button>
       </div>
     </section>
   `);
@@ -54,7 +57,7 @@ function renderCharacter(c: Character): HTMLElement {
   node.querySelector('h1')!.textContent = c.name;
   node.querySelector('.tagline')!.textContent = c.tagline;
   node.querySelector('.why')!.textContent = c.why;
-  node.querySelector('#accept')!.textContent = `Start with ${c.name}`;
+  node.querySelector('#accept')!.textContent = COPY.meet.action.replace('{{NAME}}', c.name);
   node.querySelector('#accept')!.addEventListener('click', () => window.circe.accept());
   node.querySelector('#another')!.addEventListener('click', () => window.circe.retry());
   return node;
@@ -69,11 +72,9 @@ function render(step: WizardStep): void {
       screenEl.append(
         el(`
         <section class="screen">
-          <h1>Circe</h1>
-          <p class="lead">A home for your AI agents. Assistants that live on your
-          desktop, each with its own personality, memory, and job.</p>
-          <p class="lead">In the next few minutes you'll meet your first one: a
-          coordinator whose job is to help you build the rest.</p>
+          <h1>${COPY.welcome.title}</h1>
+          <p class="lead">${COPY.welcome.lead}</p>
+          <p class="lead">${COPY.welcome.sub}</p>
           <p class="status">Checking for Hermes…</p>
         </section>
       `),
@@ -83,11 +84,10 @@ function render(step: WizardStep): void {
     case 'runtime-missing': {
       const node = el(`
         <section class="screen">
-          <h1>Circe needs Hermes</h1>
-          <p class="lead">Circe runs on Hermes, an open-source agent
-          runtime. It isn't installed on this machine yet.</p>
+          <h1>${COPY.runtime.title}</h1>
+          <p class="lead">${COPY.runtime.lead}</p>
           <div class="actions">
-            <button class="primary" id="install">Get Hermes</button>
+            <button class="primary" id="install">${COPY.runtime.action}</button>
           </div>
         </section>
       `);
@@ -104,9 +104,8 @@ function render(step: WizardStep): void {
       screenEl.append(
         el(`
         <section class="screen">
-          <h1>Connect a model</h1>
-          <p class="lead">Your agent needs a model to think with. Hermes handles
-          this. Run <code>hermes setup</code> in a terminal, then reopen Circe.</p>
+          <h1>${COPY.provider.title}</h1>
+          <p class="lead">${COPY.provider.lead}</p>
         </section>
       `),
       );
@@ -115,13 +114,11 @@ function render(step: WizardStep): void {
     case 'fandom': {
       const node = el(`
         <section class="screen">
-          <h1>What do you love?</h1>
-          <p class="lead">Name a fandom, a universe, or a community. Your agent gets
-          its name and its colours from that world, and so does every agent you add
-          later, so the crew hangs together.</p>
-          <input id="fandom" placeholder="Hitchhiker's Guide, the Wire, competitive bread baking…" autofocus />
+          <h1>${COPY.fandom.title}</h1>
+          <p class="lead">${COPY.fandom.lead}</p>
+          <input id="fandom" placeholder="${COPY.fandom.placeholder}" autofocus />
           <div class="actions">
-            <button class="primary" id="go">Continue</button>
+            <button class="primary" id="go">${COPY.fandom.action}</button>
           </div>
         </section>
       `);
@@ -137,11 +134,15 @@ function render(step: WizardStep): void {
     }
 
     case 'deriving': {
+      // `deriving.lead` carries a `{{FANDOM}}` placeholder so the fandom the
+      // user actually typed can sit inside the same `.fandom` span the
+      // screen has always used — never let a literal `{{FANDOM}}` reach the
+      // page.
+      const [derivingBefore, derivingAfter] = COPY.deriving.lead.split('{{FANDOM}}');
       const node = el(`
         <section class="screen">
-          <h1>Finding your coordinator</h1>
-          <p class="lead">Looking through <span class="fandom"></span> for the one who
-          keeps track of everyone else. This can take up to a minute.</p>
+          <h1>${COPY.deriving.title}</h1>
+          <p class="lead">${derivingBefore}<span class="fandom"></span>${derivingAfter}</p>
           <div class="spinner"></div>
         </section>
       `);
