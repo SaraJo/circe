@@ -12,9 +12,15 @@
          read as corners — a tile has to look like an object sitting on the
          desktop, not like a rectangle painted over it. -->
     <div class="tile">
-      <header id="bar"><span id="who"></span><button id="close">×</button></header>
+      <!-- No close button of our own: the window carries macOS's real
+           close/minimise/zoom at the top left (`titleBarStyle: 'hiddenInset'`),
+           and the card's top padding is the room they sit in. -->
+      <header id="bar"><span id="who"></span></header>
       <div id="log"></div>
-      <footer><textarea id="input" rows="1" placeholder="Message…"></textarea></footer>
+      <footer>
+        <textarea id="input" rows="1" placeholder="Message…"></textarea>
+        <button id="send" type="button">Send</button>
+      </footer>
     </div>
     <script type="module" src="./main.ts"></script>
   </body>

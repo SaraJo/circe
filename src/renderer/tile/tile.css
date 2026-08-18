@@ -41,15 +41,18 @@ body {
  * point of theming a tile to its character. It is what keeps the prototype's
  * own almost-black teal reading as teal.
  *
- * The generous top padding is the drag strip: the card is draggable as a
- * whole, with the parts you interact with opted out below, so there is
- * somewhere to grab that is not a control.
+ * The generous top padding is where macOS's own close/minimise/zoom buttons
+ * sit — the window is `titleBarStyle: 'hiddenInset'`, so they are real window
+ * controls overlaid on the card rather than anything drawn here. It doubles as
+ * the drag strip: the card is draggable as a whole, with the parts you
+ * interact with opted out below, so there is somewhere to grab that is not a
+ * control.
  */
 .tile {
   height: 100%;
   display: flex;
   flex-direction: column;
-  padding: 38px 16px 16px;
+  padding: 44px 16px 16px;
   background: var(--tile-bg);
   border: 1px solid var(--tile-border);
   border-radius: 20px;
@@ -82,27 +85,6 @@ footer {
   font-size: 15px;
   font-weight: 600;
   letter-spacing: 0.3px;
-}
-#close {
-  -webkit-app-region: no-drag;
-  flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  border: 1px solid var(--tile-border);
-  background: rgba(0, 0, 0, 0.25);
-  color: var(--text);
-  font-size: 15px;
-  line-height: 1;
-  padding: 0;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s, border-color 0.15s;
-}
-#close:hover {
-  background: rgba(0, 0, 0, 0.4);
 }
 
 #log {
@@ -268,6 +250,7 @@ footer {
 /* No divider above the composer either — the card's own edge is the frame. */
 footer {
   display: flex;
+  gap: 6px;
 }
 textarea {
   flex: 1;
@@ -285,5 +268,29 @@ textarea::placeholder {
   color: var(--muted);
 }
 textarea:focus {
+  border-color: var(--accent-soft);
+}
+
+/**
+ * Themed to the character, not to a house colour: the send button takes the
+ * accent the palette already carries, so it belongs to this agent the way the
+ * border and the links do. A neutral grey button would be the one element on
+ * the card that ignored whose tile it is.
+ */
+#send {
+  -webkit-app-region: no-drag;
+  flex-shrink: 0;
+  background: var(--accent-glow);
+  border: 1px solid var(--tile-border);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+#send:hover {
+  background: var(--accent-soft);
   border-color: var(--accent-soft);
 }

@@ -46,6 +46,9 @@ document.getElementById('who')!.textContent = character?.name ?? 'Circe';
 
 const log = document.getElementById('log')!;
 const input = document.getElementById('input') as HTMLTextAreaElement;
+// Naming the agent is the difference between a text field and a conversation.
+// Falls back with the same name `#who` uses, so the two never disagree.
+input.placeholder = `Message ${character?.name ?? 'Circe'}…`;
 
 /** The element the current streaming reply is accumulating into. */
 let streaming: HTMLElement | null = null;
@@ -235,9 +238,12 @@ log.addEventListener('click', (e) => {
   if (href) circe.openExternal(href);
 });
 
-input.addEventListener('keydown', (e) => {
-  if (e.key !== 'Enter' || e.shiftKey) return;
-  e.preventDefault();
+/**
+ * The one path a message leaves by, so the Send button and the Enter key
+ * cannot drift apart — two copies of this is how one of them ends up not
+ * resetting the streaming bubble.
+ */
+function sendCurrentInput(): void {
   const text = input.value.trim();
   if (!text) return;
   // A new turn never continues the previous turn's bubbles, even if the last
@@ -248,6 +254,13 @@ input.addEventListener('keydown', (e) => {
   appendText('user', text);
   circe.send(text);
   input.value = '';
+  input.focus();
+}
+
+input.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || e.shiftKey) return;
+  e.preventDefault();
+  sendCurrentInput();
 });
 
-document.getElementById('close')!.addEventListener('click', () => circe.close());
+document.getElementById('send')!.addEventListener('click', () => sendCurrentInput());

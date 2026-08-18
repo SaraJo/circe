@@ -2,7 +2,7 @@ import { BrowserWindow, screen } from 'electron';
 import { join } from 'node:path';
 import type { Character } from '../shared/types';
 import type { TileWindow } from './tiles';
-import { tilePosition, TILE_H, TILE_W } from './tileLayout';
+import { SHADOW_GUTTER, tilePosition, TILE_H, TILE_W } from './tileLayout';
 
 export { TILE_H, TILE_W };
 
@@ -59,9 +59,24 @@ export function createTileWindow(
     height: TILE_H,
     x,
     y,
-    frame: false,
+    // `hiddenInset` rather than `frame: false`: it hides the title bar but
+    // keeps macOS's own close/minimise/zoom buttons at the top left, which is
+    // what a window is expected to have. A frameless window has none, which is
+    // why this build previously drew its own `×` — a worse close button in the
+    // wrong corner, and no minimise or zoom at all. The card's top padding is
+    // the room they sit in.
+    titleBarStyle: 'hiddenInset',
+    // Inset by the shadow gutter, because macOS positions these against the
+    // *window* and the window is larger than the card on every side. Left at
+    // the default they sit hard against the card's edge, tucked into its
+    // rounded corner; the extra 13px puts them where they sit on any other
+    // Mac window, measured from the edge the user can actually see.
+    trafficLightPosition: { x: SHADOW_GUTTER + 13, y: SHADOW_GUTTER + 13 },
     transparent: true,
     backgroundColor: '#00000000',
+    // The card draws its own shadow in CSS. Left on, macOS draws a second one
+    // around the whole *window* — a square shadow behind a rounded card.
+    hasShadow: false,
     webPreferences: { preload: join(__dirname, '../preload/tile.js') },
   });
   pinToItsOwnDocument(win);
