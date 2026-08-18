@@ -37,12 +37,22 @@ export function openingMessage(c: Character): string {
   // source to a fixed column would hard-break the prose mid-sentence in a
   // ~340px tile. Let the renderer wrap; only paragraph breaks belong in the
   // string.
-  const paragraphs = [c.greeting.trim() || scripted(c)];
+  const greeting = c.greeting.trim();
+  const paragraphs = [greeting || scripted(c)];
 
   // The voice is demonstrated by the paragraphs above and questioned here, in
   // that order and never the other way round. No voice, no question: there is
   // no accent to offer to drop.
-  if (c.voice.trim()) paragraphs.push(c.voiceCheck.trim() || plainCheck(c));
+  //
+  // The greeting has to be the model's own, not the fallback. `derive.ts`
+  // bounds `voice` and `greeting` independently, so a good voice can arrive
+  // beside an over-long greeting that gets dropped — and then the message the
+  // user reads is Circe's plain scripted prose. Asking "do you like being
+  // spoken to this way?" about that message is a question about an accent that
+  // was never used, and `plainCheck`'s "I talk like this because <fandom> is
+  // where I'm from" is a claim about a message that was entirely plain. UI text
+  // never says something happened that did not.
+  if (greeting && c.voice.trim()) paragraphs.push(c.voiceCheck.trim() || plainCheck(c));
 
   return paragraphs.join('\n\n');
 }

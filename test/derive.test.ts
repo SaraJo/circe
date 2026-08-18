@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { DERIVATION_PROMPT, deriveCharacter, relativeLuminance, toProfileId } from '../src/main/derive';
+import {
+  DERIVATION_PROMPT,
+  deriveCharacter,
+  extractJson,
+  relativeLuminance,
+  toProfileId,
+} from '../src/main/derive';
 import { FakeHermes, INSTALLED_EMPTY, type Scenario } from './fake/hermes';
 
 const GOOD_REPLY = JSON.stringify({
@@ -160,5 +166,65 @@ describe('deriveCharacter', () => {
 
   it('asks the model for a voice', () => {
     expect(DERIVATION_PROMPT('pirates')).toMatch(/voice/i);
+  });
+});
+
+/**
+ * The prompt is the only thing that decides whether this feature exists at all,
+ * and until these tests it was covered by a single `/voice/i`. The reviewer
+ * deleted the `"greeting"` and `"voiceCheck"` lines from the reply skeleton and
+ * the whole suite still passed — in that state every user gets `greeting: ''`
+ * and `voiceCheck: ''` forever, the tile silently falls back to Circe's
+ * scripted opening, and the voice check never happens.
+ */
+describe('DERIVATION_PROMPT', () => {
+  /** The exact reply skeleton the prompt tells the model to copy. */
+  function skeleton(): Record<string, unknown> {
+    // `extractJson` is production code — the same function the real reply goes
+    // through. If the skeleton is not something Circe can parse, this throws,
+    // which is precisely the failure a model that mirrors it would cause.
+    return extractJson(DERIVATION_PROMPT('x')) as Record<string, unknown>;
+  }
+
+  // C1. The skeleton used to wrap `greeting` and `voiceCheck` across several
+  // source lines, so the "JSON" the model was shown contained raw newlines
+  // inside string values — a hard parse error — while asking for three
+  // paragraphs inside one of those strings. The failure was total: no
+  // character, no agent, at the emotional peak of onboarding.
+  it('shows the model a reply skeleton that is itself valid JSON', () => {
+    expect(() => skeleton()).not.toThrow();
+  });
+
+  it('tells the model not to put raw line breaks inside a string', () => {
+    const prompt = DERIVATION_PROMPT('x');
+    expect(prompt).toMatch(/no raw line breaks/i);
+    expect(prompt).toContain('\\n\\n');
+  });
+
+  // C2. One assertion per field, by name, in the shape the model is asked to
+  // return — so deleting a field's request from the skeleton cannot pass.
+  it.each(['name', 'tagline', 'palette', 'why', 'voice', 'greeting', 'voiceCheck'])(
+    'asks for %s by name',
+    (field) => {
+      expect(skeleton()).toHaveProperty(field);
+    },
+  );
+
+  it('describes the greeting as the character speaking first, in voice', () => {
+    expect(String(skeleton().greeting)).toMatch(/first message to the user, in that voice/i);
+  });
+
+  it('describes the voiceCheck as offering to speak plainly', () => {
+    expect(String(skeleton().voiceCheck)).toMatch(/speak plainly/i);
+  });
+
+  // I3. Fourteen §6.5 guard tests in `opening.test.ts` run against a fixture
+  // whose greeting is `''`. When a model supplies a greeting — the normal case
+  // — the scripted opening is discarded and none of those guards apply to what
+  // the user actually reads. Model text cannot be asserted, so the prohibition
+  // has to be pinned in the one place that shapes it: the prompt.
+  it('forbids a greeting that asks the user to plan a team or list agents', () => {
+    expect(String(skeleton().greeting)).toMatch(/not ask the user to plan a team/i);
+    expect(String(skeleton().greeting)).toMatch(/list agents/i);
   });
 });

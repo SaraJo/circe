@@ -124,54 +124,68 @@ describe('openingMessage', () => {
     expect(message).toContain('Marvin <b>the Paranoid Android</b>');
     expect(message).toContain('The <script>Hitchhiker\'s</script> Guide');
   });
-});
 
-const SILVER: Character = {
-  name: 'Long John Silver',
-  profileId: 'long-john-silver',
-  tagline: 'the quartermaster who runs the crew',
-  palette: { bg: '#1b2a1f', border: '#d8c9a3', accent: '#e0a458' },
-  why: 'He keeps the crew pointed at one plan.',
-  fandom: 'pirates',
-  voice: 'Rolling, salt-worn sailor talk.',
-  greeting: "Aye, friend — Long John Silver. Point me at the work and it's done.",
-  voiceCheck: 'Do ye like bein’ spoke to this way, or shall I drop the salt?',
-};
+  const SILVER: Character = {
+    name: 'Long John Silver',
+    profileId: 'long-john-silver',
+    tagline: 'the quartermaster who runs the crew',
+    palette: { bg: '#1b2a1f', border: '#d8c9a3', accent: '#e0a458' },
+    why: 'He keeps the crew pointed at one plan.',
+    fandom: 'pirates',
+    voice: 'Rolling, salt-worn sailor talk.',
+    greeting: "Aye, friend — Long John Silver. Point me at the work and it's done.",
+    voiceCheck: 'Do ye like bein’ spoke to this way, or shall I drop the salt?',
+  };
 
-it('uses the character’s own greeting when it has one', () => {
-  const message = openingMessage(SILVER);
-  expect(message).toContain('Aye, friend');
-  expect(message).not.toContain('your partner for whatever');
-});
+  it('uses the character’s own greeting when it has one', () => {
+    const message = openingMessage(SILVER);
+    expect(message).toContain('Aye, friend');
+    expect(message).not.toContain('your partner for whatever');
+  });
 
-it('asks whether the user likes the voice, in the character’s words', () => {
-  expect(openingMessage(SILVER)).toContain('drop the salt');
-});
+  it('asks whether the user likes the voice, in the character’s words', () => {
+    expect(openingMessage(SILVER)).toContain('drop the salt');
+  });
 
-// The demonstration has to come first: a question about an accent nobody has
-// heard yet is a question about a hypothetical, and everyone says yes to those.
-it('asks only after it has spoken', () => {
-  const message = openingMessage(SILVER);
-  expect(message.indexOf('Aye, friend')).toBeLessThan(message.indexOf('drop the salt'));
-});
+  // The demonstration has to come first: a question about an accent nobody has
+  // heard yet is a question about a hypothetical, and everyone says yes to those.
+  it('asks only after it has spoken', () => {
+    const message = openingMessage(SILVER);
+    expect(message.indexOf('Aye, friend')).toBeLessThan(message.indexOf('drop the salt'));
+  });
 
-// Degradation: a model that skipped the fields leaves today's product exactly
-// as it is.
-it('falls back to the scripted opening when there is no greeting', () => {
-  const message = openingMessage({ ...SILVER, greeting: '' });
-  expect(message).toContain('your partner for whatever');
-  expect(message).toContain('Long John Silver');
-});
+  // Degradation: a model that skipped the fields leaves today's product exactly
+  // as it is.
+  it('falls back to the scripted opening when there is no greeting', () => {
+    const message = openingMessage({ ...SILVER, greeting: '' });
+    expect(message).toContain('your partner for whatever');
+    expect(message).toContain('Long John Silver');
+  });
 
-// Nothing to ask about, so it doesn't ask.
-it('asks nothing when the character has no voice', () => {
-  const message = openingMessage({ ...SILVER, voice: '', voiceCheck: '' });
-  expect(message).not.toMatch(/plainly|drop the salt/i);
-});
+  // Nothing to ask about, so it doesn't ask.
+  it('asks nothing when the character has no voice', () => {
+    const message = openingMessage({ ...SILVER, voice: '', voiceCheck: '' });
+    expect(message).not.toMatch(/plainly|drop the salt/i);
+  });
 
-// A voice with no question supplied still gets asked about — the question is
-// the point, and Circe can always write it.
-it('asks plainly when the character supplied no question of its own', () => {
-  const message = openingMessage({ ...SILVER, voiceCheck: '' });
-  expect(message).toMatch(/plainly/i);
+  // A voice with no question supplied still gets asked about — the question is
+  // the point, and Circe can always write it.
+  it('asks plainly when the character supplied no question of its own', () => {
+    const message = openingMessage({ ...SILVER, voiceCheck: '' });
+    expect(message).toMatch(/plainly/i);
+  });
+
+  /**
+   * `derive.ts` bounds `voice` and `greeting` independently, so this
+   * combination is reachable from one ordinary model reply: a good voice, and
+   * a greeting long enough to be dropped. The message the user then reads is
+   * Circe's plain scripted prose — so there is no accent in it to ask about,
+   * and `plainCheck`'s "I talk like this because pirates is where I'm from"
+   * would be a claim about a message that never talked like anything.
+   */
+  it('asks nothing about a voice the message never used', () => {
+    const message = openingMessage({ ...SILVER, greeting: '' });
+    expect(message).toContain('your partner for whatever');
+    expect(message).not.toMatch(/plainly|drop the salt|where I'm from/i);
+  });
 });

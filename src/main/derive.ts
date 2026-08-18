@@ -32,23 +32,27 @@ export function DERIVATION_PROMPT(fandom: string): string {
     'when it cannot, and never invents facts from its own world. Write a voice',
     'that survives being useful.',
     '',
-    'Reply with ONLY a JSON object and no other text:',
+    // The skeleton below is itself valid JSON, and a test parses it with the
+    // very function that parses the reply. It used to wrap the two longest
+    // field descriptions across several lines, which put raw line breaks
+    // inside JSON strings — a hard `JSON.parse` error — while asking for
+    // paragraphs inside a string value. A model that mirrored the shape it was
+    // shown produced a reply Circe could not read, the retry used the same
+    // prompt and failed the same way, and the user reached `derive-failed`
+    // with no agent at all. One field per line, and say the escape out loud.
+    'Reply with ONLY a JSON object and no other text. It must be a single valid',
+    'JSON object: every string value on one line, with no raw line breaks inside',
+    'it. Where the greeting needs a paragraph break, write the two characters',
+    '\\n\\n inside the string instead of pressing return.',
+    '',
     '{',
     '  "name": "<the character\'s name>",',
     '  "tagline": "<four to eight words naming their role>",',
-    '  "palette": {',
-    '    "bg": "<#rrggbb, dark tile background>",',
-    '    "border": "<#rrggbb, light tile border>",',
-    '    "accent": "<#rrggbb, bright, readable on bg>"',
-    '  },',
+    '  "palette": { "bg": "<#rrggbb, dark tile background>", "border": "<#rrggbb, light tile border>", "accent": "<#rrggbb, bright, readable on bg>" },',
     '  "why": "<one sentence: why this character coordinates>",',
     '  "voice": "<two sentences at most: how they speak>",',
-    '  "greeting": "<their own first message to the user, in that voice: who they',
-    '     are, that they are good for real work today, and one invitation to start',
-    '     small. Three short paragraphs at most. Do NOT ask the user to plan a team',
-    '     or list agents they might want>",',
-    '  "voiceCheck": "<one sentence, in that voice, asking whether the user likes',
-    '     being spoken to this way and offering to speak plainly instead>"',
+    '  "greeting": "<their own first message to the user, in that voice: who they are, that they are good for real work today, and one invitation to start small. Three short paragraphs at most, separated by \\n\\n. Do NOT ask the user to plan a team or list agents they might want>",',
+    '  "voiceCheck": "<one sentence, in that voice, asking whether the user likes being spoken to this way and offering to speak plainly instead>"',
     '}',
     '',
     'All three colours must be six-digit hex. "bg" must be dark enough that white',
@@ -78,8 +82,15 @@ export function relativeLuminance(hex: string): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-/** Models often wrap JSON in prose or a fence. Take the outermost object. */
-function extractJson(reply: string): unknown {
+/**
+ * Models often wrap JSON in prose or a fence. Take the outermost object.
+ *
+ * Exported so `derive.test.ts` can run it over `DERIVATION_PROMPT`'s own reply
+ * skeleton: the shape we show the model has to survive the parser we hand the
+ * model's answer to, and asserting that with the real function rather than a
+ * hand-rolled copy is the only version of that test worth having.
+ */
+export function extractJson(reply: string): unknown {
   const start = reply.indexOf('{');
   const end = reply.lastIndexOf('}');
   if (start === -1 || end <= start) {
