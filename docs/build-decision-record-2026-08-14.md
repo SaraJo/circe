@@ -688,3 +688,117 @@ fake client and `FakeHermes`):
   "Couldn't reopen the previous conversation — starting a new one." is covered by neither a test
   nor an eye. Same for the held-message flow end to end: the holding pen is unit-tested, but no one
   has watched a message typed during a real launch arrive at a real agent.
+
+---
+
+## Phase 2 walkthrough — the core loop (2026-08-18)
+
+Run against a sandboxed `HERMES_HOME` via `.claude/skills/run-circe`, on the real Hermes with real
+credentials, at commit `ed174db`. Baseline recorded first: `~/.hermes/SOUL.md` was `2e13512a`, mtime
+Jul 29 14:24, seven profiles, no `circe/` directory. All ten of Task 10's steps were attempted; two
+of them did not produce what the plan predicted, and the reasons are recorded below rather than
+smoothed over.
+
+**Observed by eye, not inferred:**
+
+- **Onboarding.** A fresh sandbox (stock Hermes boilerplate persona) opened the wizard. Derivation
+  from "Ursula K. Le Guin's Earthsea" produced *Master Patterner — Keeper of the Immanent Grove*.
+  Accepting opened the tile with the handoff message.
+- **The opening copy no longer solicits a fleet.** The tile opened with what the agent can *do*
+  ("Draft the email you've been avoiding… Small and real is a good place to start"), and promised to
+  introduce a specialist only "as we go… when that happens" — the 2026-08-17 fix (`1b9e2f8`,
+  `ed174db`) is live in the shipped product, not just in the source.
+- **The profile describes itself (Step 3).** `SOUL.md` carried `# Master Patterner — Keeper of the
+  Immanent Grove`; `<profile>/circe.json` held `{"version":1,"palette":{…}}` matching the tile;
+  `circe/last-launch.json` held exactly `{"version":2,"mainProfileId":"default"}` — no character
+  block. Constraint 10 holds on disk.
+- **An agent created at a terminal tiles itself (Step 4).** `hermes profile create ford` plus a
+  hand-written `SOUL.md` and `circe.json` produced a second tile within about a second, in Ford's
+  green, cascaded 32px from the first, with no restart and no agent fact supplied to Circe.
+- **A half-written profile does not tile (Step 5) — and for a reason the plan did not state.**
+  `hermes profile create zaphod` produced *no* tile. The plan expected this because the directory
+  "has no persona", but Hermes in fact writes a stock boilerplate `SOUL.md` at create time. It does
+  not tile because that boilerplate has **no H1**, and the readiness rule is `isReal` = "the SOUL.md
+  has an H1". Writing `# Zaphod — two heads, no plan` made the tile appear immediately. The rule is
+  right; the plan's reasoning for it was wrong.
+- **Missing `circe.json` degrades to presentation only.** Zaphod, created with no `circe.json`, tiled
+  in `DEFAULT_PALETTE` (`#1c1c1e`/`#8a8a8e`/`#c9c9ce`) with its name and tagline intact.
+- **Each tile speaks only for itself (Step 6).** A message typed into Ford's tile was drawn in Ford's
+  tile and nowhere else; the orchestrator's tile showed no bubble, no streaming, no turn-end. The
+  orchestrator answered its own question live in its own tile.
+- **The orchestrator creates a specialist through conversation (Step 7) — the product's thesis.**
+  Given a real stated need (email triage), it proposed **one** agent, named from the chosen fandom
+  (*Ogion*), with a pruned loadout (cheap model, email skills only, no browser/terminal/code) and
+  read-and-draft-only authority on day one, and it asked for confirmation before creating anything.
+  On approval it ran `hermes profile create` honouring `HERMES_HOME`, wrote a persona whose own text
+  says "You do not roleplay him", wrote `circe.json`, and **a fourth tile appeared on its own**.
+- **The `HERMES_HOME` fix holds (C1/R1).** The orchestrator's writes landed in the sandbox. No
+  directory named `${HERMES_HOME:-$HOME/.hermes}` was created anywhere.
+- **Cold start (Step 8).** Quit and relaunch opened no wizard and reopened all four tiles, each on its
+  own conversation, with the main operator launched last. The orchestrator's four-exchange transcript
+  replayed in order; the onboarding greeting was correctly not replayed.
+- **The real home is untouched (Step 10).** `~/.hermes/SOUL.md` still `2e13512a`, mtime still Jul 29,
+  still seven profiles, still no `circe/` directory, and neither `master-patterner` nor `ogion`
+  appears in it. The real home's only changes during the run were its own running Hermes' doing —
+  `kanban.db-wal`/`-shm`, `channel_directory.json`, `cron/.tick.lock`, and a `hermes-agent` git fetch.
+
+### Two defects this walkthrough found
+
+**D1 — an orchestrator-created specialist tiles in the wrong colours.** Ogion's tile opened in
+`DEFAULT_PALETTE` grey, not the brown-and-gold in the `circe.json` the orchestrator had just written
+for it. Mechanism: `isReal` becomes true the moment `SOUL.md` lands, the 600ms-debounced sweep
+launches the tile immediately, and the palette is read once at launch. A real agent writes the two
+files as two separate tool calls — observed four seconds apart (`SOUL.md` 10:49:15, `circe.json`
+10:49:19) — so `circe.json` does not exist yet when the tile reads it, and once the profile is in the
+watch's `tiled` set nothing re-reads it. **Step 4 hid this** because a human writes both files inside
+one shell command, well within a single debounce window; only a real agent is slow enough to expose
+it. It self-heals on the next cold start — verified: after restart Ogion's tile was correctly
+`rgba(43,36,22,.85)` with accent `#c8a24a`. So: wrong identity colours for the whole first session of
+every agent the orchestrator creates, which is the one moment the agent is being introduced.
+
+**D2 — the specialist could not hold a conversation.** Both the terminal-created Ford and the
+orchestrator-created Ogion answered their first message with `API call failed after 3 retries:
+Parameter validation failed: Invalid length for parameter modelId, value: 0`. The `default` profile
+answered normally throughout, so nothing about Circe's transport is implicated — Circe spawns
+`hermes -p <id> acp --accept-hooks`, Hermes' own supported mechanism. The difference is on disk: the
+operator's working profiles each carry their own `config.yaml` and `auth.json`, while a profile fresh
+from `hermes profile create` carries neither (the CLI says so at creation: "This profile has no API
+keys yet. Run 'setup' first, or it will inherit keys from your shell environment"). Copying the home's
+`config.yaml`, `auth.json` and `.env` into the profile changed the error rather than fixing it —
+`(ValidationException) … ConverseStream`, i.e. it then resolved to Bedrock. **Caveat, stated plainly:**
+the sandbox inherits the operator's real and unusually complex `config.yaml`, which carries Bedrock
+settings. Whether a newcomer with a plain Anthropic key hits this is **not known from this run**. What
+is known is that the core loop can end in a correctly-created, correctly-tiled agent that errors on
+its first message, and that nothing in Circe or in the orchestrator skill runs profile setup.
+
+### Corrections to the plan itself
+
+- **Step 5's rationale was wrong** (see above): `hermes profile create` does write a `SOUL.md`; the
+  H1 is what does the work.
+- **Step 9's recipe for `circe/replay-abandoned` does not trigger it.** The plan suggested using "an
+  id belonging to a different profile's real session" to get past the `session/list` check. Hermes
+  scopes sessions per profile, so another profile's real id fails `canLoadSession` exactly like a
+  nonexistent one. Verified: pointing `default`'s tab at Ford's real session id and cold-starting
+  produced a fresh session (`0f3fdda9…` replaced it in `state.json`) and an empty tile — correct
+  behaviour, no orphaned transcript, but **no notice, and no way to see one.**
+
+### What this walkthrough did not verify
+
+- **The `circe/replay-abandoned` notice has still never been seen running** — now for a documented
+  reason rather than an oversight. Its main-process half is unit-tested; the renderer half that
+  clears the log and writes "Couldn't reopen the previous conversation — starting a new one." remains
+  covered by neither a test nor an eye.
+- **The holding pen was not conclusively exercised.** A message fired at the tile the instant launch
+  returned was drawn once and answered once, with no duplicate — but whether it actually landed while
+  `session/load` was in flight could not be established from outside, so this is evidence of no
+  duplication, not evidence the holding pen ran.
+- **Multi-display placement is unverified.** The machine had a single 3840×1600 display, so "opens on
+  the display holding the cursor" could not be distinguished from "opens on the only display". Tiles
+  did open at the expected top-right anchor and cascade (3370,65 → 3338,97).
+- **Nothing in `src/main/index.ts` is covered by a test, and neither is the shipped renderer's update
+  switch.** Unchanged since Phase 1. This walkthrough is again the only evidence for both.
+- **Ford's error reply did not survive a restart** — after cold start only the user message replayed.
+  Consistent with the error being an ACP-level failure rather than a transcript entry, but not
+  confirmed against Hermes' storage.
+- **A tool call renders as a raw id.** During the Ogion creation the orchestrator's transcript drew
+  `⚙ toolu_01VsyAkmt8QqNFMnbPNhP96g`. Cosmetic, unreviewed, recorded here because it was seen.
