@@ -83,6 +83,27 @@ describe('the orchestrator skill', () => {
   });
 });
 
+// D2 (2026-08-18 walkthrough): a profile created bare inherits neither the
+// home's provider config nor its keys — it auto-detects a provider and lands
+// on one the account cannot use, so the specialist errors on its first
+// message while the orchestrator reports success. Reproduced through the
+// plain CLI with Circe not running, and fixed by Hermes' own `--clone`.
+describe('the new profile can actually reach a model', () => {
+  it('creates the profile as a clone, so it inherits config.yaml and .env', async () => {
+    const text = await readFile(SKILL_SOURCE_PATH, 'utf8');
+    expect(text).toMatch(/hermes profile create <id> --clone/);
+  });
+
+  // Cloning copies the source profile's skills wholesale, and the source is
+  // the orchestrator — so without this the specialist inherits the skill for
+  // creating peers. One coordinator, not a franchise.
+  it('removes its own skill from the clone', async () => {
+    const text = await readFile(SKILL_SOURCE_PATH, 'utf8');
+    expect(text).toMatch(/skills\/circe-orchestrator/);
+    expect(text.indexOf('--clone')).toBeLessThan(text.indexOf('skills/circe-orchestrator'));
+  });
+});
+
 describe('installOrchestratorSkill', () => {
   it('writes the skill into the default profile', async () => {
     const h = new FakeHermes(INSTALLED_EMPTY);

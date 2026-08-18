@@ -42,7 +42,13 @@ Once the user has said yes:
 
 1. Pick the profile id: lowercase, `[a-z0-9-]`, at most 32 characters, derived from
    the name.
-2. `hermes profile create <id> --description "<the one-sentence domain>"`
+2. `hermes profile create <id> --clone --description "<the one-sentence domain>"`
+   **`--clone` is not optional.** It copies `config.yaml` and `.env` from your own
+   profile, which is the only reason the new agent can reach a model at all: a
+   profile created without it inherits neither the provider settings nor the
+   keys, auto-detects a provider instead, and lands on one the account may have
+   no access to — the agent then fails on its very first message while you have
+   already told the user it exists.
 3. Resolve the profile's real location once, then use it for both file writes
    below: run `echo "${HERMES_HOME:-$HOME/.hermes}"` and use the absolute path
    it prints as `<home>`. Never write the literal text
@@ -54,7 +60,14 @@ Once the user has said yes:
    Write `<home>/profiles/<id>/SOUL.md`, starting with `# <Name> — <domain>`.
    The heading matters: it is how the profile is recognised as configured
    rather than as an untouched scaffold.
-4. Write `<home>/profiles/<id>/circe.json` — using the same `<home>` you
+   The clone arrives carrying a copy of *your* persona; overwriting it here is
+   what makes the new agent itself rather than a second you.
+4. Remove your own skill from the clone:
+   `rm -rf "<home>/profiles/<id>/skills/circe-orchestrator"`. Cloning copies
+   skills wholesale, and the profile you cloned from is yours, so without this
+   the new agent can create agents of its own. There is one coordinator, and it
+   is you. The rest of the clone's loadout is pruned in step 6.
+5. Write `<home>/profiles/<id>/circe.json` — using the same `<home>` you
    resolved above — the agent's colours:
 
    ```json
@@ -69,14 +82,14 @@ Once the user has said yes:
    the same world their name came from. **Do not ask the user to pick colours** —
    this is part of giving the agent a face, like the name is. A profile without
    this file still works; it just appears in a neutral grey.
-5. Prune its loadout: `hermes skills config` first, then `hermes tools`. That
+6. Prune its loadout: `hermes skills config` first, then `hermes tools`. That
    order, always — skills define what an agent knows how to do, tools define
    what it can actually touch, and you decide what it is capable of before you
    give it the hands. This step is not optional. A new profile inherits the
    entire stack, so an unpruned one is the same bloated setup under a different
    name, burning tokens on skills it will never use and misleading itself about
    what it is for.
-6. Tell the user it exists, what it owns, and **what you turned off, by name.**
+7. Tell the user it exists, what it owns, and **what you turned off, by name.**
    "Pruned its loadout" is not a report. "Left web and file on; turned off
    browser, terminal, delegation, and the Polymarket skill" is.
 
