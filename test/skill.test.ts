@@ -45,7 +45,40 @@ describe('the orchestrator skill', () => {
   it('tells the orchestrator to give a new agent its own voice, and not to ask for it', async () => {
     const text = await readFile(SKILL_SOURCE_PATH, 'utf8');
     expect(text).toMatch(/give it a voice/i);
-    expect(text).toMatch(/do not ask the user for it/i);
+    expect(text).toMatch(/do not ask the user for/i);
+  });
+
+  /**
+   * I7. Spec §6.2: "A user who dialled the orchestrator down gets a plain-spoken
+   * crew." This step used to instruct a world-drawn voice unconditionally, so
+   * the one user who had explicitly asked for plain speech met their next agent
+   * in the dialect they had already declined — and the dial-down reached
+   * exactly one agent in a network the whole point of which is that it grows.
+   */
+  it('mirrors the orchestrator’s own voice rather than imposing one', async () => {
+    const text = await readFile(SKILL_SOURCE_PATH, 'utf8');
+    expect(text).toMatch(/read your `## Voice` section/i);
+    expect(text).toMatch(/if yours says to speak plainly, theirs says the\s+same/i);
+    expect(text).toContain('Speak plainly. No accent, no mannerisms, no performance.');
+  });
+
+  /**
+   * And the specialist's voice arrives with the rules attached. A voice
+   * description handed over on its own is the roleplay this feature is
+   * deliberately not: it is the guard rules, not the diction, that keep an
+   * agent able to say "I can't do that" plainly.
+   */
+  it('gives the specialist the same voice-not-roleplay rules the orchestrator has', async () => {
+    const text = await readFile(SKILL_SOURCE_PATH, 'utf8');
+    expect(text).toMatch(/never invents facts/i);
+    expect(text).toMatch(/obscure the answer it drops it/i);
+    expect(text).toMatch(/soften bad news/i);
+  });
+
+  it('gives the specialist the dial-down instruction too', async () => {
+    const text = await readFile(SKILL_SOURCE_PATH, 'utf8');
+    expect(text).toMatch(/asks\s+it to speak plainly it rewrites/i);
+    expect(text).toMatch(/without asking again/i);
   });
 
   it('still tells it to write a heading, which is what makes a profile real', async () => {

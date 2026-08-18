@@ -123,6 +123,53 @@ describe('renderOrchestratorSoul', () => {
     expect(soul).toMatch(/rewrite/i);
   });
 
+  /**
+   * I6. `## Voice` holds the voice description, the three voice-not-roleplay
+   * rules, and the dial-down instruction itself. "Rewrite this section" scoped
+   * the edit over all of it — an agent following it literally deletes "you
+   * never invent facts", "drop it for that sentence", "never soften bad news",
+   * and the instruction it is in the middle of obeying, to satisfy a request
+   * about diction. The rewrite has to name the paragraph, not the section.
+   */
+  it('scopes the dial-down rewrite to the voice paragraph alone', async () => {
+    const soul = await render({ ...TRILLIAN, voice: 'Dry, exact, faintly amused.' });
+    expect(soul).toMatch(/only the voice paragraph at the top of this\s+section/i);
+    expect(soul).toMatch(/Leave the rest of this section exactly as it is/i);
+    expect(soul).toMatch(/still apply to a plain voice/i);
+  });
+
+  /**
+   * The correct end state of that rewrite is the file a plain-spoken profile
+   * ships with in the first place — so the instruction quotes the same sentence
+   * `voiceOrPlain('')` writes, and this test pins the two together.
+   */
+  it('tells it to rewrite the paragraph into exactly what a plain profile ships with', async () => {
+    const PLAIN = 'Speak plainly. No accent, no mannerisms, no performance.';
+    expect(await render({ ...TRILLIAN, voice: '' })).toContain(PLAIN);
+    expect(await render({ ...TRILLIAN, voice: 'Dry, exact, faintly amused.' })).toContain(PLAIN);
+  });
+
+  /**
+   * I5. This file *is* the agent's governance and its prompt, so "never
+   * silently modify your own governance, prompts, memory structure, tools, or
+   * skills — the sequence is fixed" read literally beats the Voice section's
+   * "their answer authorises it, do not ask again". Under pressure the model
+   * reads whichever it reaches first, so the exception has to be named in the
+   * governance section too, or the user says "speak plainly" and gets asked for
+   * approval to apply a patch — which is what the spec forbids.
+   */
+  it('names the voice as the one exception to its own approval sequence', async () => {
+    const soul = await render({ ...TRILLIAN, voice: 'Dry, exact, faintly amused.' });
+    const start = soul.indexOf('## Proposal is free');
+    expect(start).toBeGreaterThan(-1);
+    const rest = soul.slice(start + 3);
+    const section = rest.slice(0, rest.indexOf('\n## '));
+
+    expect(section).toMatch(/one exception/i);
+    expect(section).toContain('## Voice');
+    expect(section).toMatch(/is the authorisation/i);
+  });
+
   it('substitutes special replacement-pattern characters literally', () => {
     const dollarCharacter: Character = {
       ...TRILLIAN,
