@@ -14,17 +14,16 @@
 }
 
 /**
- * The window is transparent and larger than the card by `SHADOW_GUTTER` on
- * every side (see `tileLayout.ts` — the two must agree, or the shadow is
- * clipped by the window edge and the card stops looking like it is floating).
- * Nothing here may paint a background: whatever `body` fills, the window
- * shows, and a filled body is a rectangle with square corners no matter what
- * radius the card has.
+ * Nothing here may paint an opaque background. The window is vibrant — macOS
+ * is compositing a live, blurred image of whatever is behind it — and anything
+ * fully opaque painted on top of that throws the effect away. The card's own
+ * colour is deliberately partial for the same reason: it tints the frost, it
+ * does not replace it.
  */
 html,
 body {
   margin: 0;
-  padding: 18px;
+  padding: 0;
   height: 100vh;
   background: transparent;
   color: var(--text);
@@ -34,19 +33,25 @@ body {
 }
 
 /**
- * `saturate(140%)` is not decoration. These palettes are dark by necessity —
- * white body text has to be readable on them — and at that lightness a
- * straight blur leaves them looking like grey. Saturating what shows through
- * is what makes a dark colour still read as *its* colour, which is the whole
- * point of theming a tile to its character. It is what keeps the prototype's
- * own almost-black teal reading as teal.
+ * The card fills the window exactly. The window is the rounded, frosted,
+ * shadowed object — `roundedCorners` shapes it, `vibrancy` frosts it, and
+ * macOS shadows it — so there is no separate card to inset, and no CSS shadow
+ * that would be clipped at the window edge anyway.
+ *
+ * `saturate(140%)` stays and now has something to act on: the vibrancy layer
+ * beneath. These palettes are dark by necessity — white body text has to be
+ * readable on them — and at that lightness an unsaturated frost reads as grey.
+ * Saturating what shows through is what makes a dark colour still read as
+ * *its* colour, which is the whole point of theming a tile to its character.
+ * The `blur()` that used to sit alongside it is gone: inside an Electron
+ * window `backdrop-filter` cannot see past the window, so it only ever blurred
+ * this card's own children, which is not something anyone asked for.
  *
  * The generous top padding is where macOS's own close/minimise/zoom buttons
- * sit — the window is `titleBarStyle: 'hiddenInset'`, so they are real window
- * controls overlaid on the card rather than anything drawn here. It doubles as
- * the drag strip: the card is draggable as a whole, with the parts you
- * interact with opted out below, so there is somewhere to grab that is not a
- * control.
+ * sit — they are real window controls overlaid on the card, not anything drawn
+ * here. It doubles as the drag strip: the card is draggable as a whole, with
+ * the parts you interact with opted out below, so there is somewhere to grab
+ * that is not a control.
  */
 .tile {
   height: 100%;
@@ -54,12 +59,14 @@ body {
   flex-direction: column;
   padding: 44px 16px 16px;
   background: var(--tile-bg);
-  border: 1px solid var(--tile-border);
+  /* Inset rather than a real border: the window's own rounded corner is the
+     outer edge now, and a 1px border inside it would show a hairline of
+     background between the two radii. */
+  box-shadow: inset 0 0 0 1px var(--tile-border);
   border-radius: 20px;
   overflow: hidden;
-  backdrop-filter: blur(24px) saturate(140%);
-  -webkit-backdrop-filter: blur(24px) saturate(140%);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  backdrop-filter: saturate(140%);
+  -webkit-backdrop-filter: saturate(140%);
   -webkit-app-region: drag;
 }
 #bar,

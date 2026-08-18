@@ -145,9 +145,21 @@ export function liftDegenerateBackground(hex: string): string {
  * prototype's hand-written per-profile blocks, so a derived tile lands on the
  * same visual weight the reference fleet has.
  */
+/**
+ * How much of the character's colour sits over the vibrancy layer.
+ *
+ * Lower than it looks like it should be, and deliberately: the window is
+ * frosted by macOS, and this value is a *tint* on that frost rather than the
+ * tile's actual background. At the 0.85 this used to be, the colour was opaque
+ * enough to hide the frost entirely and the effect was wasted; much below this
+ * and white body text starts fighting whatever happens to be behind the
+ * window.
+ */
+const TINT_ALPHA = 0.68;
+
 export function paletteVars(p: Palette): Record<string, string> {
   return {
-    '--tile-bg': rgba(p.bg, 0.85),
+    '--tile-bg': rgba(p.bg, TINT_ALPHA),
     '--tile-border': rgba(p.border, 0.45),
     '--accent': p.accent,
     '--accent-soft': rgba(p.accent, 0.7),

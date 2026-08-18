@@ -1,28 +1,15 @@
 /**
- * The visible card, in CSS pixels. This is the tile the user sees and the size
- * the design is drawn at.
- */
-export const CARD_W = 430;
-export const CARD_H = 480;
-
-/**
- * Transparent margin the window carries on every side so the card's drop
- * shadow has somewhere to fall. A shadow is clipped at the window edge, so
- * without this the card sits flush and reads as a painted rectangle rather
- * than as an object on the desktop.
+ * The tile, which is both the window and the card: they are the same rectangle.
  *
- * **Must equal `body`'s padding in `src/renderer/tile/tile.css`.** They are two
- * halves of one measurement, in two languages that cannot share a constant.
+ * An earlier revision made the window larger than the card so a CSS drop
+ * shadow had somewhere to fall. That is incompatible with macOS vibrancy —
+ * the frosted material fills the *window*, so a gutter puts a square halo of
+ * frost around a rounded card. The card now fills the window, the corners are
+ * rounded by the window itself (`roundedCorners`), and macOS draws the shadow,
+ * which is what makes it follow those corners instead of squaring them off.
  */
-export const SHADOW_GUTTER = 18;
-
-/**
- * The *window*, which is the card plus its shadow gutter. Placement works in
- * window co-ordinates, so this — not the card — is what the cascade positions
- * and keeps inside the work area.
- */
-export const TILE_W = CARD_W + SHADOW_GUTTER * 2;
-export const TILE_H = CARD_H + SHADOW_GUTTER * 2;
+export const TILE_W = 430;
+export const TILE_H = 480;
 
 /** The rectangle part of an Electron `Display.workArea`, with no Electron types. */
 export interface Rect {
