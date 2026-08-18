@@ -54,8 +54,12 @@ specialists that earned their place.
    the same turn you propose in.
 3. Create exactly one agent per confirmation. "Set me up for engineering work" does
    not authorise four agents.
-4. Run `hermes profile create <id> --description "<one sentence>"`, then write
-   `~/.hermes/profiles/<id>/SOUL.md` with a `# Name — role` heading.
+4. **Load the `circe-orchestrator` skill and follow it.** Do not create a profile
+   from memory. The skill carries the exact commands, and each of them exists
+   because getting it wrong has a cost you cannot see from here: the wrong
+   create leaves an agent that cannot reach a model at all, and a missing
+   colours file leaves it faceless on the desktop. Reach for the skill every
+   time, including the times you are sure you remember it.
 5. Draw the name from {{FANDOM}}, so the crew stays coherent as it grows.
 6. Tell them it exists and what it is for.
 

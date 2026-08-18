@@ -823,3 +823,39 @@ composer placeholder live, which is the "disk wins" rule the wizard already foll
 to send to, and re-reading its files on every unrelated write would be cost with no effect. The
 renderer half remains untested by the suite for the reason recorded above — this is again evidence by
 eye.
+
+### D2 fixed (2026-08-18), and what it turned out to be
+
+D2 reproduced through the plain CLI with Circe not running: `hermes -p ford chat -q "say ok"` on a
+bare-created profile auto-detected provider `bedrock` and failed `AccessDeniedException`, while the
+`default` profile answered normally. A profile created bare inherits neither the home's provider
+config nor its keys. Hermes already ships the fix — `hermes profile create --clone` copies
+`config.yaml` and `.env` from the active profile — and a cloned profile answered first try.
+
+Cloning also copies the source profile's skills, and the source is the orchestrator itself, so the
+skill now deletes `circe-orchestrator` from the clone: one coordinator, not a franchise.
+`--no-skills` cannot be used instead — Hermes rejects it as mutually exclusive with `--clone`.
+
+**The larger finding.** Changing the skill was not enough. Asked for a specialist twice — once on a
+deliberately clean session with no precedent in context — the orchestrator created the profile from
+memory both times: a correct `SOUL.md`, but no `--clone` and no `circe.json`, the latter a step that
+predates this work and had succeeded that morning. The cause was not model variance. The **persona
+carried its own competing copy of the procedure**: step 4 of `SOUL.template.md` said to run
+`hermes profile create <id> --description "…"` and write `~/.hermes/profiles/<id>/SOUL.md`. The
+persona is always in context; a skill has to be chosen and loaded. The orchestrator followed the
+persona, exactly as written — bare create, no colours file. That literal `~/.hermes` is also C1
+again, living in a second place nobody checked when C1 was fixed in the skill.
+
+Step 4 is now "load the `circe-orchestrator` skill and follow it", and the template is tested for
+both the pointer and the absence of a literal `~/.hermes`. One procedure, in one place; the persona
+says only when to reach for it.
+
+**Verified by eye on a fresh sandbox**, onboarding through to a created specialist (*Killick*, from
+Patrick O'Brian): `profiles/killick/` carries `config.yaml` and `.env` (so `--clone` ran), carries
+its own `circe.json`, and no longer carries `circe-orchestrator` (so the removal ran). `hermes -p
+killick chat -q "say ok"` answered **ok** — the thing D2 said was impossible. The real home was
+untouched throughout.
+
+Worth recording together: Killick's tile *launched* in `DEFAULT_PALETTE` — its window URL still
+carries `#1c1c1e` — and was corrected live to `rgba(58,42,20,.85)` when `circe.json` landed seconds
+later. That is D1's fix and D2's fix visible in the same run.

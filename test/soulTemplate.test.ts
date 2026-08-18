@@ -69,6 +69,25 @@ describe('renderOrchestratorSoul', () => {
     expect(soul).toMatch(/you are the only agent/i);
   });
 
+  // 2026-08-18: the persona carried its own copy of the create procedure — a
+  // bare `hermes profile create` and a literal `~/.hermes` path — and the
+  // persona is always in context while a skill has to be loaded. So the
+  // orchestrator followed this, not the skill: in two observed runs it created
+  // a profile with no `--clone` (which cannot reach a model) and no
+  // `circe.json` (which leaves the tile grey forever). One procedure, in the
+  // skill; the persona says when to reach for it.
+  it('sends the agent to its skill instead of carrying its own create command', async () => {
+    const soul = await render();
+    expect(soul).toContain('circe-orchestrator');
+    expect(soul).not.toMatch(/hermes profile create/);
+  });
+
+  // The same C1 defect the skill was fixed for, still living here: under a
+  // sandboxed HERMES_HOME this path is the operator's real home.
+  it('never names a literal ~/.hermes path', async () => {
+    expect(await render()).not.toContain('~/.hermes');
+  });
+
   it('substitutes special replacement-pattern characters literally', () => {
     const dollarCharacter: Character = {
       ...TRILLIAN,
