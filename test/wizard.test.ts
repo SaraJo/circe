@@ -572,8 +572,20 @@ describe('onboarding copy (spec §1.4, amended 2026-08-18)', () => {
     expect(all.match(/!/g) ?? []).toHaveLength(0);
   });
 
-  it('glosses Hermes the first time it names it', () => {
-    expect(COPY.runtime.lead).toMatch(/Hermes[^.]*(open-source|tool|software)/i);
+  // I3: the original version of this test only checked `COPY.runtime.lead`
+  // in isolation, so it stayed green even after `welcome.status` — which
+  // renders on the very first screen, before `runtime.lead` can ever be
+  // shown — started naming Hermes with no gloss at all. This version walks
+  // the flow in the order `Wizard.start()` actually shows it (welcome ->
+  // runtime -> provider -> fandom -> deriving -> meet, field by field
+  // within each) and checks whichever string turns out to be the *first*
+  // one that names Hermes, whatever screen that happens to be on.
+  it('glosses Hermes the first time it names it, wherever in the flow that first happens', () => {
+    const order = ['welcome', 'runtime', 'provider', 'fandom', 'deriving', 'meet'] as const;
+    const fields = order.flatMap((screen) => Object.values(COPY[screen]));
+    const firstMention = fields.find((text) => /\bHermes\b/.test(text));
+    expect(firstMention).toBeDefined();
+    expect(firstMention).toMatch(/Hermes[^.]*(open-source|tool|software)/i);
   });
 
   it('speaks to the reader, not about the product', () => {

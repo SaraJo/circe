@@ -75,7 +75,7 @@ function render(step: WizardStep): void {
           <h1>${COPY.welcome.title}</h1>
           <p class="lead">${COPY.welcome.lead}</p>
           <p class="lead">${COPY.welcome.sub}</p>
-          <p class="status">Checking for Hermes…</p>
+          <p class="status">${COPY.welcome.status}</p>
         </section>
       `),
       );
