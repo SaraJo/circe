@@ -14,12 +14,22 @@ import type { Character } from '../../shared/types';
  * opposite.
  *
  * Specialists are supposed to earn their place out of work that has actually
- * happened, against a real justification — their own expertise, model, tools,
+ * happened, against a real justification: their own expertise, model, tools,
  * memory boundary, permission level, or access boundary. Planning them in
  * advance is building the whole machine on day one, which is the first thing
- * the operating discipline rejects. So this message declines the roster out
- * loud, states the bar, leaves the decision with the user, and asks about one
- * real thing.
+ * the operating discipline rejects.
+ *
+ * The examples above are deliberately **tasks, not agents.** That is the whole
+ * distinction. Naming specialists here invites a roster; naming jobs invites
+ * work, and work is what a specialist has to come out of. They are also
+ * deliberately unglamorous and single-session, because the first ask should be
+ * something the agent can finish.
+ *
+ * An earlier draft opened with "right now I'm the only agent you have", which
+ * is true and useless: it frames a capable partner as a shortfall to be
+ * corrected, which is exactly the anxiety that makes someone go and plan a
+ * fleet. What the user needs from the first screen is that this thing is
+ * useful today.
  */
 export function openingMessage(c: Character): string {
   // One line per paragraph, joined by blank lines. The tile renders this with
@@ -28,9 +38,9 @@ export function openingMessage(c: Character): string {
   // ~340px tile. Let the renderer wrap; only paragraph breaks belong in the
   // string.
   return [
-    `Hi, I'm ${c.name}. Right now I'm the only agent you have, and that's the right number to start with.`,
-    `We can add more later, but I'd rather not hand you a roster to approve on day one. I don't know your work yet. When something comes up that genuinely needs its own agent, with its own tools, its own memory, its own permissions, I'll introduce you to your next partner from ${c.fandom} and tell you why they're worth having. You decide whether they earn their place.`,
-    'So: what are you working on right now?',
-    `(Or say "just show me around" and I'll wait until you're ready.)`,
+    `Hi, I'm ${c.name}, your partner for whatever's on your plate. Tell me what you need and I'll make it happen.`,
+    `Draft the email you've been avoiding. Build out a financial model. Research something properly. Turn a pile of notes into a plan you can act on. Small and real is a good place to start.`,
+    `As we go I'll notice where a specialist would do better than me, and when that happens I'll introduce you to your next partner from ${c.fandom}. You decide whether they earn their place.`,
+    `So, what's on your plate?`,
   ].join('\n\n');
 }

@@ -16,8 +16,19 @@ describe('openingMessage', () => {
     expect(openingMessage(TRILLIAN)).toContain('Trillian');
   });
 
-  it('says plainly that this is the only agent so far', () => {
-    expect(openingMessage(TRILLIAN)).toMatch(/only agent/i);
+  // Deliberately *not* asserting "you only have one agent". That was true and
+  // useless: it frames a capable partner as a shortfall to be corrected, which
+  // is the anxiety that sends someone off to plan a fleet. The first screen's
+  // job is to show the thing is useful today.
+  it('offers to do something rather than describing what it lacks', () => {
+    const message = openingMessage(TRILLIAN);
+    expect(message).toMatch(/tell me what you need/i);
+    expect(message).not.toMatch(/only agent|the rest|build the rest/i);
+  });
+
+  it('suggests concrete work the user could hand over', () => {
+    const message = openingMessage(TRILLIAN);
+    expect(message).toMatch(/draft|research|model|plan/i);
   });
 
   it('names the fandom future agents will come from', () => {
@@ -25,7 +36,7 @@ describe('openingMessage', () => {
   });
 
   it('ends by asking about one real thing, not about the whole week', () => {
-    expect(openingMessage(TRILLIAN)).toMatch(/what are you working on right now/i);
+    expect(openingMessage(TRILLIAN)).toMatch(/what's on your plate/i);
   });
 
   it('never claims the user has a fleet', () => {
@@ -52,17 +63,25 @@ describe('openingMessage', () => {
     expect(openingMessage(TRILLIAN)).not.toMatch(/one for your|one for the/i);
   });
 
-  it('says out loud that it will not hand over a roster', () => {
-    expect(openingMessage(TRILLIAN)).toMatch(/roster/i);
+  it('never solicits a list of agents', () => {
+    expect(openingMessage(TRILLIAN)).not.toMatch(
+      /what agents|which agents|specialists worth having|suggest specialists|agents you (need|want|should)/i,
+    );
   });
 
-  // The bar a specialist has to clear, visible from the first message rather
-  // than buried in the skill the user never reads.
-  it('names what would justify another agent', () => {
+  /**
+   * The examples are tasks, never agents, and that distinction is the whole
+   * point. Naming specialists invites a roster; naming jobs invites work, and
+   * work is what a specialist has to come out of. A regression here would read
+   * perfectly well and quietly undo the fix.
+   */
+  it('gives examples of work, not examples of agents', () => {
     const message = openingMessage(TRILLIAN);
-    expect(message).toMatch(/its own tools/i);
-    expect(message).toMatch(/its own memory/i);
-    expect(message).toMatch(/its own permissions/i);
+    expect(message).not.toMatch(/one for (your|the)|an agent for|a specialist for/i);
+  });
+
+  it('still says a specialist has to be worth having', () => {
+    expect(openingMessage(TRILLIAN)).toMatch(/earn their place/i);
   });
 
   it('leaves the decision with the user', () => {
