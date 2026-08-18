@@ -37,10 +37,30 @@ export function openingMessage(c: Character): string {
   // source to a fixed column would hard-break the prose mid-sentence in a
   // ~340px tile. Let the renderer wrap; only paragraph breaks belong in the
   // string.
+  const paragraphs = [c.greeting.trim() || scripted(c)];
+
+  // The voice is demonstrated by the paragraphs above and questioned here, in
+  // that order and never the other way round. No voice, no question: there is
+  // no accent to offer to drop.
+  if (c.voice.trim()) paragraphs.push(c.voiceCheck.trim() || plainCheck(c));
+
+  return paragraphs.join('\n\n');
+}
+
+/** Circe's own opening, used whenever the character did not write one. */
+function scripted(c: Character): string {
   return [
     `Hi, I'm ${c.name}, your partner for whatever's on your plate. Tell me what you need and I'll make it happen.`,
     `Draft the email you've been avoiding. Build out a financial model. Research something properly. Turn a pile of notes into a plan you can act on. Small and real is a good place to start.`,
     `As we go I'll notice where a specialist would do better than me, and when that happens I'll introduce you to your next partner from ${c.fandom}. You decide whether they earn their place.`,
     `So, what's on your plate?`,
   ].join('\n\n');
+}
+
+/**
+ * The question, when the character did not supply one of its own. Plain on
+ * purpose: this is Circe speaking, and Circe does not do accents.
+ */
+function plainCheck(c: Character): string {
+  return `One more thing — I talk like this because ${c.fandom} is where I'm from. Tell me if you'd rather I spoke plainly and I'll drop it.`;
 }
