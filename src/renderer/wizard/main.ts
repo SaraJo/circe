@@ -77,7 +77,7 @@ function render(step: WizardStep): void {
     case 'runtime-checking':
       screenEl.append(
         el(`
-        <section class="screen">
+        <section class="screen intro">
           <h1>${COPY.welcome.title}</h1>
           <p class="lead">${COPY.welcome.lead}</p>
           <p class="sub">${COPY.welcome.sub}</p>
@@ -124,7 +124,7 @@ function render(step: WizardStep): void {
 
     case 'fandom': {
       const node = el(`
-        <section class="screen">
+        <section class="screen ask">
           <h1>${COPY.fandom.title}</h1>
           <p class="lead">${COPY.fandom.lead}</p>
           <input id="fandom" placeholder="${COPY.fandom.placeholder}" autofocus />
@@ -168,7 +168,7 @@ function render(step: WizardStep): void {
       // page.
       const [derivingBefore, derivingAfter] = COPY.deriving.lead.split('{{FANDOM}}');
       const node = el(`
-        <section class="screen">
+        <section class="screen working">
           <h1>${COPY.deriving.title}</h1>
           <p class="lead">${derivingBefore}<span class="fandom"></span>${derivingAfter}</p>
           <div class="spinner"></div>

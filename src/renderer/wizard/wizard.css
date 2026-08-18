@@ -103,6 +103,59 @@ button:active { transform: translateY(1px); }
 }
 .tagline { margin: 0; color: var(--ink-soft); }
 
+/*
+ * `welcome`/`runtime-checking`, `fandom` and `deriving` used to leave their
+ * content pinned at the top of the flex column with nothing claiming the
+ * rest of the window — "meet" reads as composed because its content (the
+ * avatar block) sits centred with room on both sides; these three read as
+ * a form because their content sits flush against the top edge above a
+ * void. Scoped classes (mirroring `.screen.character` below) so this only
+ * touches the three screens it was asked to fix — the other eight render
+ * branches, including the two capped-error screens, keep the exact
+ * top-pinned `.screen` layout they already had.
+ */
+.screen.intro,
+.screen.ask,
+.screen.working {
+  justify-content: center;
+}
+
+/*
+ * The input used to stretch to the window's full width (560px), reading as
+ * a search bar, while the copy above it is capped at 44ch. Cap it to the
+ * same column so it reads as part of the same sentence as the text above
+ * it. `.link` ("Not sure? Give me an example") used to stretch full width
+ * too — buttons centre their own text by default in the UA stylesheet, so
+ * a full-width button put that text in the middle of the window, a third
+ * alignment on a screen that already had the lead flush left and Continue
+ * flush left. `align-self: flex-start` shrinks it to its own text instead
+ * of stretching, so it sits flush left like everything else.
+ */
+.screen.ask input { max-width: 44ch; }
+.screen.ask .link { align-self: flex-start; }
+/*
+ * Continue used to be pushed to the very bottom by `.actions`'
+ * `margin-top: auto`, stranding it under ~180px of empty window with no
+ * relationship to the field it submits. Let it sit directly under the
+ * field and the "give me an example" link instead; `justify-content:
+ * center` above already gives the whole block room on both sides.
+ */
+.screen.ask .actions { margin-top: 4px; }
+
+/*
+ * The spinner used to be a 22px ring pinned at the far-left margin under
+ * two lines of text, on a screen that can run close to a minute — small
+ * and stranded enough to read as stalled rather than working. Bigger and
+ * given room of its own so it reads as part of what's happening rather
+ * than an afterthought under the text.
+ */
+.screen.working .spinner {
+  width: 34px;
+  height: 34px;
+  border-width: 3px;
+  margin-top: 6px;
+}
+
 .screen.character {
   background:
     radial-gradient(
