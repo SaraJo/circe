@@ -325,6 +325,14 @@ function startFleetWatch(seed: Iterable<string>): FleetWatch {
     onProfile: async (profile) => {
       await tiles.launch(await characterFor(hermes, profile), profile.id);
     },
+    // The same read the launch does, against a tile that already exists.
+    // `characterFor` is the only thing that knows how to turn a profile into
+    // what a tile shows, and `retheme` is silent unless something actually
+    // changed, so this costs two small file reads per open tile per sweep —
+    // against an enumeration that already shells out to `hermes profile list`.
+    onKnownProfile: async (profile) => {
+      tiles.retheme(profile.id, await characterFor(hermes, profile));
+    },
   });
   fleetWatch = watch.start();
   return watch;

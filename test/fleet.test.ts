@@ -91,6 +91,7 @@ describe('FleetWatch', () => {
     alreadyTiled: Iterable<string> = ['default'],
   ) {
     const opened: string[] = [];
+    const known: string[] = [];
     const watch = new FleetWatch({
       hermes,
       isOpen,
@@ -98,9 +99,12 @@ describe('FleetWatch', () => {
       onProfile: (profile) => {
         opened.push(profile.id);
       },
+      onKnownProfile: (profile) => {
+        known.push(profile.id);
+      },
       debounceMs: 10,
     });
-    return { watch, opened };
+    return { watch, opened, known };
   }
 
   it('opens a tile for a profile that becomes real', async () => {
@@ -345,6 +349,8 @@ describe('FleetWatch', () => {
           await gate; // holds the debounced sweep mid-flight
           opened.push(profile.id);
         },
+        // Nothing in this test has a tile, so this is never reached.
+        onKnownProfile: () => {},
         debounceMs: 10,
       });
       const stop = watch.start();
@@ -364,6 +370,68 @@ describe('FleetWatch', () => {
     });
   });
 
+  // D1 (2026-08-18 walkthrough): a profile's files keep changing after its tile
+  // opens — the orchestrator writes `circe.json` seconds after the `SOUL.md`
+  // that made the profile tileable, so the tile launches with no colours of its
+  // own and stays that way until a restart. The sweep already sees those later
+  // writes; it just had nothing to say about them.
+  it('re-reports a profile that already has a tile instead of launching a second one', async () => {
+    const hermes = new FakeHermes(configured());
+    const { watch, opened, known } = watcher(hermes, (id) => id === 'default');
+    const stop = watch.start();
+
+    await hermes.writeHomeFile('profiles/default/circe.json', '{"version":1}');
+    hermes.fireHomeChange('profiles/default/circe.json');
+
+    await vi.waitFor(() => expect(known).toEqual(['default']));
+    expect(opened).toEqual([]);
+    stop();
+  });
+
+  // The resurrection guard's other half: a tile the user closed stays closed,
+  // and must not be re-themed either — there is no window to send to, and
+  // asking would mean reading its files on every unrelated write forever.
+  it('says nothing about a profile whose tile the user closed', async () => {
+    const hermes = new FakeHermes(configured());
+    const { watch, opened, known } = watcher(hermes, () => false);
+    const stop = watch.start();
+
+    await hermes.writeHomeFile('profiles/default/circe.json', '{"version":1}');
+    hermes.fireHomeChange('profiles/default/circe.json');
+    await hermes.writeHomeFile('SOUL.md', '# Trillian — still here\n');
+    hermes.fireHomeChange('profiles/default/SOUL.md');
+
+    await new Promise((r) => setTimeout(r, 60));
+    expect(known).toEqual([]);
+    expect(opened).toEqual([]);
+    stop();
+  });
+
+  it('keeps sweeping when onKnownProfile throws for one profile', async () => {
+    const hermes = new FakeHermes(configured());
+    const opened: string[] = [];
+    const watch = new FleetWatch({
+      hermes,
+      isOpen: (id) => id === 'default',
+      alreadyTiled: ['default'],
+      onProfile: (profile) => {
+        opened.push(profile.id);
+      },
+      onKnownProfile: () => {
+        throw new Error('could not re-read the profile');
+      },
+      debounceMs: 10,
+    });
+    const stop = watch.start();
+
+    hermes.scenarioModels.ford = 'claude-opus-5';
+    await hermes.writeHomeFile('profiles/ford/SOUL.md', '# Ford — the one who finds the exit\n');
+    hermes.fireHomeChange('profiles/ford/SOUL.md');
+
+    await vi.waitFor(() => expect(opened).toEqual(['ford']));
+    stop();
+  });
+
   it('keeps opening tiles for other profiles when onProfile throws for one', async () => {
     const hermes = new FakeHermes(configured());
     const opened: string[] = [];
@@ -375,6 +443,8 @@ describe('FleetWatch', () => {
         if (profile.id === 'ford') throw new Error('tile failed to open');
         opened.push(profile.id);
       },
+      // Nothing in this test has a tile, so this is never reached.
+      onKnownProfile: () => {},
       debounceMs: 10,
     });
     const stop = watch.start();

@@ -26,6 +26,23 @@ export interface FleetWatchDeps {
   isOpen(profileId: string): boolean;
   /** Called once per profile that has become tileable. */
   onProfile(profile: HermesProfile): void | Promise<void>;
+  /**
+   * Called on every sweep for a profile that already has a tile, so the tile
+   * can pick up a persona or palette that changed after it opened.
+   *
+   * This exists because the two files that describe an agent do not arrive
+   * together: `isReal` flips the moment `SOUL.md` lands, and the orchestrator
+   * writes `circe.json` in a later tool call — four seconds later in the
+   * 2026-08-18 walkthrough. The tile therefore launches before its colours
+   * exist. Re-reading on later writes is what closes that window, and it also
+   * makes a hand-edited `SOUL.md` take effect without a restart.
+   *
+   * Deliberately not filtered by which path changed: the sweep already
+   * distrusts the event's path for the readiness decision, and a missed
+   * `circe.json` event would leave exactly the stale tile this fixes. The
+   * caller is expected to compare before doing anything visible.
+   */
+  onKnownProfile(profile: HermesProfile): void | Promise<void>;
   /** The prototype settles at 600ms; tests run it far shorter. */
   debounceMs?: number;
 }
@@ -145,7 +162,21 @@ export class FleetWatch {
     }
     for (const profile of profiles) {
       if (this.stopped) return;
-      if (this.tiled.has(profile.id) || this.deps.isOpen(profile.id)) continue;
+      if (this.tiled.has(profile.id) || this.deps.isOpen(profile.id)) {
+        // `isOpen`, not `tiled`: a profile this watch has reported before but
+        // whose tile the user has since closed has no window to update, and
+        // re-reading its files on every unrelated write would be pure cost.
+        if (this.deps.isOpen(profile.id)) {
+          try {
+            await this.deps.onKnownProfile(profile);
+          } catch (err) {
+            // Same reasoning as a failed launch: one profile that cannot be
+            // re-read must not stop the sweep from reaching the others.
+            console.warn(`Could not refresh the tile for profile "${profile.id}".`, err);
+          }
+        }
+        continue;
+      }
       // Marked before the call, not after: two overlapping sweeps (a burst
       // that outran the debounce, or two profiles becoming real in the same
       // sweep) must not both decide this profile is unhandled and both

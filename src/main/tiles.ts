@@ -43,12 +43,33 @@ export interface TileDeps {
   createClient(opts: TileClientOptions): TileClient;
 }
 
+/**
+ * Whether two characters would draw the same tile. Field-by-field rather than
+ * a stringify: the character arrives from `characterFor`, which builds it
+ * fresh each time, so key order is not something to depend on.
+ */
+function sameCharacter(a: Character, b: Character): boolean {
+  return (
+    a.name === b.name &&
+    a.tagline === b.tagline &&
+    a.palette.bg === b.palette.bg &&
+    a.palette.border === b.palette.border &&
+    a.palette.accent === b.palette.accent
+  );
+}
+
 /** One profile's live tile. Everything `index.ts` used to hold in singletons. */
 interface Tile {
   readonly profileId: string;
   readonly win: TileWindow;
   readonly client: TileClient;
   readonly session: TileSession;
+  /**
+   * What this tile is currently showing. Kept so `retheme` can tell a real
+   * change from the constant noise of an agent writing memory and session
+   * state under its own profile directory, which the fleet watch also sees.
+   */
+  character: Character;
   loaded: boolean;
   queue: string[];
   ready: Promise<void>;
@@ -152,6 +173,7 @@ export class TileRegistry {
       win,
       client,
       session,
+      character,
       loaded: false,
       // The opening message belongs to the handoff out of onboarding and
       // nowhere else: it says "Right now I'm the only agent you have", which
@@ -261,6 +283,32 @@ export class TileRegistry {
     tile.client.stop();
     tile.win.close();
     this.tiles.delete(profileId);
+  }
+
+  /**
+   * Updates what an open tile shows about its agent, if anything has changed.
+   *
+   * The two files that describe a profile do not land together: `SOUL.md`
+   * makes it tileable and `circe.json` follows in a later write — seconds
+   * later when an agent is doing the writing. A tile launched in between shows
+   * `DEFAULT_PALETTE` and, before this, kept showing it until the app
+   * restarted. This is also what makes a hand-edited persona take effect
+   * live, which is the same rule the wizard follows: disk wins.
+   *
+   * Silent when nothing changed. The fleet watch calls this on every write
+   * under `profiles/`, and an agent mid-conversation produces a steady stream
+   * of them; re-sending an identical character would repaint the tile for
+   * nothing. Compares the whole character rather than only the fields today's
+   * renderer reads, so a tile that starts showing the tagline tomorrow cannot
+   * quietly go stale.
+   */
+  retheme(profileId: string, character: Character): void {
+    const tile = this.tiles.get(profileId);
+    if (!tile) return;
+    if (sameCharacter(tile.character, character)) return;
+    tile.character = character;
+    if (tile.win.isDestroyed()) return;
+    tile.win.send('tile:character', character);
   }
 
   /** Brings a tile to the front. Used by `activate` and by a duplicate launch. */

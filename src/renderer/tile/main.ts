@@ -12,19 +12,30 @@ import { DEFAULT_PALETTE, isPalette, paletteVars } from '../../main/palette';
 interface TileApi {
   onUpdate(cb: (u: Record<string, unknown>) => void): void;
   onOpening(cb: (text: string) => void): void;
+  onCharacter(cb: (character: unknown) => void): void;
   send(text: string): void;
   close(): void;
   openExternal(url: string): void;
 }
 const circe = (window as unknown as { circe: TileApi }).circe;
 
+/**
+ * A character from either source, or null. Shared by the URL parse and the
+ * live `tile:character` update so both hold to the same rule: an object with
+ * a `name`. Everything else is checked where it is used (`isPalette` below),
+ * because a partial character still names the agent correctly.
+ */
+function asCharacter(parsed: unknown): Character | null {
+  if (!parsed || typeof parsed !== 'object') return null;
+  if (typeof (parsed as Partial<Character>).name !== 'string') return null;
+  return parsed as Character;
+}
+
 /** `createTileWindow` passes the character as JSON in the URL; guard the parse. */
 function parseCharacter(raw: string | null): Character | null {
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as Partial<Character> | null;
-    if (!parsed || typeof parsed !== 'object' || typeof parsed.name !== 'string') return null;
-    return parsed as Character;
+    return asCharacter(JSON.parse(raw));
   } catch {
     return null;
   }
@@ -33,22 +44,35 @@ function parseCharacter(raw: string | null): Character | null {
 const params = new URLSearchParams(location.search);
 const character = parseCharacter(params.get('character'));
 
-// `character?.palette` came through `parseCharacter`, which only checked
-// `name` — a malformed value (`"palette": 5`, a partial object, a channel
-// that isn't a hex string) must fall back the same way a *missing* one does,
-// not reach `paletteVars` and throw at module top level, which would kill
-// this whole script before `circe.onUpdate`/`onOpening` are ever wired up.
-const palette = isPalette(character?.palette) ? character.palette : DEFAULT_PALETTE;
-for (const [k, v] of Object.entries(paletteVars(palette))) {
-  document.documentElement.style.setProperty(k, v);
-}
-document.getElementById('who')!.textContent = character?.name ?? 'Circe';
-
 const log = document.getElementById('log')!;
 const input = document.getElementById('input') as HTMLTextAreaElement;
-// Naming the agent is the difference between a text field and a conversation.
-// Falls back with the same name `#who` uses, so the two never disagree.
-input.placeholder = `Message ${character?.name ?? 'Circe'}…`;
+
+/**
+ * Draws who this tile belongs to: its colours, its heading, and the name in
+ * the composer — the difference between a text field and a conversation.
+ *
+ * Called once for the character in the URL and again whenever the main
+ * process re-reads the profile, which happens because `SOUL.md` and
+ * `circe.json` do not arrive together (the orchestrator writes the second
+ * seconds after the first) and because either can be edited by hand.
+ *
+ * `palette` came through a check on `name` alone, so a malformed value
+ * (`"palette": 5`, a partial object, a channel that isn't a hex string) must
+ * fall back the same way a *missing* one does rather than reach `paletteVars`
+ * and throw — at module top level that would kill this whole script before
+ * `circe.onUpdate`/`onOpening` are ever wired up.
+ */
+function applyCharacter(c: Character | null): void {
+  const palette = isPalette(c?.palette) ? c.palette : DEFAULT_PALETTE;
+  for (const [k, v] of Object.entries(paletteVars(palette))) {
+    document.documentElement.style.setProperty(k, v);
+  }
+  document.getElementById('who')!.textContent = c?.name ?? 'Circe';
+  // Falls back with the same name `#who` uses, so the two never disagree.
+  input.placeholder = `Message ${c?.name ?? 'Circe'}…`;
+}
+
+applyCharacter(character);
 
 /** The element the current streaming reply is accumulating into. */
 let streaming: HTMLElement | null = null;
@@ -133,6 +157,14 @@ if (!character) {
 
 circe.onOpening((text) => {
   appendText('agent', text);
+});
+
+// A re-theme that arrives malformed leaves the tile as it is: `asCharacter`
+// returns null, and applying null would reset a correctly-themed tile to the
+// default. Losing an update costs colours; applying a bad one costs identity.
+circe.onCharacter((c) => {
+  const next = asCharacter(c);
+  if (next) applyCharacter(next);
 });
 
 /**

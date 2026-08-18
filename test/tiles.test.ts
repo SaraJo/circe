@@ -108,6 +108,12 @@ class FakeWindow implements TileWindow {
       .filter((s) => s.channel === 'tile:update')
       .map((s) => s.payload as Record<string, unknown>);
   }
+  /** Only the payloads of `tile:character`, which carries a live re-theme. */
+  characters(): Character[] {
+    return this.sent
+      .filter((s) => s.channel === 'tile:character')
+      .map((s) => s.payload as Character);
+  }
   /** Only the text of `tile:opening`, which is where prose reaches the tile. */
   openings(): string[] {
     return this.sent.filter((s) => s.channel === 'tile:opening').map((s) => s.payload as string);
@@ -680,5 +686,63 @@ describe('routing an IPC message to the tile that sent it', () => {
     await launched(h);
 
     expect(h.registry.profileForSender({})).toBeNull();
+  });
+});
+
+// D1 (2026-08-18 walkthrough): `SOUL.md` and `circe.json` do not arrive
+// together. A tile launched on the first one shows `DEFAULT_PALETTE`, and
+// nothing re-read the second — so every specialist the orchestrator created
+// wore the wrong colours for its whole first session.
+describe('re-theming an open tile', () => {
+  const RECOLOURED = { bg: '#123524', border: '#a7f3d0', accent: '#34d399' };
+
+  it('sends the new character when the palette has changed', async () => {
+    const h = harness();
+    await launched(h);
+
+    h.registry.retheme('default', { ...character('default'), palette: RECOLOURED });
+
+    expect(h.windows[0]!.characters()).toEqual([{ ...character('default'), palette: RECOLOURED }]);
+  });
+
+  it('sends the new character when the name has changed', async () => {
+    const h = harness();
+    await launched(h);
+
+    h.registry.retheme('default', { ...character('default'), name: 'Master Patterner' });
+
+    expect(h.windows[0]!.characters().map((c) => c.name)).toEqual(['Master Patterner']);
+  });
+
+  // The sweep runs on every write under `profiles/`, and an agent in
+  // conversation writes memory and session state constantly. Re-sending an
+  // identical character on each of those would repaint the tile for nothing.
+  it('sends nothing when the character is unchanged', async () => {
+    const h = harness();
+    await launched(h);
+
+    h.registry.retheme('default', character('default'));
+
+    expect(h.windows[0]!.characters()).toEqual([]);
+  });
+
+  it('sends nothing on a second identical call after a real change', async () => {
+    const h = harness();
+    await launched(h);
+    const recoloured = { ...character('default'), palette: RECOLOURED };
+
+    h.registry.retheme('default', recoloured);
+    h.registry.retheme('default', recoloured);
+
+    expect(h.windows[0]!.characters()).toHaveLength(1);
+  });
+
+  it('does nothing for a profile that has no tile', async () => {
+    const h = harness();
+    await launched(h);
+
+    h.registry.retheme('ford', { ...character('ford'), palette: RECOLOURED });
+
+    expect(h.windows[0]!.characters()).toEqual([]);
   });
 });

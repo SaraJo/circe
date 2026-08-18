@@ -5,6 +5,11 @@ contextBridge.exposeInMainWorld('circe', {
     ipcRenderer.on('tile:update', (_e, u) => cb(u)),
   onOpening: (cb: (text: string) => void) =>
     ipcRenderer.on('tile:opening', (_e, text: string) => cb(text)),
+  // A profile's persona and colours can change after its tile opens — the
+  // orchestrator writes `circe.json` after the `SOUL.md` that opened it, and a
+  // user can edit either by hand. The main process re-reads and sends here.
+  onCharacter: (cb: (character: Record<string, unknown>) => void) =>
+    ipcRenderer.on('tile:character', (_e, c) => cb(c)),
   send: (text: string) => ipcRenderer.send('tile:prompt', text),
   close: () => ipcRenderer.send('tile:close'),
   // The tile can no longer navigate itself (see `pinToItsOwnDocument`), so a

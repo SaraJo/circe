@@ -802,3 +802,24 @@ its first message, and that nothing in Circe or in the orchestrator skill runs p
   confirmed against Hermes' storage.
 - **A tool call renders as a raw id.** During the Ogion creation the orchestrator's transcript drew
   `⚙ toolu_01VsyAkmt8QqNFMnbPNhP96g`. Cosmetic, unreviewed, recorded here because it was seen.
+
+### D1 fixed (2026-08-18)
+
+The fleet watch now reports profiles that already have tiles, not just new ones: `FleetWatchDeps`
+gains `onKnownProfile`, which `index.ts` wires to the same `characterFor` read the launch does, and
+`TileRegistry.retheme` pushes the result to that tile over a new `tile:character` channel — but only
+when the name, tagline or palette actually differ, since an agent mid-conversation writes under its
+own profile constantly. The renderer's initial application became `applyCharacter`, called for the
+character in the URL and again on every update; a malformed update is ignored so a bad read cannot
+reset a correctly-themed tile.
+
+Verified by hand against the original repro rather than only by the suite: a profile created at a
+terminal, its `SOUL.md` written, and its `circe.json` written **19 seconds later** — the tile opened
+in `DEFAULT_PALETTE` grey and recoloured to `rgba(59,13,46,.85)`/`#ec4899` on its own, with no
+restart. Renaming the H1 in that same `SOUL.md` afterwards changed the tile's heading and its
+composer placeholder live, which is the "disk wins" rule the wizard already follows.
+
+`isOpen`, not the watch's `tiled` set, decides who gets re-read: a tile the user closed has no window
+to send to, and re-reading its files on every unrelated write would be cost with no effect. The
+renderer half remains untested by the suite for the reason recorded above — this is again evidence by
+eye.
