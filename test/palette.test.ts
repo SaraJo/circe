@@ -28,9 +28,9 @@ describe('rgba', () => {
 describe('paletteVars', () => {
   it('derives every variable the tile stylesheet needs', () => {
     const vars = paletteVars(TRILLIAN);
-    // A tint over the window's vibrancy layer, not an opaque background — see
-    // TINT_ALPHA. Fully opaque here would throw the frost away.
-    expect(vars['--tile-bg']).toBe('rgba(30, 41, 82, 0.68)');
+    // The reference implementation's opacity: enough colour to read as the
+    // character's, enough transparency to read as translucent. See TILE_ALPHA.
+    expect(vars['--tile-bg']).toBe('rgba(30, 41, 82, 0.85)');
     expect(vars['--accent']).toBe('#a5b4fc');
     expect(Object.keys(vars)).toEqual([
       '--tile-bg',

@@ -14,11 +14,9 @@
 }
 
 /**
- * Nothing here may paint an opaque background. The window is vibrant — macOS
- * is compositing a live, blurred image of whatever is behind it — and anything
- * fully opaque painted on top of that throws the effect away. The card's own
- * colour is deliberately partial for the same reason: it tints the frost, it
- * does not replace it.
+ * Nothing here may paint a background. The window is transparent and the card
+ * fills it, so anything painted on `body` would be a second, squarer layer
+ * showing through the card's rounded corners.
  */
 html,
 body {
@@ -33,19 +31,19 @@ body {
 }
 
 /**
- * The card fills the window exactly. The window is the rounded, frosted,
- * shadowed object — `roundedCorners` shapes it, `vibrancy` frosts it, and
- * macOS shadows it — so there is no separate card to inset, and no CSS shadow
- * that would be clipped at the window edge anyway.
+ * The card fills the window exactly. The window is the rounded, shadowed
+ * object — `roundedCorners` shapes it and macOS shadows it — so there is no
+ * separate card to inset, and no CSS shadow that would be clipped at the
+ * window edge anyway.
  *
- * `saturate(140%)` stays and now has something to act on: the vibrancy layer
- * beneath. These palettes are dark by necessity — white body text has to be
- * readable on them — and at that lightness an unsaturated frost reads as grey.
- * Saturating what shows through is what makes a dark colour still read as
- * *its* colour, which is the whole point of theming a tile to its character.
- * The `blur()` that used to sit alongside it is gone: inside an Electron
- * window `backdrop-filter` cannot see past the window, so it only ever blurred
- * this card's own children, which is not something anyone asked for.
+ * The `backdrop-filter` below is carried over from the reference
+ * implementation, and it is worth being honest that it does almost nothing
+ * here: inside an Electron window `backdrop-filter` cannot see past the
+ * window, so it acts on this card's own children rather than on the desktop.
+ * The thing that actually blurs a desktop is macOS vibrancy, which was tried
+ * and reverted because its material drains the colour out of the tint above
+ * it. Kept because it costs nothing, matches the reference, and starts working
+ * the moment anything is composited behind the card inside the window.
  *
  * The generous top padding is where macOS's own close/minimise/zoom buttons
  * sit — they are real window controls overlaid on the card, not anything drawn
@@ -65,8 +63,8 @@ body {
   box-shadow: inset 0 0 0 1px var(--tile-border);
   border-radius: 20px;
   overflow: hidden;
-  backdrop-filter: saturate(140%);
-  -webkit-backdrop-filter: saturate(140%);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
   -webkit-app-region: drag;
 }
 #bar,

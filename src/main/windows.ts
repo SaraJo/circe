@@ -68,20 +68,18 @@ export function createTileWindow(
     // them; the card's top padding is the room they sit in.
     titleBarStyle: 'hiddenInset',
     /**
-     * Real frosted glass, and the reason the card fills the window exactly.
+     * Deliberately **not** vibrant. `vibrancy: 'under-window'` was tried and
+     * reverted: it does blur the desktop, which CSS cannot, but the material
+     * desaturates whatever is tinted over it, and a dark palette tinting a
+     * frost comes out as flat grey. Side by side, a vibrant tile lost its
+     * colour entirely while a plainly translucent one still read as its own
+     * blue. Colour is the point of theming a tile to a character, so the
+     * translucency wins and the blur is not worth the trade.
      *
-     * `backdrop-filter` in CSS cannot see past the window it is in — inside an
-     * Electron window it blurs only that window's own content, so the
-     * `blur(24px)` the tile carried was inert and the palette was compositing
-     * straight onto whatever was behind. Over a smooth wallpaper that passes;
-     * over a window full of light thumbnails the tile turns to mush. Vibrancy
-     * is the only thing that blurs what is actually behind the window.
-     *
-     * It fills the window rectangle, so any transparent margin would frost as
-     * a square halo around the rounded card — which is why the shadow gutter
-     * had to go and `roundedCorners` now does that job instead.
+     * `roundedCorners` stays, and the card still fills the window: that is
+     * what lets macOS shape and shadow the window itself, which it does better
+     * than a CSS shadow inside a gutter ever did.
      */
-    vibrancy: 'under-window',
     roundedCorners: true,
     transparent: true,
     backgroundColor: '#00000000',

@@ -146,20 +146,20 @@ export function liftDegenerateBackground(hex: string): string {
  * same visual weight the reference fleet has.
  */
 /**
- * How much of the character's colour sits over the vibrancy layer.
+ * How opaque the tile's own colour is over the desktop behind it.
  *
- * Lower than it looks like it should be, and deliberately: the window is
- * frosted by macOS, and this value is a *tint* on that frost rather than the
- * tile's actual background. At the 0.85 this used to be, the colour was opaque
- * enough to hide the frost entirely and the effect was wasted; much below this
- * and white body text starts fighting whatever happens to be behind the
- * window.
+ * The reference implementation's value, and restored to it after a detour
+ * through macOS vibrancy at 0.68. Vibrancy blurs the desktop, which this
+ * cannot, but its material desaturates the tint over it — a dark palette came
+ * out flat grey and the tile stopped looking like anyone's. At 0.85 the colour
+ * carries and the desktop still shows through enough to read as translucent,
+ * which is the trade the prototype makes and the one that looks right.
  */
-const TINT_ALPHA = 0.68;
+const TILE_ALPHA = 0.85;
 
 export function paletteVars(p: Palette): Record<string, string> {
   return {
-    '--tile-bg': rgba(p.bg, TINT_ALPHA),
+    '--tile-bg': rgba(p.bg, TILE_ALPHA),
     '--tile-border': rgba(p.border, 0.45),
     '--accent': p.accent,
     '--accent-soft': rgba(p.accent, 0.7),
