@@ -141,6 +141,23 @@ describe('deriveCharacter', () => {
     expect(c.voiceCheck).toBe('');
   });
 
+  // The previous test sets voice, greeting and voiceCheck over-length together,
+  // so an over-long voiceCheck never independently exercises its own 200-char
+  // bound: dropping the over-long voice already forces voiceCheck to '' by the
+  // no-voice rule. Isolate it here with a valid, short voice. The sibling test
+  // above ('carries the voice, greeting and check through') is the other half
+  // of the contrast: a voiceCheck within bound, alongside a valid voice, comes
+  // through unchanged.
+  it('drops an over-long voiceCheck even when the voice itself is valid', async () => {
+    const bad = JSON.parse(GOOD_REPLY);
+    bad.voice = 'Plain and direct, no flourishes.';
+    bad.voiceCheck = 'z'.repeat(201);
+    const h = new FakeHermes(withReply(JSON.stringify(bad)));
+    const c = await deriveCharacter(h, 'x');
+    expect(c.voice).toBe('Plain and direct, no flourishes.');
+    expect(c.voiceCheck).toBe('');
+  });
+
   it('asks the model for a voice', () => {
     expect(DERIVATION_PROMPT('pirates')).toMatch(/voice/i);
   });
