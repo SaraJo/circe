@@ -367,6 +367,26 @@ describe('sending the tile its avatar', () => {
 
     expect(h.windows[0]!.avatars()).toEqual([null, expect.stringMatching(/^data:image\/png;base64,/)]);
   });
+
+  // `readAvatarDataUrl` only swallows "the file genuinely isn't there"
+  // (ENOENT/ENOTDIR) and rethrows everything else, by design — a permissions
+  // problem or a corrupted home directory rejects. Without a `.catch()` at the
+  // send site that rejection is an unhandled promise rejection in the main
+  // process, not the silent failure this feature requires. This test would
+  // fail (an unhandled rejection, and the tile never finishing its launch) if
+  // that `.catch()` were removed.
+  it('does not throw and still opens the tile when the face read fails for a reason other than "missing"', async () => {
+    const h = harness();
+    h.hermes.readHomeFileBytes = async () => {
+      throw new Error('EACCES: permission denied');
+    };
+
+    await launched(h);
+    await flushMicrotasks();
+
+    expect(h.registry.openProfileIds()).toEqual(['default']);
+    expect(h.windows[0]!.avatars()).toEqual([null]);
+  });
 });
 
 // The old `if (tileWin) return` was a silent no-op. A directory watch fires

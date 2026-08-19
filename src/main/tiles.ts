@@ -195,12 +195,7 @@ export class TileRegistry {
       win.onceLoaded(() => {
         newTile.loaded = true;
         for (const text of newTile.queue.splice(0)) win.send('tile:opening', text);
-        // Deliberately not part of the character: the character is agent facts
-        // and travels in the window URL, where a base64 PNG would not fit.
-        // This is the same file re-read, on its own channel.
-        void readAvatarDataUrl(this.deps.hermes, profileId).then((url) => {
-          win.send('tile:avatar', url);
-        });
+        this.sendAvatar(win, profileId);
         resolve();
       });
       win.onceFailedLoad(() => resolve());
@@ -316,12 +311,31 @@ export class TileRegistry {
     tile.character = character;
     if (tile.win.isDestroyed()) return;
     tile.win.send('tile:character', character);
-    // Deliberately not part of the character: the character is agent facts and
-    // travels in the window URL, where a base64 PNG would not fit. This is the
-    // same file re-read, on its own channel.
-    void readAvatarDataUrl(this.deps.hermes, profileId).then((url) => {
-      tile.win.send('tile:avatar', url);
-    });
+    this.sendAvatar(tile.win, profileId);
+  }
+
+  /**
+   * Reads and sends a profile's face, on its own channel — used on a tile's
+   * first load and again on every re-theme. Deliberately not part of the
+   * character: the character is agent facts and travels in the window URL,
+   * where a base64 PNG would not fit.
+   *
+   * `readAvatarDataUrl` only swallows "the file genuinely isn't there"
+   * (`ENOENT`/`ENOTDIR`, inside `hermes.readHomeFileBytes`) and rethrows
+   * everything else, by design, so a caller guarding a destructive write can
+   * tell "nothing there" from "couldn't look" — a distinction that stays
+   * correct and is not touched here. A tile draws no such distinction: it
+   * only cares whether there is a face to show, so a rejection (a
+   * permissions problem, a corrupted home directory) is caught and treated
+   * the same as a profile with no face, rather than becoming an unhandled
+   * rejection in the main process.
+   */
+  private sendAvatar(win: TileWindow, profileId: string): void {
+    void readAvatarDataUrl(this.deps.hermes, profileId)
+      .catch(() => null)
+      .then((url) => {
+        win.send('tile:avatar', url);
+      });
   }
 
   /** Brings a tile to the front. Used by `activate` and by a duplicate launch. */
