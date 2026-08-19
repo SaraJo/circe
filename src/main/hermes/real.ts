@@ -143,6 +143,21 @@ export class RealHermes implements HermesRuntime {
     await writeFile(abs, contents, 'utf8');
   }
 
+  async readHomeFileBytes(relPath: string): Promise<Uint8Array | null> {
+    try {
+      return new Uint8Array(await readFile(join(this.p.home, relPath)));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw err;
+    }
+  }
+
+  async writeHomeFileBytes(relPath: string, bytes: Uint8Array): Promise<void> {
+    const abs = join(this.p.home, relPath);
+    await mkdir(dirname(abs), { recursive: true });
+    await writeFile(abs, bytes);
+  }
+
   watchHome(onChange: (relPath: string) => void): () => void {
     let watcher: import('node:fs').FSWatcher;
     try {

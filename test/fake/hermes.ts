@@ -48,6 +48,8 @@ export class FakeHermes implements HermesRuntime {
   readonly files: Map<string, string>;
   /** Every query the code under test made, for assertions. */
   readonly queries: Array<{ profileId: string; prompt: string }> = [];
+  /** Binary files, kept apart from `files` so a text read of a PNG cannot half-work. */
+  readonly bytes = new Map<string, Uint8Array>();
 
   private homeWatchers = new Set<(relPath: string) => void>();
 
@@ -102,6 +104,14 @@ export class FakeHermes implements HermesRuntime {
 
   async writeHomeFile(relPath: string, contents: string): Promise<void> {
     this.files.set(relPath, contents);
+  }
+
+  async readHomeFileBytes(relPath: string): Promise<Uint8Array | null> {
+    return this.bytes.get(relPath) ?? null;
+  }
+
+  async writeHomeFileBytes(relPath: string, bytes: Uint8Array): Promise<void> {
+    this.bytes.set(relPath, bytes);
   }
 
   watchHome(onChange: (relPath: string) => void): () => void {
