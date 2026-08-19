@@ -170,6 +170,19 @@ describe('renderOrchestratorSoul', () => {
     expect(section).toMatch(/is the authorisation/i);
   });
 
+  // 2026-08-18 walkthrough: a real agent asked to speak plainly DID drop the
+  // voice immediately and without asking — but could not rewrite its own Voice
+  // paragraph, because it went looking at a literal `~/.hermes/SOUL.md`, found
+  // something that was not its persona, and stopped to ask where its prompt
+  // lived. The instruction said what to rewrite and never said where the file
+  // is. Same defect class as the HERMES_HOME bug already fixed in the
+  // orchestrator skill.
+  it('tells the agent how to find its own persona file', async () => {
+    const soul = await render();
+    expect(soul).toMatch(/hermes profile show/);
+    expect(soul).toMatch(/Path:/);
+  });
+
   it('substitutes special replacement-pattern characters literally', () => {
     const dollarCharacter: Character = {
       ...TRILLIAN,
