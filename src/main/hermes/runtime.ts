@@ -36,8 +36,11 @@ export function profileFilePath(profileId: string, file: string): string {
  * A profile's face. Constraint 6 fixes the filename and constraint 10 fixes the
  * location: the face is an agent fact, so it lives with the agent, and the
  * default profile keeps its files at the home root exactly as `SOUL.md` does.
- * A user or an agent that drops an `avatar.png` here gets a face with no
- * involvement from Circe at all.
+ * A user or an agent that drops an `avatar.png` here gets a face the next
+ * time that profile's tile opens, not live: `retheme` early-returns when the
+ * character is unchanged, before it would send the avatar, and the fleet
+ * watcher only sweeps paths under `profiles/`, so a write to the default
+ * profile's file at the home root triggers nothing on its own.
  */
 export function avatarPath(profileId: string): string {
   return profileFilePath(profileId, 'avatar.png');

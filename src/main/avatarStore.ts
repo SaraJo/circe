@@ -28,7 +28,11 @@ export async function saveAvatar(
   contentType: string,
   toPng: ToPng,
 ): Promise<boolean> {
-  const png = contentType === 'image/png' ? bytes : toPng(bytes, contentType);
+  // Matched with any parameters stripped, the same way `avatar.ts` matches
+  // `findAvatar`'s content type, so the two modules agree on what "is a PNG"
+  // means: a header like `image/png; charset=binary` must still skip conversion.
+  const mime = contentType.split(';', 1)[0]?.trim().toLowerCase();
+  const png = mime === 'image/png' ? bytes : toPng(bytes, contentType);
   if (!png || png.length === 0) return false;
   try {
     await hermes.writeHomeFileBytes(avatarPath(profileId), png);

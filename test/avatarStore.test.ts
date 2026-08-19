@@ -51,6 +51,22 @@ describe('saveAvatar', () => {
     expect(await h.readHomeFileBytes('avatar.png')).toBeNull();
   });
 
+  // The two modules have to agree on what "is a PNG" means, or a header like
+  // `image/png; charset=binary` passes `findAvatar`'s guard and then gets
+  // needlessly (and possibly wrongly) reconverted here.
+  it('skips conversion for a PNG content type carrying parameters', async () => {
+    const h = new FakeHermes(INSTALLED_EMPTY);
+    let converted = false;
+    const trackingToPng = (bytes: Uint8Array): Uint8Array | null => {
+      converted = true;
+      return bytes;
+    };
+    const ok = await saveAvatar(h, 'default', PNG, 'image/png; charset=binary', trackingToPng);
+    expect(ok).toBe(true);
+    expect(converted).toBe(false);
+    expect(await h.readHomeFileBytes('avatar.png')).toEqual(PNG);
+  });
+
   it('reports failure and does not throw when the write rejects', async () => {
     const h = new FakeHermes(INSTALLED_EMPTY);
     // Mock writeHomeFileBytes to reject

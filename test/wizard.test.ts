@@ -784,6 +784,23 @@ describe('the character gets a face', () => {
     expect(await h.readHomeFileBytes('avatar.png')).toEqual(PNG);
   });
 
+  // Matches what `retryDerivation` already does. Reached through
+  // `claim-default` because `declineClaimDefault` only fires from there;
+  // `avatar()`'s `find` resolves immediately so the face is already pending
+  // by the time `declineClaimDefault` runs.
+  it('discards the face when the user declines claim-default', async () => {
+    const h = new FakeHermes(scenario(INSTALLED_WITH_AGENTS));
+    const w = new Wizard(h, { ...avatar(), find: async () => found });
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    expect(w.state.kind).toBe('claim-default');
+    expect(w.avatarDataUrl()).not.toBeNull();
+
+    w.declineClaimDefault();
+
+    expect(w.avatarDataUrl()).toBeNull();
+  });
+
   it('discards the face when the user asks for a different character', async () => {
     const h = new FakeHermes(scenario(INSTALLED_EMPTY));
     let hits = 0;
@@ -819,6 +836,38 @@ describe('the character gets a face', () => {
     release(found);
     await new Promise((r) => setTimeout(r, 0));
     expect(w.avatarDataUrl()).toBeNull();
+  });
+
+  // The defect this covers: a slow lookup that resolves after the user has
+  // already accepted used to re-emit whatever state the wizard is now in,
+  // `launching` included, because `generation` is bumped by `runDerivation`
+  // but not by `accept()`. `src/main/index.ts` treats every emission of
+  // `launching` as "launch the tile now", so the stale re-emit launched the
+  // tile a second time a few seconds into the user's first conversation.
+  // Asserted by counting `launching` emissions rather than by state at the
+  // end, since the bug is a spurious re-emit, not a wrong final value.
+  it('does not re-launch when a slow lookup resolves after the user has already accepted', async () => {
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
+    let release: (v: typeof found) => void = () => {};
+    const w = new Wizard(h, {
+      ...avatar(),
+      find: () => new Promise((r) => (release = r)),
+    });
+    let launchingCount = 0;
+    w.onChange((s) => {
+      if (s.kind === 'launching') launchingCount++;
+    });
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    expect(w.state.kind).toBe('meet');
+    // The lookup is still in flight here: the user accepts before it settles.
+    await w.accept();
+    expect(w.state.kind).toBe('launching');
+    expect(launchingCount).toBe(1);
+    // Only now does the lookup resolve.
+    release(found);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(launchingCount).toBe(1);
   });
 
   // Every failure is silent, and onboarding must complete regardless.

@@ -213,7 +213,18 @@ export class Wizard {
         // screen.
         if (generation !== this.generation) return;
         this.pendingAvatar = found;
-        if (found) this.set({ ...this.state });
+        // Re-emitting is only meaningful on the two screens that display a
+        // face. `generation` alone does not rule out `saving`/`launching`/
+        // `write-failed`: accepting never bumps it, so a lookup that resolves
+        // after the user has already moved on would otherwise re-emit
+        // whatever state the wizard is now in. `src/main/index.ts` treats
+        // every emission of `launching` as "the persona is on disk, launch
+        // the tile now" — a stale re-emit of it launches the tile a second
+        // time, seconds into the user's first conversation.
+        const kind = this.state.kind;
+        if (found && (kind === 'meet' || kind === 'claim-default')) {
+          this.set({ ...this.state });
+        }
       })
       .catch(() => {
         // Silent, per §10.7. There is nothing a user could do with this.
@@ -230,6 +241,9 @@ export class Wizard {
   declineClaimDefault(): void {
     if (this.state.kind !== 'claim-default') return;
     this.character = null;
+    // Matches `retryDerivation`: a face belonging to the character just
+    // refused cannot linger for whatever gets derived next.
+    this.pendingAvatar = null;
     this.set({ kind: 'fandom' });
   }
 

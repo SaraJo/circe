@@ -77,6 +77,10 @@ export function licenseOf(thumbnailUrl: string): AvatarLicense | null {
   } catch {
     return null;
   }
+  // The invariant this module enforces is "two hosts, over the network" —
+  // a hostname check alone would still let `http://upload.wikimedia.org/...`
+  // through and fetch it in cleartext.
+  if (url.protocol !== 'https:') return null;
   if (url.hostname !== IMAGE_HOST) return null;
   if (url.pathname.startsWith('/wikipedia/commons/')) return 'commons';
   if (url.pathname.startsWith('/wikipedia/en/')) return 'non-free';
@@ -112,7 +116,14 @@ export async function findAvatar(
 
     const { bytes, contentType } = await deps.fetchImage(source);
     if (bytes.length === 0 || bytes.length > MAX_BYTES) return null;
-    if (!contentType.startsWith('image/')) return null;
+    // Rule 5: the write path converts with Electron's `nativeImage`, which
+    // decodes only PNG and JPEG. Accepting any `image/*` here would let a GIF
+    // or WebP pass every check, render fine on the meet screen (Chromium
+    // decodes more than `nativeImage` does), and then silently fail to save —
+    // the user accepts a face and gets initials. Matched with any parameters
+    // stripped, so a header like `image/png; charset=binary` still counts.
+    const mime = contentType.split(';', 1)[0]?.trim().toLowerCase();
+    if (mime !== 'image/png' && mime !== 'image/jpeg') return null;
 
     const desktop = ((s.content_urls ?? {}) as Record<string, unknown>).desktop;
     const page = ((desktop ?? {}) as Record<string, unknown>).page;

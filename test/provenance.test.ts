@@ -25,9 +25,7 @@ describe('avatar provenance (spec §10.7)', () => {
     const allowlist = ['resources/icon.png']; // application icon, not character likeness
 
     const images = tracked.filter((file) => /\.(png|jpe?g|gif|webp)$/i.test(file));
-    const offenders = images.filter(
-      (file) => !allowlist.includes(file) || /avatar|character|face/i.test(file),
-    );
+    const offenders = images.filter((file) => !allowlist.includes(file));
 
     expect(offenders).toEqual([]);
   });

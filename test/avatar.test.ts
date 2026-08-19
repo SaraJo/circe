@@ -78,6 +78,12 @@ describe('licenseOf', () => {
     expect(licenseOf('https://example.com/x.jpg')).toBeNull();
     expect(licenseOf('https://upload.wikimedia.org/other/x.jpg')).toBeNull();
   });
+
+  // The invariant is "two hosts, over the network" — the right host over
+  // cleartext is still a leak, not a pass.
+  it('is null for the right host over http', () => {
+    expect(licenseOf('http://upload.wikimedia.org/wikipedia/commons/a/b/X.jpg')).toBeNull();
+  });
 });
 
 describe('findAvatar', () => {
@@ -167,6 +173,22 @@ describe('findAvatar', () => {
       contentType: 'image/jpeg',
     });
     expect(await findAvatar('X', 'Treasure Island', deps({ fetchImage }))).toBeNull();
+  });
+
+  // The write path converts with `nativeImage`, which decodes only PNG and
+  // JPEG. Accepting a GIF here would let it pass every other check, render
+  // fine on the meet screen, and then silently fail to save.
+  it('refuses a thumbnail whose content type is neither PNG nor JPEG', async () => {
+    const fetchImage = async () => ({ bytes: new Uint8Array([1, 2, 3]), contentType: 'image/gif' });
+    expect(await findAvatar('X', 'Treasure Island', deps({ fetchImage }))).toBeNull();
+  });
+
+  it('accepts a content type with parameters, matched on the base type', async () => {
+    const fetchImage = async () => ({
+      bytes: new Uint8Array([1, 2, 3]),
+      contentType: 'image/png; charset=binary',
+    });
+    expect(await findAvatar('X', 'Treasure Island', deps({ fetchImage }))).not.toBeNull();
   });
 
   it('asks the summary endpoint for the name it was given', async () => {
