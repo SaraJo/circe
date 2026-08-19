@@ -224,8 +224,16 @@ positions are available and the choice belongs to the product owner:
 3. **Record and ship, with a switch** — position 1, plus a setting that restricts to Commons, so the
    conservative behaviour exists without being the default.
 
-The design as written implements position 1 and makes position 2 or 3 a small change later, because
-the provenance is captured either way. It is a blocker for shipping publicly, not for building.
+**Decided 2026-08-19 by the product owner: position 1.** Accept both, record the provenance, settle
+the redistribution policy before Circe ships publicly. The reasoning that makes it defensible is
+worth writing down, since whoever revisits this will need it: Circe's repo ships zero images, each
+file is fetched per-user on that user's own machine at their own request, and nothing is
+redistributed by the project. What is unresolved is not the fetching but the shipping — whether a
+public v1 can present fair-use likenesses as agent identities without an attribution surface or a
+policy. Position 2 or 3 stays a small change, because the provenance is captured either way.
+
+**This is a release blocker, not a build blocker.** It must be settled before the repo is public. It
+does not gate the work below.
 
 ## What this does not touch
 
