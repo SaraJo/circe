@@ -13,6 +13,7 @@ const TRILLIAN: Character = {
   why: 'She tracks what everyone else is doing.',
   fandom: "Hitchhiker's Guide to the Galaxy",
   voice: '',
+  intro: '',
   greeting: '',
   voiceCheck: '',
 };

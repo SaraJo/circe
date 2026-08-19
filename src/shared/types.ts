@@ -27,6 +27,12 @@ export interface Character {
    * which is also what a user who asks for plain speech ends up with.
    */
   voice: string;
+  /**
+   * One line in the character's own voice, shown on the meet screen while the
+   * user is still deciding. Not the greeting: nothing has been accepted yet.
+   * Empty shows nothing, and is what a character with no voice always has.
+   */
+  intro: string;
   /** The agent's own first message, in voice. Empty falls back to Circe's scripted one. */
   greeting: string;
   /** One in-voice sentence asking whether to keep speaking this way. Empty asks nothing. */

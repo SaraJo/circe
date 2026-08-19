@@ -43,6 +43,7 @@ function renderCharacter(c: Character): HTMLElement {
         <h1></h1>
         <p class="tagline"></p>
       </div>
+      <p class="intro"></p>
       <p class="why"></p>
       <div class="actions">
         <button class="primary" id="accept"></button>
@@ -55,6 +56,7 @@ function renderCharacter(c: Character): HTMLElement {
   // reads as a wash rather than a full-bleed colour field standing in front
   // of the primary action.
   node.style.setProperty('--agent-bg', c.palette.bg);
+  node.style.setProperty('--agent-accent', c.palette.accent);
   const avatar = node.querySelector<HTMLElement>('.avatar')!;
   avatar.textContent = initials(c.name);
   avatar.style.background = c.palette.bg;
@@ -62,6 +64,19 @@ function renderCharacter(c: Character): HTMLElement {
   avatar.style.color = c.palette.accent;
   node.querySelector('h1')!.textContent = c.name;
   node.querySelector('.tagline')!.textContent = c.tagline;
+  // The one line on this screen the character says itself. Everything else
+  // here is Circe describing them in the third person, which reads identically
+  // for every candidate — so without this, "Try someone else" swaps one
+  // neutral description for another and the voice is a surprise that lands
+  // only after the user has committed.
+  //
+  // Removed rather than left empty when there is nothing to say: `derive.ts`
+  // blanks the intro whenever the character has no voice, and an empty
+  // paragraph would hold its own margin and its own animation slot in a
+  // column that is centred on the character.
+  const intro = node.querySelector<HTMLElement>('.intro')!;
+  if (c.intro) intro.textContent = c.intro;
+  else intro.remove();
   node.querySelector('.why')!.textContent = c.why;
   node.querySelector('#accept')!.textContent = fill(COPY.meet.action, { NAME: c.name });
   node.querySelector('#accept')!.addEventListener('click', () => window.circe.accept());

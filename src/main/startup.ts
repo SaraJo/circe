@@ -117,9 +117,11 @@ export async function characterFor(
     fandom: '',
     // Rebuilt from disk, where only the persona and the palette live. The
     // voice is *in* that SOUL.md and belongs to the agent; Circe does not
-    // parse it back out, because nothing here needs it — the greeting and the
-    // check happen once, at the handoff, for a character just derived.
+    // parse it back out, because nothing here needs it — the intro, the
+    // greeting and the check are all wizard-time text, said once about a
+    // character being chosen, and this profile was chosen long ago.
     voice: '',
+    intro: '',
     greeting: '',
     voiceCheck: '',
   };

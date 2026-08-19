@@ -10,6 +10,7 @@ const TRILLIAN: Character = {
   why: 'She tracks what everyone else is doing.',
   fandom: "Hitchhiker's Guide to the Galaxy",
   voice: '',
+  intro: '',
   greeting: '',
   voiceCheck: '',
 };
@@ -133,6 +134,7 @@ describe('openingMessage', () => {
     why: 'He keeps the crew pointed at one plan.',
     fandom: 'pirates',
     voice: 'Rolling, salt-worn sailor talk.',
+    intro: 'Long John Silver, quartermaster.',
     greeting: "Aye, friend — Long John Silver. Point me at the work and it's done.",
     voiceCheck: 'Do ye like bein’ spoke to this way, or shall I drop the salt?',
   };

@@ -14,6 +14,7 @@ function character(profileId: string): Character {
     why: '',
     fandom: '',
     voice: '',
+  intro: '',
     greeting: '',
     voiceCheck: '',
   };

@@ -250,6 +250,39 @@ button:active { transform: translateY(1px); }
     ),
     var(--bg);
 }
+/*
+ * The character's own line, set as speech: larger than the description around
+ * it, in full-strength ink rather than `--ink-soft`, with the quotation marks
+ * drawn in the character's accent so this screen's one flash of their colour
+ * lands on the one thing they said. The marks are `::before`/`::after` content
+ * so the element's own text stays exactly the string the model returned.
+ */
+.intro {
+  margin: 0;
+  align-self: center;
+  max-width: 38ch;
+  text-align: center;
+  text-wrap: balance;
+  font-size: 17px;
+  /*
+   * M7's rule, for the same reason the `.status` cap follows it: the wizard's
+   * window is a fixed 640x560 and this screen has no room to give. Pinned in
+   * pixels with `max-height` a whole multiple of it, so the cap falls on a
+   * line boundary rather than halfway through a row of text.
+   *
+   * Three lines is what the screen has left once the lead, the avatar block,
+   * `why` and the actions have taken theirs. `derive.ts` bounds the string to
+   * 120 characters, which is inside three lines at this width; the cap is what
+   * happens anyway if a wide script or a long word wraps to four, and it turns
+   * that into a scroll rather than a primary action pushed off the window.
+   */
+  line-height: 26px;
+  max-height: 78px;
+  overflow-y: auto;
+  color: var(--ink);
+}
+.intro::before { content: '\201C'; color: var(--agent-accent, var(--ink-faint)); }
+.intro::after { content: '\201D'; color: var(--agent-accent, var(--ink-faint)); }
 .screen.character .why { text-align: center; align-self: center; }
 .screen.character .actions { justify-content: center; }
 

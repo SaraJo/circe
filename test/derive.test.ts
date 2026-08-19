@@ -102,6 +102,7 @@ describe('deriveCharacter', () => {
     palette: { bg: '#1b2a1f', border: '#d8c9a3', accent: '#e0a458' },
     why: 'He keeps the crew pointed at one plan.',
     voice: 'Rolling, salt-worn sailor talk. Calls the user "friend". Measures things in leagues.',
+    intro: 'Long John Silver, quartermaster. Ye could do worse for a navigator.',
     greeting: 'Aye, friend — Long John Silver, at your service.',
     voiceCheck: "Do ye like bein' spoke to this way, or shall I drop the salt?",
   });
@@ -114,12 +115,33 @@ describe('deriveCharacter', () => {
     expect(c.voiceCheck).toContain('drop the salt');
   });
 
+  // The meet screen's one line in the character's own voice. It exists so that
+  // "Try someone else" is a choice with a difference: without it the user picks
+  // between two candidates described in Circe's identical third-person
+  // register, and only hears either of them after committing to one.
+  it('carries the intro through', async () => {
+    const h = new FakeHermes(withReply(FULL_REPLY));
+    const c = await deriveCharacter(h, 'pirates');
+    expect(c.intro).toContain('quartermaster');
+  });
+
+  // The other half of the bound: a real one-sentence intro is nowhere near it,
+  // so the cap costs nothing a character would actually say.
+  it('keeps an intro that is one ordinary sentence', async () => {
+    const ok = JSON.parse(GOOD_REPLY);
+    ok.voice = 'Plain and direct, no flourishes.';
+    ok.intro = 'Someone has to know where everyone is. That has always been me.';
+    const h = new FakeHermes(withReply(JSON.stringify(ok)));
+    expect((await deriveCharacter(h, 'x')).intro).toBe(ok.intro);
+  });
+
   // The degradation rule: an older or lazier model reply still produces a
   // working agent, just a plain-spoken one.
   it('leaves the voice fields empty when the model omits them', async () => {
     const h = new FakeHermes(withReply(GOOD_REPLY));
     const c = await deriveCharacter(h, "Hitchhiker's");
     expect(c.voice).toBe('');
+    expect(c.intro).toBe('');
     expect(c.greeting).toBe('');
     expect(c.voiceCheck).toBe('');
     expect(c.name).toBe('Trillian');
@@ -164,6 +186,43 @@ describe('deriveCharacter', () => {
     expect(c.voiceCheck).toBe('');
   });
 
+  /**
+   * Bounded harder than `voiceCheck`'s 200, because this one has a window to
+   * fit in and `voiceCheck` does not: `voiceCheck` goes into a scrolling tile
+   * conversation, while the intro renders inside the wizard's fixed 640x560
+   * (`windows.ts`), on the screen that already carries the lead, the avatar
+   * block, `why` and both buttons.
+   *
+   * At 17px in a 38ch column the intro wraps near 38 characters a line, and
+   * the rest of that screen leaves it about three lines. 200 characters is six
+   * lines, which overflows the window by roughly 75px and takes the primary
+   * action off the bottom of it — the defect class this project has shipped
+   * once already. 120 keeps a one-sentence line inside three; `wizard.css`
+   * caps the element as well, so a wide character set that wraps to four
+   * scrolls instead of pushing.
+   */
+  it('drops an over-long intro even when the voice itself is valid', async () => {
+    const bad = JSON.parse(GOOD_REPLY);
+    bad.voice = 'Plain and direct, no flourishes.';
+    bad.intro = 'z'.repeat(121);
+    const h = new FakeHermes(withReply(JSON.stringify(bad)));
+    const c = await deriveCharacter(h, 'x');
+    expect(c.voice).toBe('Plain and direct, no flourishes.');
+    expect(c.intro).toBe('');
+  });
+
+  // `voiceCheck`'s rule, for the same reason: a line presented as the
+  // character speaking in its own voice, from a character that has no voice,
+  // is Circe putting words in its mouth on the one screen whose whole job is
+  // showing the user what they are choosing between.
+  it('blanks the intro when the character has no voice', async () => {
+    const bad = JSON.parse(GOOD_REPLY);
+    bad.voice = '';
+    bad.intro = 'Trillian. I keep track of things.';
+    const h = new FakeHermes(withReply(JSON.stringify(bad)));
+    expect((await deriveCharacter(h, 'x')).intro).toBe('');
+  });
+
   it('asks the model for a voice', () => {
     expect(DERIVATION_PROMPT('pirates')).toMatch(/voice/i);
   });
@@ -203,7 +262,7 @@ describe('DERIVATION_PROMPT', () => {
 
   // C2. One assertion per field, by name, in the shape the model is asked to
   // return — so deleting a field's request from the skeleton cannot pass.
-  it.each(['name', 'tagline', 'palette', 'why', 'voice', 'greeting', 'voiceCheck'])(
+  it.each(['name', 'tagline', 'palette', 'why', 'voice', 'intro', 'greeting', 'voiceCheck'])(
     'asks for %s by name',
     (field) => {
       expect(skeleton()).toHaveProperty(field);
@@ -216,6 +275,23 @@ describe('DERIVATION_PROMPT', () => {
 
   it('describes the voiceCheck as offering to speak plainly', () => {
     expect(String(skeleton().voiceCheck)).toMatch(/speak plainly/i);
+  });
+
+  // The intro is not a greeting. The greeting is written to someone who has
+  // already accepted this agent; the intro is spoken to someone still deciding,
+  // and the prompt has to say so or the model returns the greeting twice.
+  it('describes the intro as the character speaking before it has been chosen', () => {
+    expect(String(skeleton().intro)).toMatch(/before the user has chosen/i);
+    expect(String(skeleton().intro)).toMatch(/not a greeting/i);
+  });
+
+  // Circe's own copy is em-dash-free by rule (`wizard.test.ts`), enforced by a
+  // test over strings we control. The character's words cannot be enforced that
+  // way without rewriting what the model wrote, so they are asked for here.
+  // Asking is best effort: an em dash can still reach the tile, and that is the
+  // accepted cost of not editing the character's voice on its behalf.
+  it('asks the model to write without em dashes', () => {
+    expect(DERIVATION_PROMPT('x')).toMatch(/no em dashes/i);
   });
 
   // I3. Fourteen §6.5 guard tests in `opening.test.ts` run against a fixture

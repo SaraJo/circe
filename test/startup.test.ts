@@ -75,6 +75,7 @@ describe('characterFor', () => {
       why: '',
       fandom: '',
       voice: '',
+      intro: '',
       greeting: '',
       voiceCheck: '',
     });

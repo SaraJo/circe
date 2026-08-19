@@ -32,6 +32,8 @@ export function DERIVATION_PROMPT(fandom: string): string {
     'when it cannot, and never invents facts from its own world. Write a voice',
     'that survives being useful.',
     '',
+    'Write every string below in plain punctuation. No em dashes.',
+    '',
     // The skeleton below is itself valid JSON, and a test parses it with the
     // very function that parses the reply. It used to wrap the two longest
     // field descriptions across several lines, which put raw line breaks
@@ -51,6 +53,7 @@ export function DERIVATION_PROMPT(fandom: string): string {
     '  "palette": { "bg": "<#rrggbb, dark tile background>", "border": "<#rrggbb, light tile border>", "accent": "<#rrggbb, bright, readable on bg>" },',
     '  "why": "<one sentence: why this character coordinates>",',
     '  "voice": "<two sentences at most: how they speak>",',
+    '  "intro": "<one short sentence, in that voice, that this character would say on being introduced, before the user has chosen them. Not a greeting and not an offer of help: one line that shows how they talk. Under 120 characters>",',
     '  "greeting": "<their own first message to the user, in that voice: who they are, that they are good for real work today, and one invitation to start small. Three short paragraphs at most, separated by \\n\\n. Do NOT ask the user to plan a team or list agents they might want>",',
     '  "voiceCheck": "<one sentence, in that voice, asking whether the user likes being spoken to this way and offering to speak plainly instead>"',
     '}',
@@ -151,10 +154,17 @@ function validate(raw: unknown, fandom: string): Character {
   const voice = optionalText(o.voice, 400);
   const greeting = optionalText(o.greeting, 1200);
   // A check with nothing to check is noise: without a voice there is no accent
-  // to offer to drop.
+  // to offer to drop. The intro is bound by the same rule for a different
+  // reason: presented as the character speaking in its own voice, from a
+  // character that has no voice, it is Circe putting words in its mouth.
   const voiceCheck = voice ? optionalText(o.voiceCheck, 200) : '';
+  // 120, not `voiceCheck`'s 200: the check lands in a scrolling conversation,
+  // while this renders inside the wizard's fixed 640x560 window on the screen
+  // that also carries the lead, the avatar block, `why` and both buttons. See
+  // the bound's test for the height arithmetic.
+  const intro = voice ? optionalText(o.intro, 120) : '';
 
-  return { name, profileId, tagline, palette, why, fandom, voice, greeting, voiceCheck };
+  return { name, profileId, tagline, palette, why, fandom, voice, intro, greeting, voiceCheck };
 }
 
 export interface DeriveOptions {
