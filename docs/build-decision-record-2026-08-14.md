@@ -931,3 +931,63 @@ transcript. The real `~/.hermes` was byte-identical before and after.
 Incidentally confirmed in the same run: the agent's own reply contained "I'll grab it — one sec".
 That is the em dash rule's boundary working as designed — the character's words are its own.
 
+## Avatar sourcing built (2026-08-19)
+
+Six tasks on `avatar-sourcing`, executed subagent-per-task with a review after each and a
+whole-branch review at the end. 473 tests. What the process caught is more interesting than the
+feature.
+
+### The bug six passing reviews could not see
+
+Every task passed its own review. The whole-branch review then found a defect that lives entirely
+between two of them: `lookUpFace`'s re-emit was guarded only by the derivation `generation` counter,
+which `accept()` does not bump — so an avatar lookup resolving **after** the user accepted re-emitted
+`{kind: 'launching'}`, and `index.ts` treats every `launching` emission as "launch the tile now". A
+second `tiles.launch` raised and focused the window, re-shelled `hermes profile list`, re-raised
+every other open tile, and stopped and restarted the fleet watch, seconds into the user's first
+conversation. In the same interleaving the face was found, held, and never written, so a
+fast-accepting user got initials permanently.
+
+Task 3 introduced the first re-emit of an existing state in this codebase. Task 4 wired a listener
+that assumed `launching` fires once. **Both were correct in isolation, and each had a reviewer.**
+The seam had none until the final pass. This is the concrete instance of the failure mode this
+project already suspected, and it is worth keeping as the argument for why the whole-branch review
+is not optional.
+
+### What the guardrails caught in the wild
+
+Walking onboarding on the real runtime, "Star Trek: The Next Generation" derived **Data** — and the
+bare name resolves to Wikipedia's article about *information*, which is `type: standard` and **has a
+thumbnail**. Only rule 4, the requirement that the extract mention the user's fandom, stopped a stock
+illustration of data being written to disk and presented as the user's coordinator. The dangerous
+case is not hypothetical; it appeared on the second fandom tried.
+
+### The hit rate is lower than the design measured, and why
+
+The design's probe found thumbnails for nine of thirteen characters. That probe used **full,
+unambiguous names** chosen by hand ("Hermione Granger", "Tyrion Lannister"). Derivation produces
+short display names, and Wikipedia disambiguates most fictional characters with a parenthetical:
+
+- "Data" is the information article; **"Data (Star Trek)"** is the character, and has a usable image.
+- "Mrs. Hudson" is a real article that mentions Sherlock Holmes but carries no image at all.
+- "Cher Horowitz" redirects to *List of Clueless characters*.
+
+Three live fandoms produced one face. The obvious follow-up is a second attempt at
+`"<name> (<fandom>)"` on a miss, which would likely recover much of the gap. Deliberately not built:
+it is a design change, not a defect, and it was found after the plan was approved.
+
+### Open, deliberately, for the product owner
+
+- **The `claim-default` screen shows no face.** A returning user confirms replacing their agent, and
+  a face is written that they never saw. Not a spec violation — the design names two display sites,
+  the meet preview and the tile header — but it makes the "held in memory while you decide" design
+  meaningless on that path. Adding it was declined during the fix wave as unreviewed UI invented in a
+  fix round. The coupled latent bug (a declined character's face lingering) was fixed, so adding the
+  face later cannot produce a stale-face flash.
+- **The tile header's layout.** The avatar sits hard left, the display name hard right, and at 22px
+  the face reads as a coloured dot rather than a portrait. §6.3 names the header's parts without
+  fixing their arrangement, so this was the implementation's call and wants an eye.
+- **The design's single retry on 429/5xx was never built**, and its own test list names a test for it
+  that does not exist. Low impact — real usage is one lookup per onboarding — but the design and the
+  code disagree.
+

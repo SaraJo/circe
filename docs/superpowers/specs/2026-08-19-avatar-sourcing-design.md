@@ -210,9 +210,22 @@ the thumbnail's own URL path.
 - `upload.wikimedia.org/wikipedia/en/…` — uploaded locally under English Wikipedia's **non-free
   content criteria**, which permit use *on Wikipedia* and say nothing about redistribution.
 
-So provenance is a single substring test on a URL we already hold, and this design records it:
-`avatarSource` (the article URL) and `avatarLicense` (`commons` or `non-free`) are written alongside
-the image, in the profile, so a future attribution surface or a licensing policy has the data.
+So provenance is a single substring test on a URL we already hold. `findAvatar` returns it as
+`articleUrl` and `license` (`commons` or `non-free`).
+
+> **Correction, 2026-08-19, after implementation.** This section originally said those two values
+> "are written alongside the image, in the profile, so a future attribution surface or a licensing
+> policy has the data", and the licensing decision below leaned on that: position 2 or 3 "stays a
+> small change, because the provenance is captured either way". **As shipped, they are not written
+> anywhere.** `findAvatar` computes them, the wizard holds them in memory, and `saveAvatar` writes
+> only `avatar.png`. The plan deferred the write deliberately — it needs a schema decision about
+> `circe.json` that nothing yet reads — but understated the cost: the article URL and the
+> commons/non-free segment **cannot be reconstructed from the PNG**, so every avatar written before
+> a provenance write lands is permanently un-attributable.
+>
+> This does not block merging to a local branch. It does mean the release blocker below is sharper
+> than it reads: the provenance write must land **before any build reaches a real user**, not merely
+> before the repo is public.
 
 **What this design does not decide** is whether a non-free image may be written at all. Three
 positions are available and the choice belongs to the product owner:
