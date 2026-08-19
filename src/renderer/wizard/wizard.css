@@ -1,10 +1,28 @@
 * { box-sizing: border-box; }
 
+/*
+ * Onboarding is light; the fleet is dark (spec §7, amended 2026-08-18). Every
+ * token below is a *light-ground* default: near-black ink on a warm pastel.
+ * `.screen.character` (the meet screen) is the one deliberate exception — it
+ * re-declares this exact token set with its original dark values, scoped to
+ * itself, so every rule below that reads `var(--ink)` etc. renders correctly
+ * dark there without a second copy of the rules. That scoping is why colour
+ * lives in custom properties at all: one set of rules, two groundings.
+ */
 :root {
-  --ink: #ffffff;
-  --ink-soft: rgba(255, 255, 255, 0.74);
-  --ink-faint: rgba(255, 255, 255, 0.48);
-  --bg: #14131c;
+  --ink: #1c1815;
+  --ink-soft: rgba(28, 24, 21, 0.72);
+  --ink-faint: rgba(28, 24, 21, 0.65);
+  --bg: #f2eee7;
+  --on-ink: #f6f2ea;
+  --line: rgba(28, 24, 21, 0.16);
+  --input-bg: rgba(28, 24, 21, 0.05);
+  --input-bg-focus: rgba(28, 24, 21, 0.08);
+  --input-border-focus: rgba(28, 24, 21, 0.45);
+  --placeholder: rgba(28, 24, 21, 0.4);
+  --code-bg: rgba(28, 24, 21, 0.08);
+  --underline: rgba(28, 24, 21, 0.32);
+  --spinner-track: rgba(28, 24, 21, 0.16);
   --radius: 14px;
   --gap: 18px;
   --step: 30px;
@@ -26,7 +44,13 @@ body {
   min-height: 100vh;
 }
 
-h1 { margin: 0; font-size: var(--step); line-height: 1.15; font-weight: 600; letter-spacing: -0.02em; }
+h1 {
+  margin: 0;
+  font-size: var(--step);
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
 /*
  * `.lead` and `.status` both carry backend-derived text with no length
  * bound (a thrown error's `.message`, sourced from `derive-failed` and
@@ -49,26 +73,34 @@ h1 { margin: 0; font-size: var(--step); line-height: 1.15; font-weight: 600; let
  */
 .status { margin: 0; color: var(--ink-faint); font-size: 13px; line-height: 20px; max-width: 44ch; max-height: 100px; overflow-y: auto; }
 .why { margin: 0; color: var(--ink-soft); font-style: italic; max-width: 44ch; }
-code { background: rgba(255, 255, 255, 0.1); padding: 2px 6px; border-radius: 4px; }
+code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; }
 
 input {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: var(--input-bg);
+  border: 1px solid var(--line);
   border-radius: var(--radius);
   color: inherit;
   font: inherit;
   padding: 15px 16px;
   transition: border-color 0.15s ease, background 0.15s ease;
 }
-input::placeholder { color: rgba(255, 255, 255, 0.34); }
+input::placeholder { color: var(--placeholder); }
 input:focus {
   outline: none;
-  border-color: rgba(255, 255, 255, 0.5);
-  background: rgba(255, 255, 255, 0.09);
+  border-color: var(--input-border-focus);
+  background: var(--input-bg-focus);
 }
 
 .actions { display: flex; gap: 12px; align-items: center; margin-top: auto; }
 
+/*
+ * The primary action is a black pill (spec §7): solid `--ink` regardless of
+ * which pastel the screen sits on, with `--on-ink` text for guaranteed
+ * contrast rather than reusing the screen's own (variable) ground colour.
+ * `--ink`/`--on-ink` flip together inside `.screen.character`, so the meet
+ * screen's button recreates its original light-pill-on-dark-ground look
+ * without a separate rule.
+ */
 button {
   font: inherit;
   border-radius: var(--radius);
@@ -78,8 +110,8 @@ button {
   transition: transform 0.12s ease, opacity 0.12s ease;
 }
 button:active { transform: translateY(1px); }
-.primary { background: var(--ink); color: var(--bg); font-weight: 600; }
-.quiet { background: none; color: var(--ink-faint); border-color: rgba(255, 255, 255, 0.14); }
+.primary { background: var(--ink); color: var(--on-ink); font-weight: 700; }
+.quiet { background: none; color: var(--ink-faint); border-color: var(--line); }
 .quiet:hover { color: var(--ink); }
 .link {
   background: none;
@@ -89,9 +121,9 @@ button:active { transform: translateY(1px); }
   font-size: 14px;
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: rgba(255, 255, 255, 0.28);
+  text-decoration-color: var(--underline);
 }
-.link:hover { color: var(--ink-soft); }
+.link:hover { color: var(--ink); }
 .link:active { transform: none; }
 
 .preview { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 12px 0 4px; text-align: center; }
@@ -121,6 +153,20 @@ button:active { transform: translateY(1px); }
 }
 
 /*
+ * The three screens above are also the three that get their own pastel
+ * ground (spec §7 / reference-palette.png: dusty pink, pale lime, peach) —
+ * one colour per screen, flat, no gradient. Every other render branch
+ * (runtime-missing, provider-missing, derive-failed, claim-default, saving,
+ * write-failed, launching) has no scoped class, so it falls through to
+ * `body`'s `--bg`, a neutral warm cream from the same family. That is the
+ * "sensible default ground" for screens with no pastel of their own — never
+ * the old dark tokens on a light screen, or vice versa.
+ */
+.screen.intro { background: #ead6d0; }
+.screen.ask { background: #ecf0da; }
+.screen.working { background: #f5dec0; }
+
+/*
  * The input used to stretch to the window's full width (560px), reading as
  * a search bar, while the copy above it is capped at 44ch. Cap it to the
  * same column so it reads as part of the same sentence as the text above
@@ -143,6 +189,21 @@ button:active { transform: translateY(1px); }
 .screen.ask .actions { margin-top: 4px; }
 
 /*
+ * One inline SVG line illustration, fandom screen only (spec §7): a small
+ * open book with a sparkle, monochrome, stroked in `currentColor` so it
+ * always matches ink without a second colour token. No fill, no asset, no
+ * network. Sized modestly — this is the one decorative element on the
+ * whole flow and the rest of the screen (heading, lead, input, actions)
+ * still has to fit comfortably in the 560px window height.
+ */
+.illustration {
+  align-self: center;
+  color: var(--ink);
+  opacity: 0.92;
+}
+.illustration svg { display: block; }
+
+/*
  * The spinner used to be a 22px ring pinned at the far-left margin under
  * two lines of text, on a screen that can run close to a minute — small
  * and stranded enough to read as stalled rather than working. Bigger and
@@ -156,7 +217,31 @@ button:active { transform: translateY(1px); }
   margin-top: 6px;
 }
 
+/*
+ * The meet screen is the one deliberate exception to "onboarding is light"
+ * (spec §7, amended 2026-08-18): an agent's palette is dark by requirement
+ * and its tile is a translucent dark card, so this is where the light
+ * wizard hands over to the agent's own world. Re-declaring the token set
+ * here with its original dark values — unchanged from before this pass —
+ * means every rule above that reads `var(--ink)`, `var(--bg)`, `var(--line)`
+ * etc. renders dark automatically for this one screen's subtree, with no
+ * separate dark-mode copy of the rules to drift out of sync.
+ */
 .screen.character {
+  --ink: #ffffff;
+  --ink-soft: rgba(255, 255, 255, 0.74);
+  --ink-faint: rgba(255, 255, 255, 0.48);
+  --bg: #14131c;
+  --on-ink: #14131c;
+  --line: rgba(255, 255, 255, 0.14);
+  --input-bg: rgba(255, 255, 255, 0.06);
+  --input-bg-focus: rgba(255, 255, 255, 0.09);
+  --input-border-focus: rgba(255, 255, 255, 0.5);
+  --placeholder: rgba(255, 255, 255, 0.34);
+  --code-bg: rgba(255, 255, 255, 0.1);
+  --underline: rgba(255, 255, 255, 0.28);
+  --spinner-track: rgba(255, 255, 255, 0.18);
+  color: var(--ink);
   background:
     radial-gradient(
       120% 80% at 50% 0%,
@@ -170,7 +255,7 @@ button:active { transform: translateY(1px); }
 
 .spinner {
   width: 22px; height: 22px; border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.18);
+  border: 2px solid var(--spinner-track);
   border-top-color: var(--ink);
   animation: spin 0.8s linear infinite;
 }

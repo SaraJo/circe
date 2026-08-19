@@ -127,6 +127,25 @@ function render(step: WizardStep): void {
         <section class="screen ask">
           <h1>${COPY.fandom.title}</h1>
           <p class="lead">${COPY.fandom.lead}</p>
+          <div class="illustration" aria-hidden="true">
+            <svg width="150" height="115" viewBox="0 0 200 140" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor">
+              <path d="M100,52 C 70,40 35,42 20,60 C 12,70 12,88 22,98 C 40,112 75,108 100,101" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M100,52 C 130,40 165,42 180,60 C 188,70 188,88 178,98 C 160,112 125,108 100,101" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M100,52 C 98,70 102,82 100,101" stroke-width="3" stroke-linecap="round"/>
+              <path d="M40,66 L65,63" stroke-width="2.5" stroke-linecap="round"/>
+              <path d="M38,77 L68,75" stroke-width="2.5" stroke-linecap="round"/>
+              <path d="M42,88 L66,87" stroke-width="2.5" stroke-linecap="round"/>
+              <path d="M135,63 L160,66" stroke-width="2.5" stroke-linecap="round"/>
+              <path d="M132,75 L162,77" stroke-width="2.5" stroke-linecap="round"/>
+              <path d="M134,87 L158,88" stroke-width="2.5" stroke-linecap="round"/>
+              <path d="M104,8 L96,30" stroke-width="2.5" stroke-linecap="round"/>
+              <path d="M89,20 L111,18" stroke-width="2.5" stroke-linecap="round"/>
+              <path d="M91,11 L109,27" stroke-width="2.5" stroke-linecap="round"/>
+              <path d="M109,11 L91,27" stroke-width="2.5" stroke-linecap="round"/>
+              <circle cx="150" cy="18" r="2.2" fill="currentColor" stroke="none"/>
+              <circle cx="55" cy="22" r="1.8" fill="currentColor" stroke="none"/>
+            </svg>
+          </div>
           <input id="fandom" placeholder="${COPY.fandom.placeholder}" autofocus />
           <button class="link" id="stuck">${COPY.fandom.stuck}</button>
           <div class="actions">
