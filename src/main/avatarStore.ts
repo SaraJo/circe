@@ -30,8 +30,12 @@ export async function saveAvatar(
 ): Promise<boolean> {
   const png = contentType === 'image/png' ? bytes : toPng(bytes, contentType);
   if (!png || png.length === 0) return false;
-  await hermes.writeHomeFileBytes(avatarPath(profileId), png);
-  return true;
+  try {
+    await hermes.writeHomeFileBytes(avatarPath(profileId), png);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** A profile's face for the renderer, or null when it has none. */

@@ -61,3 +61,53 @@ describe('RealHermes.readHomeFile', () => {
     await expect(hermes.readHomeFile('SOUL.md')).rejects.toThrow(/EACCES/);
   });
 });
+
+describe('RealHermes.readHomeFileBytes', () => {
+  let home: string;
+  let hermes: RealHermes;
+
+  beforeEach(async () => {
+    home = await mkdtemp(join(tmpdir(), 'circe-read-bytes-'));
+    hermes = new RealHermes({ HERMES_HOME: home });
+  });
+
+  afterEach(async () => {
+    // Restore any mode we cleared, or the cleanup can't recurse.
+    await chmod(join(home, 'avatar.png'), 0o600).catch(() => {});
+    await rm(home, { recursive: true, force: true });
+  });
+
+  it('returns the bytes of a file that is there', async () => {
+    const data = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    await writeFile(join(home, 'avatar.png'), data);
+    const result = await hermes.readHomeFileBytes('avatar.png');
+    expect(result).toEqual(data);
+  });
+
+  it('returns null for a file that is genuinely absent', async () => {
+    expect(await hermes.readHomeFileBytes('avatar.png')).toBeNull();
+  });
+
+  it('returns null when a parent path component is not a directory (ENOTDIR)', async () => {
+    // `profiles` is a file, so `profiles/ford/avatar.png` cannot exist.
+    await writeFile(join(home, 'profiles'), 'not a directory');
+    expect(await hermes.readHomeFileBytes('profiles/ford/avatar.png')).toBeNull();
+  });
+
+  it('raises rather than reporting absent when the path is a directory (EISDIR)', async () => {
+    await mkdir(join(home, 'avatar.png'));
+    await expect(hermes.readHomeFileBytes('avatar.png')).rejects.toThrow(/Cannot read .*avatar\.png/);
+  });
+
+  it('raises rather than reporting absent when the file is unreadable (EACCES)', async () => {
+    // Root bypasses the permission bits entirely, so there is no EACCES to
+    // provoke; the EISDIR case above still covers the branch there.
+    if (typeof process.getuid === 'function' && process.getuid() === 0) return;
+    const path = join(home, 'avatar.png');
+    const data = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    await writeFile(path, data);
+    await chmod(path, 0o000);
+
+    await expect(hermes.readHomeFileBytes('avatar.png')).rejects.toThrow(/EACCES/);
+  });
+});

@@ -50,6 +50,16 @@ describe('saveAvatar', () => {
     expect(ok).toBe(false);
     expect(await h.readHomeFileBytes('avatar.png')).toBeNull();
   });
+
+  it('reports failure and does not throw when the write rejects', async () => {
+    const h = new FakeHermes(INSTALLED_EMPTY);
+    // Mock writeHomeFileBytes to reject
+    h.writeHomeFileBytes = async () => {
+      throw new Error('disk full');
+    };
+    const ok = await saveAvatar(h, 'default', PNG, 'image/png', toPng);
+    expect(ok).toBe(false);
+  });
 });
 
 describe('readAvatarDataUrl', () => {

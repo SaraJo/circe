@@ -144,11 +144,13 @@ export class RealHermes implements HermesRuntime {
   }
 
   async readHomeFileBytes(relPath: string): Promise<Uint8Array | null> {
+    const abs = join(this.p.home, relPath);
     try {
-      return new Uint8Array(await readFile(join(this.p.home, relPath)));
+      return new Uint8Array(await readFile(abs));
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
-      throw err;
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT' || code === 'ENOTDIR') return null;
+      throw new Error(`Cannot read ${abs} (${code ?? 'unknown error'}): ${(err as Error).message}`);
     }
   }
 
