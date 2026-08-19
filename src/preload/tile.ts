@@ -10,6 +10,11 @@ contextBridge.exposeInMainWorld('circe', {
   // user can edit either by hand. The main process re-reads and sends here.
   onCharacter: (cb: (character: Record<string, unknown>) => void) =>
     ipcRenderer.on('tile:character', (_e, c) => cb(c)),
+  // The profile's face, sent on its own channel because a base64 PNG would not
+  // fit in the window URL alongside the rest of the character (see
+  // `main/tiles.ts`).
+  onAvatar: (cb: (dataUrl: string | null) => void) =>
+    ipcRenderer.on('tile:avatar', (_e, url: string | null) => cb(url)),
   send: (text: string) => ipcRenderer.send('tile:prompt', text),
   close: () => ipcRenderer.send('tile:close'),
   // The tile can no longer navigate itself (see `pinToItsOwnDocument`), so a

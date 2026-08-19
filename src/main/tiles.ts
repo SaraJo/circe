@@ -1,4 +1,5 @@
 import type { Character } from '../shared/types';
+import { readAvatarDataUrl } from './avatarStore';
 import type { HermesRuntime } from './hermes/runtime';
 import { restoreOrCreateSession, TileSession, type SessionClient } from './restore';
 
@@ -194,6 +195,12 @@ export class TileRegistry {
       win.onceLoaded(() => {
         newTile.loaded = true;
         for (const text of newTile.queue.splice(0)) win.send('tile:opening', text);
+        // Deliberately not part of the character: the character is agent facts
+        // and travels in the window URL, where a base64 PNG would not fit.
+        // This is the same file re-read, on its own channel.
+        void readAvatarDataUrl(this.deps.hermes, profileId).then((url) => {
+          win.send('tile:avatar', url);
+        });
         resolve();
       });
       win.onceFailedLoad(() => resolve());
@@ -309,6 +316,12 @@ export class TileRegistry {
     tile.character = character;
     if (tile.win.isDestroyed()) return;
     tile.win.send('tile:character', character);
+    // Deliberately not part of the character: the character is agent facts and
+    // travels in the window URL, where a base64 PNG would not fit. This is the
+    // same file re-read, on its own channel.
+    void readAvatarDataUrl(this.deps.hermes, profileId).then((url) => {
+      tile.win.send('tile:avatar', url);
+    });
   }
 
   /** Brings a tile to the front. Used by `activate` and by a duplicate launch. */

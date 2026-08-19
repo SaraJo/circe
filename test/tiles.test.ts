@@ -5,6 +5,9 @@ import type { Character } from '../src/shared/types';
 
 const PALETTE = { bg: '#1e2952', border: '#c7d2fe', accent: '#a5b4fc' };
 
+/** A PNG is identified by its 8-byte signature; these tests never need a real image. */
+const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+
 function character(profileId: string): Character {
   return {
     name: profileId,
@@ -128,6 +131,12 @@ class FakeWindow implements TileWindow {
   /** Only the text of `tile:opening`, which is where prose reaches the tile. */
   openings(): string[] {
     return this.sent.filter((s) => s.channel === 'tile:opening').map((s) => s.payload as string);
+  }
+  /** Only the payloads of `tile:avatar`, which carries the profile's face or null. */
+  avatars(): Array<string | null> {
+    return this.sent
+      .filter((s) => s.channel === 'tile:avatar')
+      .map((s) => s.payload as string | null);
   }
 }
 
@@ -320,6 +329,43 @@ describe('launching a tile', () => {
     expect(h.windows).toHaveLength(2);
     expect(h.clients).toHaveLength(2);
     expect(h.registry.openProfileIds().sort()).toEqual(['default', 'ford']);
+  });
+});
+
+// The tile is a window of its own, not the wizard's meet screen, and it reads
+// the same stored face on its own channel (`tile:avatar`) because a base64
+// PNG does not fit in the window URL alongside the rest of the character.
+describe('sending the tile its avatar', () => {
+  it('sends the profile’s face once the tile has loaded', async () => {
+    const h = harness();
+    h.hermes.bytes.set('avatar.png', PNG);
+    await launched(h);
+    await flushMicrotasks();
+
+    expect(h.windows[0]!.avatars()).toEqual([expect.stringMatching(/^data:image\/png;base64,/)]);
+  });
+
+  // The ordinary case: most profiles have no face, and that must not be an
+  // error — the renderer falls back to initials on a null, never a thrown
+  // exception.
+  it('sends null when the profile has no face', async () => {
+    const h = harness();
+    await launched(h);
+    await flushMicrotasks();
+
+    expect(h.windows[0]!.avatars()).toEqual([null]);
+  });
+
+  it('resends the avatar when the tile is re-themed', async () => {
+    const h = harness();
+    await launched(h);
+    await flushMicrotasks();
+    h.hermes.bytes.set('avatar.png', PNG);
+
+    h.registry.retheme('default', { ...character('default'), name: 'Renamed' });
+    await flushMicrotasks();
+
+    expect(h.windows[0]!.avatars()).toEqual([null, expect.stringMatching(/^data:image\/png;base64,/)]);
   });
 });
 

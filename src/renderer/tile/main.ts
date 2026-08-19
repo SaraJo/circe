@@ -1,6 +1,7 @@
 import { marked } from 'marked';
 import type { Character } from '../../shared/types';
 import { DEFAULT_PALETTE, isPalette, paletteVars } from '../../main/palette';
+import { applyFace, initials } from '../face';
 import { nextToolTitle, toolLabel } from './toolLabel';
 
 /**
@@ -14,6 +15,7 @@ interface TileApi {
   onUpdate(cb: (u: Record<string, unknown>) => void): void;
   onOpening(cb: (text: string) => void): void;
   onCharacter(cb: (character: unknown) => void): void;
+  onAvatar(cb: (dataUrl: string | null) => void): void;
   send(text: string): void;
   close(): void;
   openExternal(url: string): void;
@@ -47,6 +49,7 @@ const character = parseCharacter(params.get('character'));
 
 const log = document.getElementById('log')!;
 const input = document.getElementById('input') as HTMLTextAreaElement;
+const face = document.getElementById('face')!;
 
 /**
  * Draws who this tile belongs to: its colours, its heading, and the name in
@@ -68,9 +71,12 @@ function applyCharacter(c: Character | null): void {
   for (const [k, v] of Object.entries(paletteVars(palette))) {
     document.documentElement.style.setProperty(k, v);
   }
-  document.getElementById('who')!.textContent = c?.name ?? 'Circe';
-  // Falls back with the same name `#who` uses, so the two never disagree.
-  input.placeholder = `Message ${c?.name ?? 'Circe'}…`;
+  const name = c?.name ?? 'Circe';
+  document.getElementById('who')!.textContent = name;
+  // The initials fall back with `#who`'s own name, so a malformed or missing
+  // character never leaves the two disagreeing about who this tile is.
+  face.textContent = initials(name);
+  input.placeholder = `Message ${name}…`;
 }
 
 applyCharacter(character);
@@ -167,6 +173,11 @@ if (!character) {
 circe.onOpening((text) => {
   appendText('agent', text);
 });
+
+// Arrives on its own channel because a base64 PNG does not fit in the window
+// URL alongside the rest of the character (see `main/tiles.ts`). A null here
+// is the ordinary case, not an error: the initials stay showing underneath.
+circe.onAvatar((url) => applyFace(face, url));
 
 // A re-theme that arrives malformed leaves the tile as it is: `asCharacter`
 // returns null, and applying null would reset a correctly-themed tile to the
