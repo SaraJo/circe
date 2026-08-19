@@ -72,5 +72,5 @@ function scripted(c: Character): string {
  * purpose: this is Circe speaking, and Circe does not do accents.
  */
 function plainCheck(c: Character): string {
-  return `One more thing — I talk like this because ${c.fandom} is where I'm from. Tell me if you'd rather I spoke plainly and I'll drop it.`;
+  return `One more thing. I talk like this because ${c.fandom} is where I'm from. Tell me if you'd rather I spoke plainly and I'll drop it.`;
 }

@@ -188,4 +188,28 @@ describe('openingMessage', () => {
     expect(message).toContain('your partner for whatever');
     expect(message).not.toMatch(/plainly|drop the salt|where I'm from/i);
   });
+
+  /**
+   * Sara, 2026-08-19: nothing Circe writes uses an em dash. It is the house
+   * tell of machine-written prose, and the first message the user ever reads
+   * has to sound like a person wrote it.
+   *
+   * The rule covers Circe's own strings only. `greeting` and `voiceCheck` are
+   * the character's writing, and `derive.ts` asks the model to avoid them
+   * rather than stripping them, so a fixture like SILVER above may carry one
+   * and is not evidence of a defect here.
+   */
+  it('writes its scripted opening without em dashes', () => {
+    expect(openingMessage(TRILLIAN)).not.toContain('\u2014');
+  });
+
+  it('writes its plain voice check without em dashes', () => {
+    const message = openingMessage({
+      ...SILVER,
+      greeting: 'Aye, friend. Point me at the work and it is done.',
+      voiceCheck: '',
+    });
+    expect(message).toMatch(/plainly/i);
+    expect(message).not.toContain('\u2014');
+  });
 });

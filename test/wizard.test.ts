@@ -695,6 +695,21 @@ describe('onboarding copy (spec §1.4, amended 2026-08-18)', () => {
     expect(COPY.fandom.stuck).not.toMatch(/ideas|some|several/i);
     expect(COPY.fandom.stuck).toMatch(/an example/i);
   });
+
+  /**
+   * Sara, 2026-08-19: no em dashes in anything Circe writes. Every screen here
+   * is Circe's own prose, so the rule walks the whole of `COPY` the way the
+   * other §1.4 rules do, and a new screen inherits it by being added to the
+   * object rather than by anyone remembering.
+   *
+   * Scoped to Circe's writing on purpose: the character's `greeting`,
+   * `voiceCheck` and `intro` are the model's words, and `derive.ts` asks for
+   * them without em dashes rather than stripping them.
+   */
+  it('writes without em dashes', () => {
+    const all = Object.values(COPY).flatMap((s) => Object.values(s)).join(' ');
+    expect(all).not.toContain('\u2014');
+  });
 });
 
 describe('the wizard copy helpers', () => {

@@ -19,14 +19,14 @@
 export const COPY = {
   welcome: {
     title: 'Meet your first agent',
-    lead: "Circe gives you AI assistants that live on your own computer — they keep what they learn, and they're yours.",
+    lead: "Circe gives you AI assistants that live on your own computer. They keep what they learn, and they're yours.",
     // §6.2 Step 1 requires this screen to answer "what happens next", and the
     // answer is the coordinator: the wizard makes one agent whose job is
     // helping you build the others. The warm rewrite briefly lost that to "at
     // the end you'll meet the first one", which pushed the idea three screens
     // later and left the one screen Circe gets to explain itself explaining
     // less than it used to.
-    sub: "It takes about a minute. At the end you'll meet your coordinator — the agent whose job is helping you build the others.",
+    sub: "It takes about a minute. At the end you'll meet your coordinator, the agent whose job is helping you build the others.",
     // No `action` field: this screen auto-advances (`Wizard.start()` fires
     // as soon as the renderer signals ready), so there is nothing a
     // "Start" button would do that isn't already happening. A dead button
@@ -42,7 +42,7 @@ export const COPY = {
     // confirming anything, so the lead has to say so plainly and tell the
     // reader what to do once they're back (mirrors the provider-missing
     // fix below).
-    lead: "Your agents run on Hermes, free open-source software that does the actual work of keeping them running. It isn't installed yet — the button below opens the page to get it. Once it's installed, reopen Circe.",
+    lead: "Your agents run on Hermes, free open-source software that does the actual work of keeping them running. It isn't installed yet. The button below opens the page to get it. Once it's installed, reopen Circe.",
     action: 'Get Hermes',
   },
   provider: {
@@ -56,7 +56,7 @@ export const COPY = {
     // screen as literal characters — "type `hermes setup`" — on the one screen
     // in the flow whose whole job is a command the user has to type. `main.ts`
     // splits on the placeholder and puts the command in a real `<code>`.
-    lead: 'Your agent needs a model to think with — the same kind of thing that powers ChatGPT or Claude. Hermes handles the connection: open Terminal (an app already on your computer for typing commands), type {{COMMAND}}, and press enter. Once that\'s done, reopen Circe.',
+    lead: 'Your agent needs a model to think with, the same kind of thing that powers ChatGPT or Claude. Hermes handles the connection: open Terminal (an app already on your computer for typing commands), type {{COMMAND}}, and press enter. Once that\'s done, reopen Circe.',
     command: 'hermes setup',
     // No `action` field: this screen has no button, because there is no
     // in-app "Connect" flow to send one to — connecting a model happens in
@@ -66,7 +66,7 @@ export const COPY = {
   },
   fandom: {
     title: 'What do you love?',
-    lead: 'Name a world you like — a show, a book, a game, a hobby, a group chat. We ask because your agents get their names and their character from it, so it may as well be somewhere you enjoy.',
+    lead: 'Name a world you like: a show, a book, a game, a hobby, a group chat. We ask because your agents get their names and their character from it, so it may as well be somewhere you enjoy.',
     placeholder: "Hitchhiker's Guide, the Wire, competitive bread baking…",
     action: 'Continue',
     // M6: this said "give me some ideas" and delivered exactly one, over the
