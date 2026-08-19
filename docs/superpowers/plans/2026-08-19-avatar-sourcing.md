@@ -35,7 +35,8 @@ Copied from the spec. Every task's requirements implicitly include these.
 | `src/main/wizard.ts` | Modify: fire the lookup on derivation, hold bytes, write on accept |
 | `src/main/index.ts` | Modify: wire real `fetch` and `nativeImage` into the injected seams |
 | `src/renderer/wizard/{index.html,main.ts,wizard.css}` | Modify: CSP, meet-screen face |
-| `src/renderer/tile/{index.html,main.ts}` | Modify: CSP, tile-header face |
+| `src/renderer/tile/{index.html,main.ts,tile.css}` | Modify: CSP, tile-header face |
+| `src/renderer/face.ts` | Create: `initials` and `applyFace`, shared by both renderers |
 | `src/preload/{wizard.ts,tile.ts}` | Modify: one avatar channel each |
 | `test/avatar.test.ts` | Create: guardrails, provenance, failure modes |
 | `test/avatarStore.test.ts` | Create: storage paths, conversion, data URL |
@@ -69,7 +70,7 @@ Create `test/avatarStore.test.ts`:
 
 ```typescript
 import { describe, expect, it } from 'vitest';
-import { FakeHermes, FRESH } from './fake/hermes';
+import { FakeHermes, INSTALLED_EMPTY } from './fake/hermes';
 import { avatarPath, dataUrl, readAvatarDataUrl, saveAvatar } from '../src/main/avatarStore';
 
 /** A PNG is identified by its 8-byte signature; these tests never need a real image. */
@@ -96,7 +97,7 @@ describe('avatarPath', () => {
 
 describe('saveAvatar', () => {
   it('writes the bytes into the profile', async () => {
-    const h = new FakeHermes(FRESH);
+    const h = new FakeHermes(INSTALLED_EMPTY);
     const ok = await saveAvatar(h, 'default', PNG, 'image/png', toPng);
     expect(ok).toBe(true);
     expect(await h.readHomeFileBytes('avatar.png')).toEqual(PNG);
@@ -106,7 +107,7 @@ describe('saveAvatar', () => {
   // mostly JPEG, so something has to convert. A .jpg written under a .png name
   // is the kind of thing that works until something reads the extension.
   it('converts a non-PNG before writing', async () => {
-    const h = new FakeHermes(FRESH);
+    const h = new FakeHermes(INSTALLED_EMPTY);
     await saveAvatar(h, 'default', JPEG, 'image/jpeg', toPng);
     const written = await h.readHomeFileBytes('avatar.png');
     expect(written!.slice(0, 8)).toEqual(PNG.slice(0, 8));
@@ -115,7 +116,7 @@ describe('saveAvatar', () => {
   // Failure is silent (§10.7): a face that cannot be converted is not an error,
   // it is a profile with no face, which renders initials.
   it('writes nothing and reports failure when conversion fails', async () => {
-    const h = new FakeHermes(FRESH);
+    const h = new FakeHermes(INSTALLED_EMPTY);
     const ok = await saveAvatar(h, 'default', JPEG, 'image/jpeg', () => null);
     expect(ok).toBe(false);
     expect(await h.readHomeFileBytes('avatar.png')).toBeNull();
@@ -124,7 +125,7 @@ describe('saveAvatar', () => {
 
 describe('readAvatarDataUrl', () => {
   it('reads a stored face back as a data URL the renderer can use', async () => {
-    const h = new FakeHermes(FRESH);
+    const h = new FakeHermes(INSTALLED_EMPTY);
     await saveAvatar(h, 'default', PNG, 'image/png', toPng);
     const url = await readAvatarDataUrl(h, 'default');
     expect(url).toMatch(/^data:image\/png;base64,/);
@@ -133,7 +134,7 @@ describe('readAvatarDataUrl', () => {
   // The ordinary case for most profiles, and the reason nothing downstream may
   // treat null as an error.
   it('is null when the profile has no face', async () => {
-    expect(await readAvatarDataUrl(new FakeHermes(FRESH), 'default')).toBeNull();
+    expect(await readAvatarDataUrl(new FakeHermes(INSTALLED_EMPTY), 'default')).toBeNull();
   });
 });
 
@@ -673,6 +674,11 @@ Add to `test/wizard.test.ts`:
 
 ```typescript
 describe('the character gets a face', () => {
+  // `scenario()` and `INSTALLED_EMPTY` are already imported at the top of this
+  // file, and `scenario()` supplies the derivation reply. Without it the wizard
+  // never reaches `meet` and every test here fails on the wrong thing.
+  // `toMeet()` cannot be reused: it builds a `Wizard` with no avatar options,
+  // which is the one case these tests are not about.
   const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2]);
   const found = {
     bytes: PNG,
@@ -693,7 +699,7 @@ describe('the character gets a face', () => {
    * write to a profile the user never asked Circe to touch.
    */
   it('writes no face before the user accepts', async () => {
-    const h = new FakeHermes(FRESH);
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
     const w = new Wizard(h, { ...avatar(), find: async () => found });
     await w.start();
     await w.submitFandom("Hitchhiker's");
@@ -702,7 +708,7 @@ describe('the character gets a face', () => {
   });
 
   it('offers the pending face to the renderer while the user decides', async () => {
-    const h = new FakeHermes(FRESH);
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
     const w = new Wizard(h, { ...avatar(), find: async () => found });
     await w.start();
     await w.submitFandom("Hitchhiker's");
@@ -710,7 +716,7 @@ describe('the character gets a face', () => {
   });
 
   it('writes the face into the profile on accept', async () => {
-    const h = new FakeHermes(FRESH);
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
     const w = new Wizard(h, { ...avatar(), find: async () => found });
     await w.start();
     await w.submitFandom("Hitchhiker's");
@@ -719,7 +725,7 @@ describe('the character gets a face', () => {
   });
 
   it('discards the face when the user asks for a different character', async () => {
-    const h = new FakeHermes(FRESH);
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
     let hits = 0;
     const w = new Wizard(h, {
       ...avatar(),
@@ -736,11 +742,16 @@ describe('the character gets a face', () => {
   // The generation guard the derivation already uses covers this too, or a face
   // from a discarded character attaches to the one on screen.
   it('drops a face whose character was already replaced', async () => {
-    const h = new FakeHermes(FRESH);
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
     let release: (v: typeof found) => void = () => {};
+    // Only the FIRST lookup is deferred. An earlier draft gave every call the
+    // same deferred promise, so the retry's own lookup reassigned `release` and
+    // resolving it fed a face to the *current* generation — the test would have
+    // failed for a reason unrelated to staleness.
+    let calls = 0;
     const w = new Wizard(h, {
       ...avatar(),
-      find: () => new Promise((r) => (release = r)),
+      find: () => (calls++ === 0 ? new Promise((r) => (release = r)) : Promise.resolve(null)),
     });
     await w.start();
     await w.submitFandom("Hitchhiker's");
@@ -752,7 +763,7 @@ describe('the character gets a face', () => {
 
   // Every failure is silent, and onboarding must complete regardless.
   it('completes onboarding when the lookup finds nothing', async () => {
-    const h = new FakeHermes(FRESH);
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
     const w = new Wizard(h, { ...avatar(), find: async () => null });
     await w.start();
     await w.submitFandom("Hitchhiker's");
@@ -762,7 +773,7 @@ describe('the character gets a face', () => {
   });
 
   it('completes onboarding when the lookup throws', async () => {
-    const h = new FakeHermes(FRESH);
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
     const w = new Wizard(h, {
       ...avatar(),
       find: async () => {
@@ -776,7 +787,7 @@ describe('the character gets a face', () => {
   });
 
   it('looks nothing up at all when no avatar dependency is supplied', async () => {
-    const h = new FakeHermes(FRESH);
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
     const w = new Wizard(h);
     await w.start();
     await w.submitFandom("Hitchhiker's");
@@ -1006,17 +1017,33 @@ In `renderCharacter` in `src/renderer/wizard/main.ts`, the `.avatar` div current
 
 and, at module scope:
 
+First create `src/renderer/face.ts`, which Task 5 imports too. Both renderers need the identical
+behaviour, and the tile renderer already imports `src/main/palette` and its own `toolLabel.ts`, so a
+shared leaf module is this codebase's existing pattern rather than a new one:
+
 ```typescript
-/** The face for the character on screen, or null while there is none. */
-let pendingFace: string | null = null;
+/**
+ * The face on an initials circle, shared by the wizard's meet screen and the
+ * tile header because both need exactly this and a second copy would drift.
+ * A leaf module with no DOM access at import time, so tests can reach it.
+ */
+
+/** Up to two initials, e.g. `Long John Silver` becomes `LJ`. */
+export function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('');
+}
 
 /**
- * Puts a face on an initials circle, or takes it off. Kept as one function so
- * the arrives-late update and the first render share a single code path — the
- * rule the tile's re-theme already follows: an update that carries nothing
- * leaves what is showing alone.
+ * Puts a face on an initials circle, or takes it off. One code path for the
+ * first render and the arrives-late update, following the rule the tile's
+ * re-theme already follows: an update carrying nothing leaves what is showing
+ * alone, and the initials stay underneath a face that fails to decode.
  */
-function applyFace(avatar: HTMLElement, url: string | null): void {
+export function applyFace(avatar: HTMLElement, url: string | null): void {
   avatar.querySelector('img')?.remove();
   if (!url) return;
   const img = document.createElement('img');
@@ -1024,6 +1051,14 @@ function applyFace(avatar: HTMLElement, url: string | null): void {
   img.alt = '';
   avatar.append(img);
 }
+```
+
+Then in `src/renderer/wizard/main.ts`, import `{ applyFace, initials }` from `../face`, delete the
+local `initials` function it already has, and add:
+
+```typescript
+/** The face for the character on screen, or null while there is none. */
+let pendingFace: string | null = null;
 
 circe.onAvatar((url) => {
   pendingFace = url;
@@ -1115,29 +1150,14 @@ In `src/renderer/tile/main.ts`, fill the initials wherever `#who` is already set
 so the two always agree:
 
 ```typescript
+import { applyFace, initials } from '../face';
+
 const face = document.getElementById('face')!;
 face.textContent = initials(character.name);
-
-/**
- * The same rule the wizard's copy of this follows: the face fills the initials
- * circle rather than replacing it, so a face that fails to decode leaves the
- * initials underneath, and a profile with none renders exactly today's header.
- */
-function applyFace(avatar: HTMLElement, url: string | null): void {
-  avatar.querySelector('img')?.remove();
-  if (!url) return;
-  const img = document.createElement('img');
-  img.src = url;
-  img.alt = '';
-  avatar.append(img);
-}
-
 circe.onAvatar((url) => applyFace(face, url));
 ```
 
-`initials` does not exist in the tile renderer yet; copy the three-line implementation from
-`src/renderer/wizard/main.ts`. It is small enough that a shared module would cost more than it saves,
-and the tile and the wizard are compiled as one TS program but never share a window.
+`src/renderer/face.ts` is created by Task 4; import it rather than writing a second copy.
 
 In `src/renderer/tile/tile.css`, size it against the header rather than the wizard's 84px:
 
@@ -1227,7 +1247,11 @@ describe('avatar provenance (spec §10.7)', () => {
   // in an app whose constraint 4 permits almost none.
   it('names only the two Wikimedia hosts in the lookup', async () => {
     const src = await readFile(join(ROOT, 'src/main/avatar.ts'), 'utf8');
-    const hosts = [...src.matchAll(/https?:\/\/([a-z0-9.-]+)/g)].map((m) => m[1]);
+    // Matches hostnames wherever they appear, not only inside a URL: the image
+    // host is a bare constant (`upload.wikimedia.org`) because it is compared
+    // against `URL.hostname`, so a `https?://` pattern would silently miss it
+    // and this test would fail against perfectly correct code.
+    const hosts = [...src.matchAll(/\b(?:[a-z0-9-]+\.)+(?:org|com|net|io)\b/g)].map((m) => m[0]);
     expect([...new Set(hosts)].sort()).toEqual(['en.wikipedia.org', 'upload.wikimedia.org']);
   });
 });
