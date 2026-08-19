@@ -762,4 +762,6 @@ git commit -m "style: onboarding that looks like an introduction"
 
 **Not covered, deliberately.** The spec left one thing open — whether the meet screen shows a line in the character's voice before the user clicks. No task implements it. Decide it with the user after Task 5, when there is something to look at.
 
+> **Decided 2026-08-19: yes.** `Character.intro`, one in-voice sentence written for being introduced rather than for after acceptance. The argument that settled it was the re-roll: without a voice line, "Try someone else" swaps one Circe-written third-person description for another, and the voice is the only thing that actually distinguishes two candidates. See the decision record for the height finding that came with it.
+
 **Type consistency.** `Character.voice` / `.greeting` / `.voiceCheck` are the names used in Tasks 1, 2 and 3. `voiceOrPlain` (Task 2) and `optionalText`, `scripted`, `plainCheck` (Tasks 1, 3) are each defined once, in the file that uses them. `COPY` (Task 4) is consumed only by the wizard renderer.

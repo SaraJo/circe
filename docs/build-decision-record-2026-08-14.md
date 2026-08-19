@@ -859,3 +859,45 @@ untouched throughout.
 Worth recording together: Killick's tile *launched* in `DEFAULT_PALETTE` — its window URL still
 carries `#1c1c1e` — and was corrected live to `rgba(58,42,20,.85)` when `circe.json` landed seconds
 later. That is D1's fix and D2's fix visible in the same run.
+
+### The deferred meet-screen question, decided (2026-08-19)
+
+The voice plan left one thing to the product owner: whether the meet screen shows a line in the
+character's voice before the user clicks. **Yes**, as `Character.intro`.
+
+What settled it was not the screen but the button next to it. Everything the meet screen shows is
+Circe describing the character in the third person — the lead, the tagline, `why` — and that register
+is identical for every candidate. So "Try someone else" was a choice without a difference: it
+swapped one neutral description for another, while the voice, the only thing that really
+distinguishes two candidates, stayed hidden until after the user had committed to one.
+
+The intro is deliberately **not** the greeting, and the prompt says so in those words. The greeting
+is written to someone who has already accepted this agent; the intro is spoken to someone still
+deciding. Asked without that distinction, a model returns the greeting twice.
+
+**The height finding.** The first bound was 200, copied from `voiceCheck`. That was wrong, and the
+arithmetic rather than the eye caught it: `voiceCheck` lands in a scrolling tile conversation, while
+the intro renders inside the wizard's fixed 640x560 next to the lead, the avatar block, `why` and
+both buttons. At 17px in a 38ch column, 200 characters is six lines — about 75px past the bottom of
+the window, taking the primary action with it. That is the same defect class as the 624px-in-a-520px
+window this project already shipped once. The bound is 120, and `wizard.css` caps the element at
+three lines under M7's pinned-px rule as well, so the failure mode if a wide script wraps to four is
+a scroll and not a vanished button.
+
+**Verified against the real runtime**, on the sandbox: "Clueless" derived Cher Horowitz, whose intro
+came back as *"Okay so I already have a hunch about where to start, but you go first."* — 76
+characters, two balanced lines, quotation marks in her accent, both buttons well clear of the bottom
+edge. `~/.hermes/SOUL.md` was byte-identical before and after, and still had its seven profiles.
+
+### No em dashes in Circe's own copy (2026-08-19)
+
+A standing copy constraint from the product owner. The em dash is the house tell of machine-written
+prose, and onboarding is the copy that most has to read as though a person wrote it. Five wizard
+leads and `plainCheck` lost theirs; a rule over `Object.values(COPY)` in the §1.4 block holds the
+line, so a new screen inherits it by being added to the object rather than by anyone remembering.
+
+**Scoped to what Circe writes, on purpose.** `greeting`, `voiceCheck` and `intro` are the model's
+words. `derive.ts` asks for them without em dashes and does not strip them, so one can still reach
+the tile — the accepted cost of not editing the character's voice on its behalf. The `SILVER`
+fixture keeps its em dash to hold that line in place.
+
