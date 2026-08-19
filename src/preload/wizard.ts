@@ -11,4 +11,6 @@ contextBridge.exposeInMainWorld('circe', {
   confirmClaim: () => ipcRenderer.send('wizard:confirm-claim'),
   declineClaim: () => ipcRenderer.send('wizard:decline-claim'),
   openExternal: (url: string) => ipcRenderer.send('open-external', url),
+  onAvatar: (cb: (dataUrl: string | null) => void) =>
+    ipcRenderer.on('wizard:avatar', (_e, url: string | null) => cb(url)),
 });

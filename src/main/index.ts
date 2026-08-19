@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, nativeImage, shell } from 'electron';
 import { RealHermes } from './hermes/real';
 import { Wizard } from './wizard';
 import { adaptTileWindow, createTileWindow, createWizardWindow } from './windows';
@@ -9,6 +9,12 @@ import { characterFor, readStartup } from './startup';
 import { TileRegistry } from './tiles';
 
 app.setName('Circe');
+
+// Wikimedia's API policy asks callers to identify themselves. `contentType` is
+// unused by `nativeImage`, which sniffs the bytes; it stays in the signature so
+// the store can shortcut a PNG without decoding it.
+const USER_AGENT = 'Circe/0.1 (https://github.com/sarachipps/circe-desktop)';
+const timeout = () => AbortSignal.timeout(8000);
 
 let wizardWin: BrowserWindow | null = null;
 let hermes: RealHermes;
@@ -61,7 +67,27 @@ function createRegistry(): TileRegistry {
 
 /** Creates the wizard and its window, and wires the one to the other. */
 function openWizard(): void {
-  const w = new Wizard(hermes);
+  const w = new Wizard(hermes, {
+    deps: {
+      fetchJson: async (url) => {
+        const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: timeout() });
+        if (!res.ok) throw new Error(`summary ${res.status}`);
+        return res.json();
+      },
+      fetchImage: async (url) => {
+        const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: timeout() });
+        if (!res.ok) throw new Error(`image ${res.status}`);
+        return {
+          bytes: new Uint8Array(await res.arrayBuffer()),
+          contentType: res.headers.get('content-type') ?? '',
+        };
+      },
+    },
+    toPng: (bytes, contentType) => {
+      const img = nativeImage.createFromBuffer(Buffer.from(bytes));
+      return img.isEmpty() ? null : new Uint8Array(img.toPNG());
+    },
+  });
   wizard = w;
   wizardWin = createWizardWindow();
   wizardWin.on('closed', () => {
@@ -73,7 +99,10 @@ function openWizard(): void {
   // resolve into a *replacement* wizard's window.
   w.onChange((s) => {
     if (wizard !== w) return;
-    if (wizardWin && !wizardWin.isDestroyed()) wizardWin.webContents.send('wizard:step', s);
+    if (wizardWin && !wizardWin.isDestroyed()) {
+      wizardWin.webContents.send('wizard:step', s);
+      wizardWin.webContents.send('wizard:avatar', w.avatarDataUrl());
+    }
   });
   w.onChange((s) => {
     if (wizard !== w) return;

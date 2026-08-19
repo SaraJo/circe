@@ -1,5 +1,6 @@
 import type { Character, WizardStep } from '../../shared/types';
 import { COPY, fill, isReplaceableExample, nextFandomIdea } from './copy';
+import { applyFace, initials } from '../face';
 
 export { COPY };
 
@@ -14,9 +15,13 @@ declare global {
       confirmClaim(): void;
       declineClaim(): void;
       openExternal(url: string): void;
+      onAvatar(cb: (dataUrl: string | null) => void): void;
     };
   }
 }
+
+/** The face for the character on screen, or null while there is none. */
+let pendingFace: string | null = null;
 
 const screenEl = document.getElementById('screen')!;
 
@@ -24,14 +29,6 @@ function el(html: string): HTMLElement {
   const wrap = document.createElement('div');
   wrap.innerHTML = html.trim();
   return wrap.firstElementChild as HTMLElement;
-}
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('');
 }
 
 function renderCharacter(c: Character): HTMLElement {
@@ -57,8 +54,12 @@ function renderCharacter(c: Character): HTMLElement {
   // of the primary action.
   node.style.setProperty('--agent-bg', c.palette.bg);
   node.style.setProperty('--agent-accent', c.palette.accent);
+  // The face replaces the initials rather than sitting beside them, so the
+  // fallback is the element that was already there and a lookup that finds
+  // nothing renders precisely today's screen.
   const avatar = node.querySelector<HTMLElement>('.avatar')!;
   avatar.textContent = initials(c.name);
+  applyFace(avatar, pendingFace);
   avatar.style.background = c.palette.bg;
   avatar.style.borderColor = c.palette.border;
   avatar.style.color = c.palette.accent;
@@ -322,4 +323,9 @@ function render(step: WizardStep): void {
 }
 
 window.circe.onStep(render);
+window.circe.onAvatar((url) => {
+  pendingFace = url;
+  const avatar = document.querySelector<HTMLElement>('.screen.character .avatar');
+  if (avatar) applyFace(avatar, url);
+});
 window.circe.ready();
