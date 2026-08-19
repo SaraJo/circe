@@ -763,6 +763,27 @@ describe('the character gets a face', () => {
     expect(await h.readHomeFileBytes('avatar.png')).toEqual(PNG);
   });
 
+  // A returning user (a machine with an already-configured default) never
+  // passes through `meet` — derivation lands them on `claim-default`
+  // instead. The lookup and the write-on-accept guard both have to cover
+  // this path too, or every returning user gets no face at all.
+  it('finds a face for a returning user too, on the claim-default path', async () => {
+    const h = new FakeHermes(scenario(INSTALLED_WITH_AGENTS));
+    const w = new Wizard(h, { ...avatar(), find: async () => found });
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    expect(w.state.kind).toBe('claim-default');
+    expect(w.avatarDataUrl()).toMatch(/^data:image\/png;base64,/);
+    // Constraint 9 still holds here: reaching claim-default is not
+    // accepting, and nothing may be on disk until it is.
+    expect(h.bytes.size).toBe(0);
+
+    await w.confirmClaimDefault();
+
+    expect(w.state.kind).toBe('launching');
+    expect(await h.readHomeFileBytes('avatar.png')).toEqual(PNG);
+  });
+
   it('discards the face when the user asks for a different character', async () => {
     const h = new FakeHermes(scenario(INSTALLED_EMPTY));
     let hits = 0;

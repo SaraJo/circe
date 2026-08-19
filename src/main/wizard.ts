@@ -179,22 +179,28 @@ export class Wizard {
     if (gen !== this.generation) return;
     this.character = character;
 
+    // Cleared and started once, before the branch below decides which
+    // screen to show. A returning user (`claim-default`) is shown the
+    // character just as much as a fresh one (`meet`) is, so both need the
+    // lookup — only the write, in `commitAccept`, is allowed to differ by
+    // path, and it isn't: it's the same call for either.
+    this.pendingAvatar = null;
+    this.lookUpFace(character, gen);
+
     if (hasConfiguredDefault(profiles)) {
       const existing = profiles.find((p) => p.id === 'default')!;
       this.set({ kind: 'claim-default', character, existingName: existing.displayName });
       return;
     }
-    this.pendingAvatar = null;
     this.set({ kind: 'meet', character });
-    this.lookUpFace(character, gen);
   }
 
   /**
    * Fetches the character's face in the background. Never awaited by anything
-   * on the path to the meet screen: derivation already costs 20 to 60 seconds
-   * and a second network call must not add to it. The screen renders initials
-   * and swaps the face in if it arrives, the pattern D1 established for
-   * palettes arriving late.
+   * on the path to either character-review screen: derivation already costs
+   * 20 to 60 seconds and a second network call must not add to it. The
+   * screen renders initials and swaps the face in if it arrives, the pattern
+   * D1 established for palettes arriving late.
    */
   private lookUpFace(character: Character, generation: number): void {
     const avatar = this.avatar;
