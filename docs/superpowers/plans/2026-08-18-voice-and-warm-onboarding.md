@@ -2,6 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Status: shipped, 2026-08-19.** All five tasks are in `build-onboarding-and-orchestrator`,
+> `117d04a..a177ca9` (19 commits). The step checkboxes below were never ticked during execution and
+> are deliberately left as they are: ticking them now would record a step-by-step verification that
+> nobody performed. The commits are the real record, and the suite is green at 404 tests. The one
+> question this plan deferred to the product owner is answered in the Self-Review section.
+
 **Goal:** The derived character speaks in a voice of its own, says so in its first message and asks whether the user likes it — and the onboarding that introduces it stops looking like a form in a dark box.
 
 **Architecture:** Derivation already returns a character as JSON; it gains three fields — a `voice` description that is written into the profile's `SOUL.md`, an in-voice `greeting`, and an in-voice `voiceCheck` question. Every one of them degrades to the current behaviour when absent, so a model that ignores them costs flavour and never an agent. The persona template gains a `## Voice` section and the rule that converts a "speak plainly" reply into a rewrite of that section. The wizard's copy and CSS are then reworked against the amended §1.4 and §7.
