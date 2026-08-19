@@ -1,6 +1,7 @@
 import { marked } from 'marked';
 import type { Character } from '../../shared/types';
 import { DEFAULT_PALETTE, isPalette, paletteVars } from '../../main/palette';
+import { nextToolTitle, toolLabel } from './toolLabel';
 
 /**
  * The tile and the wizard each load their own preload bridge and never share
@@ -79,6 +80,13 @@ let streaming: HTMLElement | null = null;
 /** The single "⚙ …" bubble showing what the agent is doing this turn. */
 let toolBubble: HTMLElement | null = null;
 /**
+ * The tool name currently on that bubble. Held because ACP sends `title` only
+ * when it changes, so a status-only `tool_call_update` has none to draw with
+ * and has to reuse this. Reset wherever `toolBubble` is: a new turn inheriting
+ * the last turn's tool name is the same class of lie as the raw id was.
+ */
+let toolTitle = '';
+/**
  * True between `circe/replay-start` and `circe/replay-end`, while Hermes is
  * replaying a resumed conversation. Two things differ during a replay: the
  * user's own messages have to be drawn (nothing typed them into this window),
@@ -144,6 +152,7 @@ function endTurn(): void {
     streaming = null;
   }
   toolBubble = null;
+  toolTitle = '';
   log.scrollTop = log.scrollHeight; // Markdown formatting can change the bubble's height.
 }
 
@@ -190,9 +199,13 @@ circe.onUpdate((update) => {
     // label, not a tool UI.
     case 'tool_call':
     case 'tool_call_update': {
-      const name = u.title ?? (update as { toolCallId?: string }).toolCallId ?? '';
-      if (!name) return;
-      const label = `⚙ ${name}`;
+      // `title` is required on `tool_call` and optional on every
+      // `tool_call_update`, so a status change arrives with no name of its
+      // own. This used to fall back to the `toolCallId`, which drew
+      // `⚙ toolu_01VsyAkmt8QqNFMnbPNhP96g` over a perfectly good `⚙ Read` the
+      // moment that read finished. See `toolLabel.ts`.
+      toolTitle = nextToolTitle(update, toolTitle);
+      const label = toolLabel(toolTitle);
       if (toolBubble) toolBubble.textContent = label;
       else toolBubble = appendText('tool', label);
       log.scrollTop = log.scrollHeight;
@@ -232,6 +245,7 @@ circe.onUpdate((update) => {
       replaying = false;
       streaming = null;
       toolBubble = null;
+  toolTitle = '';
       log.replaceChildren();
       appendText('agent', "Couldn't reopen the previous conversation, so I'm starting a new one.");
       const held = (update as { held?: unknown }).held;
@@ -283,6 +297,7 @@ function sendCurrentInput(): void {
   // renderer.js:583).
   streaming = null;
   toolBubble = null;
+  toolTitle = '';
   appendText('user', text);
   circe.send(text);
   input.value = '';
