@@ -1,4 +1,5 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -11,22 +12,23 @@ const ROOT = join(import.meta.dirname, '..');
  */
 describe('avatar provenance (spec §10.7)', () => {
   // The repo ships no likenesses. Every face is fetched for one user, on their
-  // machine, or drawn locally from initials.
-  it('bundles no character images', async () => {
-    const offenders: string[] = [];
-    async function walk(dir: string): Promise<void> {
-      for (const e of await readdir(dir, { withFileTypes: true })) {
-        if (['node_modules', '.git', 'out', 'dist', '.superpowers'].includes(e.name)) continue;
-        const full = join(dir, e.name);
-        if (e.isDirectory()) {
-          if (/avatar|character|face/i.test(e.name)) offenders.push(full);
-          await walk(full);
-        } else if (/\.(png|jpe?g|gif|webp)$/i.test(e.name) && e.name !== 'icon.png') {
-          offenders.push(full);
-        }
-      }
-    }
-    await walk(ROOT);
+  // machine, or drawn locally from initials. Downloaded avatars live in the
+  // user's scratch directory and are never committed.
+  it('bundles no character images', () => {
+    // Ask git what is tracked, not what happens to be on this developer's disk.
+    // This prevents gitignored scratch, build output, and screenshots from
+    // creating spurious test failures or requiring an ever-growing exclusion list.
+    const ls = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' });
+    const tracked = ls.split('\n').filter((line) => line.length > 0);
+
+    // Image files in the repo. allowlist is explicit with comments on why.
+    const allowlist = ['resources/icon.png']; // application icon, not character likeness
+
+    const images = tracked.filter((file) => /\.(png|jpe?g|gif|webp)$/i.test(file));
+    const offenders = images.filter(
+      (file) => !allowlist.includes(file) || /avatar|character|face/i.test(file),
+    );
+
     expect(offenders).toEqual([]);
   });
 
