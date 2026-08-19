@@ -712,6 +712,130 @@ describe('onboarding copy (spec §1.4, amended 2026-08-18)', () => {
   });
 });
 
+describe('the character gets a face', () => {
+  // `scenario()` and `INSTALLED_EMPTY` are already imported at the top of this
+  // file, and `scenario()` supplies the derivation reply. Without it the wizard
+  // never reaches `meet` and every test here fails on the wrong thing.
+  // `toMeet()` cannot be reused: it builds a `Wizard` with no avatar options,
+  // which is the one case these tests are not about.
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2]);
+  const found = {
+    bytes: PNG,
+    contentType: 'image/png',
+    articleUrl: 'https://en.wikipedia.org/wiki/Trillian',
+    title: 'Trillian',
+    license: 'commons' as const,
+  };
+  const avatar = () => ({
+    deps: { fetchJson: async () => ({}), fetchImage: async () => ({ bytes: PNG, contentType: 'image/png' }) },
+    toPng: (b: Uint8Array) => b,
+  });
+
+  /**
+   * Constraint 9, and the reason the lookup and the write are separate moments:
+   * the user is still deciding on the meet screen, and "Try someone else" must
+   * leave nothing behind. A face on disk for a character nobody accepted is a
+   * write to a profile the user never asked Circe to touch.
+   */
+  it('writes no face before the user accepts', async () => {
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
+    const w = new Wizard(h, { ...avatar(), find: async () => found });
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    expect(w.state.kind).toBe('meet');
+    expect(h.bytes.size).toBe(0);
+  });
+
+  it('offers the pending face to the renderer while the user decides', async () => {
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
+    const w = new Wizard(h, { ...avatar(), find: async () => found });
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    expect(w.avatarDataUrl()).toMatch(/^data:image\/png;base64,/);
+  });
+
+  it('writes the face into the profile on accept', async () => {
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
+    const w = new Wizard(h, { ...avatar(), find: async () => found });
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    await w.accept();
+    expect(await h.readHomeFileBytes('avatar.png')).toEqual(PNG);
+  });
+
+  it('discards the face when the user asks for a different character', async () => {
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
+    let hits = 0;
+    const w = new Wizard(h, {
+      ...avatar(),
+      find: async () => (hits++ === 0 ? found : null),
+    });
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    await w.retryDerivation();
+    expect(w.avatarDataUrl()).toBeNull();
+    expect(h.bytes.size).toBe(0);
+  });
+
+  // A lookup is slower than the derivation that triggered it can be replaced.
+  // The generation guard the derivation already uses covers this too, or a face
+  // from a discarded character attaches to the one on screen.
+  it('drops a face whose character was already replaced', async () => {
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
+    let release: (v: typeof found) => void = () => {};
+    // Only the FIRST lookup is deferred. An earlier draft gave every call the
+    // same deferred promise, so the retry's own lookup reassigned `release` and
+    // resolving it fed a face to the *current* generation — the test would have
+    // failed for a reason unrelated to staleness.
+    let calls = 0;
+    const w = new Wizard(h, {
+      ...avatar(),
+      find: () => (calls++ === 0 ? new Promise((r) => (release = r)) : Promise.resolve(null)),
+    });
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    await w.retryDerivation();
+    release(found);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(w.avatarDataUrl()).toBeNull();
+  });
+
+  // Every failure is silent, and onboarding must complete regardless.
+  it('completes onboarding when the lookup finds nothing', async () => {
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
+    const w = new Wizard(h, { ...avatar(), find: async () => null });
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    await w.accept();
+    expect(w.state.kind).toBe('launching');
+    expect(h.bytes.size).toBe(0);
+  });
+
+  it('completes onboarding when the lookup throws', async () => {
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
+    const w = new Wizard(h, {
+      ...avatar(),
+      find: async () => {
+        throw new Error('network down');
+      },
+    });
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    await w.accept();
+    expect(w.state.kind).toBe('launching');
+  });
+
+  it('looks nothing up at all when no avatar dependency is supplied', async () => {
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
+    const w = new Wizard(h);
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    await w.accept();
+    expect(w.avatarDataUrl()).toBeNull();
+    expect(h.bytes.size).toBe(0);
+  });
+});
+
 describe('the wizard copy helpers', () => {
   /**
    * M1. `COPY.meet.action.replace('{{NAME}}', c.name)` reintroduced the

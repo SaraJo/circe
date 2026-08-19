@@ -7,6 +7,19 @@ import { loadTemplate, renderOrchestratorSoul } from './orchestrator/soulTemplat
 import { installOrchestratorSkill } from './orchestrator/skill';
 import { LAST_LAUNCH_PATH, serializeLastLaunch } from './startup';
 import { writeProfileTheme } from './profileTheme';
+import { findAvatar, type AvatarDeps, type AvatarFind } from './avatar';
+import { dataUrl, saveAvatar, type ToPng } from './avatarStore';
+
+/**
+ * Injected so the whole feature is absent unless wired. `find` is overridable
+ * only so tests can supply an outcome without a fake HTTP layer; production
+ * passes `findAvatar` itself.
+ */
+export interface AvatarOptions {
+  deps: AvatarDeps;
+  toPng: ToPng;
+  find?: (name: string, fandom: string, deps: AvatarDeps) => Promise<AvatarFind | null>;
+}
 
 /**
  * States from which submitting a fandom makes sense: the fresh question, a
@@ -48,10 +61,27 @@ export class Wizard {
    */
   private generation = 0;
 
-  constructor(private hermes: HermesRuntime) {}
+  /**
+   * The face for the character on screen, held in memory rather than written.
+   * Constraint 9: the user has not accepted this character yet, and "Try
+   * someone else" must leave nothing on disk.
+   */
+  private pendingAvatar: AvatarFind | null = null;
+
+  constructor(
+    private hermes: HermesRuntime,
+    private avatar?: AvatarOptions,
+  ) {}
 
   onChange(cb: (s: WizardStep) => void): void {
     this.listeners.push(cb);
+  }
+
+  /** The pending face for the meet screen, or null when there is none. */
+  avatarDataUrl(): string | null {
+    return this.pendingAvatar
+      ? dataUrl(this.pendingAvatar.bytes, this.pendingAvatar.contentType)
+      : null;
   }
 
   private set(next: WizardStep): void {
@@ -104,7 +134,13 @@ export class Wizard {
       s.kind === 'derive-failed' || s.kind === 'deriving'
         ? s.fandom
         : (this.character?.fandom ?? '');
-    if (fandom) await this.runDerivation(fandom);
+    if (fandom) {
+      // A new attempt at "who is this" discards whatever face belonged to the
+      // character being replaced, so it cannot linger on screen while the new
+      // derivation is in flight.
+      this.pendingAvatar = null;
+      await this.runDerivation(fandom);
+    }
   }
 
   /**
@@ -148,7 +184,34 @@ export class Wizard {
       this.set({ kind: 'claim-default', character, existingName: existing.displayName });
       return;
     }
+    this.pendingAvatar = null;
     this.set({ kind: 'meet', character });
+    this.lookUpFace(character, gen);
+  }
+
+  /**
+   * Fetches the character's face in the background. Never awaited by anything
+   * on the path to the meet screen: derivation already costs 20 to 60 seconds
+   * and a second network call must not add to it. The screen renders initials
+   * and swaps the face in if it arrives, the pattern D1 established for
+   * palettes arriving late.
+   */
+  private lookUpFace(character: Character, generation: number): void {
+    const avatar = this.avatar;
+    if (!avatar) return;
+    const find = avatar.find ?? findAvatar;
+    void find(character.name, character.fandom, avatar.deps)
+      .then((found) => {
+        // The same staleness rule the derivation itself uses. Without it a face
+        // for a character the user has already replaced attaches to the one on
+        // screen.
+        if (generation !== this.generation) return;
+        this.pendingAvatar = found;
+        if (found) this.set({ ...this.state });
+      })
+      .catch(() => {
+        // Silent, per §10.7. There is nothing a user could do with this.
+      });
   }
 
   /** The user accepted overwriting a persona they wrote. */
@@ -219,6 +282,22 @@ export class Wizard {
         contents: soul,
       });
       personaReplaced = { path: written.path, backedUpTo: written.backedUpTo };
+      // After the persona, because a face without a persona is the worse of the
+      // two half-written states, and swallowed because a profile with no face
+      // is a working profile. §10.7: failure is silent.
+      if (this.pendingAvatar && this.avatar) {
+        try {
+          await saveAvatar(
+            this.hermes,
+            'default',
+            this.pendingAvatar.bytes,
+            this.pendingAvatar.contentType,
+            this.avatar.toPng,
+          );
+        } catch (err) {
+          console.warn('Could not write the avatar for the new profile.', err);
+        }
+      }
       await installOrchestratorSkill(this.hermes, 'default');
     } catch (err) {
       // Nothing is launched: a tile in front of an agent with no persona is
