@@ -901,3 +901,33 @@ words. `derive.ts` asks for them without em dashes and does not strip them, so o
 the tile — the accepted cost of not editing the character's voice on its behalf. The `SILVER`
 fixture keeps its em dash to hold that line in place.
 
+### The raw tool-call id, fixed (2026-08-19)
+
+The last of the Phase 2 walkthrough's loose ends: `⚙ toolu_01VsyAkmt8QqNFMnbPNhP96g`, recorded then
+as "cosmetic, unreviewed, recorded here because it was seen".
+
+It was neither the model nor Hermes. ACP requires `title` on `tool_call` and makes every field except
+`toolCallId` optional on `tool_call_update` — "only the fields being changed need to be included" —
+so a tool reporting a status change legitimately sends no title. The renderer answered a missing
+title with the `toolCallId`, a line inherited verbatim from the prototype
+(`~/Code/circe/renderer.js:398`). The bubble therefore named the tool correctly while it ran and
+replaced that name with a raw id the moment it finished, which is why it was only ever seen after
+the fact.
+
+Worth noting for the class: the correct rule was already written down twelve lines away in the same
+file, on the re-theme path — "losing an update costs colours; applying a bad one costs identity". The
+tool bubble was applying a bad one. A rule stated once in a comment does not generalise itself to the
+next branch down.
+
+The decision now lives in `toolLabel.ts` so a test can reach it, the move `copy.ts` already made on
+the wizard side. Eight tests on a renderer file that previously had none, against the coverage hole
+two walkthroughs have flagged.
+
+**Verified against the real runtime** on the sandbox, on the scenario that produced it. Asked to read
+its own `SOUL.md`, the agent ran two tools; the bubble drew `⚙ terminal: hermes profile show default`
+and then `⚙ read: …/SOUL.md`, and still read `⚙ read:` once the turn was over. No `toolu_` in the
+transcript. The real `~/.hermes` was byte-identical before and after.
+
+Incidentally confirmed in the same run: the agent's own reply contained "I'll grab it — one sec".
+That is the em dash rule's boundary working as designed — the character's words are its own.
+
