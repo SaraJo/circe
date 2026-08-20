@@ -890,6 +890,57 @@ describe('the character gets a face', () => {
     expect(launchingCount).toBe(1);
   });
 
+  // The other half of the same interleaving. The re-launch was fixed; this was
+  // not. `accept()` reads `pendingAvatar` once, at the moment it runs, so a
+  // lookup still in flight leaves the face found, held, and never written, and
+  // the user gets initials permanently.
+  it('writes a face that arrives while the user is already accepting', async () => {
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
+    let release: (v: typeof found) => void = () => {};
+    const w = new Wizard(h, { ...avatar(), find: () => new Promise((r) => (release = r)) });
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    const accepting = w.accept();
+    release(found);
+    await accepting;
+    expect(await h.readHomeFileBytes('avatar.png')).toEqual(PNG);
+  });
+
+  // And the interleaving one step later, which is the one that bites: the
+  // lookup settles after `accept()` has already read `pendingAvatar` and
+  // finished. The profile exists and the user has committed to it, so
+  // constraint 9 is satisfied and there is nothing left to wait for. Search
+  // widened this window from one request to as many as eleven.
+  it('writes a face that arrives after the user has already accepted', async () => {
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
+    let release: (v: typeof found) => void = () => {};
+    const w = new Wizard(h, { ...avatar(), find: () => new Promise((r) => (release = r)) });
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    await w.accept();
+    expect(w.state.kind).toBe('launching');
+    release(found);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(await h.readHomeFileBytes('avatar.png')).toEqual(PNG);
+  });
+
+  // The guard the line above must not have loosened. Writing a late face is
+  // only safe because it cannot happen before the persona is on disk, and a
+  // user who declines never gets that far. Constraint 9: nothing reaches disk
+  // for a character the user has not accepted.
+  it('still writes nothing when a late face belongs to a declined character', async () => {
+    const h = new FakeHermes(scenario(INSTALLED_WITH_AGENTS));
+    let release: (v: typeof found) => void = () => {};
+    const w = new Wizard(h, { ...avatar(), find: () => new Promise((r) => (release = r)) });
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    expect(w.state.kind).toBe('claim-default');
+    w.declineClaimDefault();
+    release(found);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(h.bytes.size).toBe(0);
+  });
+
   // Every failure is silent, and onboarding must complete regardless.
   it('completes onboarding when the lookup finds nothing', async () => {
     const h = new FakeHermes(scenario(INSTALLED_EMPTY));

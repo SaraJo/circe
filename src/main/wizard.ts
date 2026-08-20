@@ -72,6 +72,13 @@ export class Wizard {
    * someone else" must leave nothing on disk.
    */
   private pendingAvatar: AvatarFind | null = null;
+  /**
+   * Set once the persona is on disk, which is the moment constraint 9 stops
+   * applying: the user has committed to this profile and it exists. A face
+   * that arrives after that can be written straight out instead of waiting
+   * for an `accept()` that has already been and gone.
+   */
+  private committed = false;
 
   constructor(
     private hermes: HermesRuntime,
@@ -218,6 +225,16 @@ export class Wizard {
         // screen.
         if (generation !== this.generation) return;
         this.pendingAvatar = found;
+        // `accept()` reads `pendingAvatar` once, as it runs. A lookup that
+        // settles after that used to leave the face found, held, and never
+        // written, and the user kept initials for good. The lookup can now
+        // cost as many as eleven requests where it used to cost one, so the
+        // window this loses faces in is no longer narrow. The tile picks the
+        // file up on the fleet's next sweep.
+        if (found && this.committed) {
+          void this.writeAvatar(found);
+          return;
+        }
         // Re-emitting is only meaningful on the two screens that display a
         // face. `generation` alone does not rule out `saving`/`launching`/
         // `write-failed`: accepting never bumps it, so a lookup that resolves
@@ -234,6 +251,20 @@ export class Wizard {
       .catch(() => {
         // Silent, per §10.7. There is nothing a user could do with this.
       });
+  }
+
+  /**
+   * The one place a face is written. Two copies of this would be two chances
+   * for the late path and the accept path to disagree about where a face goes.
+   * Swallowed because a profile with no face is a working profile (§10.7).
+   */
+  private async writeAvatar(find: AvatarFind): Promise<void> {
+    if (!this.avatar) return;
+    try {
+      await saveAvatar(this.hermes, 'default', find.bytes, find.contentType, this.avatar.toPng);
+    } catch (err) {
+      console.warn('Could not write the avatar for the new profile.', err);
+    }
   }
 
   /** The user accepted overwriting a persona they wrote. */
@@ -307,22 +338,11 @@ export class Wizard {
         contents: soul,
       });
       personaReplaced = { path: written.path, backedUpTo: written.backedUpTo };
+      this.committed = true;
       // After the persona, because a face without a persona is the worse of the
       // two half-written states, and swallowed because a profile with no face
       // is a working profile. §10.7: failure is silent.
-      if (this.pendingAvatar && this.avatar) {
-        try {
-          await saveAvatar(
-            this.hermes,
-            'default',
-            this.pendingAvatar.bytes,
-            this.pendingAvatar.contentType,
-            this.avatar.toPng,
-          );
-        } catch (err) {
-          console.warn('Could not write the avatar for the new profile.', err);
-        }
-      }
+      if (this.pendingAvatar) await this.writeAvatar(this.pendingAvatar);
       await installOrchestratorSkill(this.hermes, 'default');
     } catch (err) {
       // Nothing is launched: a tile in front of an agent with no persona is
