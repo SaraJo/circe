@@ -1,6 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import { FakeHermes, INSTALLED_EMPTY } from './fake/hermes';
-import { avatarPath, dataUrl, readAvatarDataUrl, saveAvatar } from '../src/main/avatarStore';
+import {
+  avatarPath,
+  avatarProvenancePath,
+  dataUrl,
+  readAvatarDataUrl,
+  readProvenance,
+  saveAvatar,
+} from '../src/main/avatarStore';
+import type { AvatarFind } from '../src/main/avatar';
+
+/**
+ * The store now takes what the lookup found, not loose bytes, so that the face
+ * and the record of where it came from cannot be written from two different
+ * places. This wraps bytes in the smallest such value a test needs.
+ */
+function find(bytes: Uint8Array, contentType: string) {
+  return {
+    bytes,
+    contentType,
+    source: 'wikipedia' as const,
+    title: 'Long John Silver',
+    articleUrl: 'https://en.wikipedia.org/wiki/Long_John_Silver',
+    imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/a/b/Silver.jpg',
+    license: 'commons' as const,
+  };
+}
 
 /** A PNG is identified by its 8-byte signature; these tests never need a real image. */
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
@@ -27,7 +52,7 @@ describe('avatarPath', () => {
 describe('saveAvatar', () => {
   it('writes the bytes into the profile', async () => {
     const h = new FakeHermes(INSTALLED_EMPTY);
-    const ok = await saveAvatar(h, 'default', PNG, 'image/png', toPng);
+    const ok = await saveAvatar(h, 'default', find(PNG, 'image/png'), toPng);
     expect(ok).toBe(true);
     expect(await h.readHomeFileBytes('avatar.png')).toEqual(PNG);
   });
@@ -37,7 +62,7 @@ describe('saveAvatar', () => {
   // is the kind of thing that works until something reads the extension.
   it('converts a non-PNG before writing', async () => {
     const h = new FakeHermes(INSTALLED_EMPTY);
-    await saveAvatar(h, 'default', JPEG, 'image/jpeg', toPng);
+    await saveAvatar(h, 'default', find(JPEG, 'image/jpeg'), toPng);
     const written = await h.readHomeFileBytes('avatar.png');
     expect(written!.slice(0, 8)).toEqual(PNG.slice(0, 8));
   });
@@ -46,7 +71,7 @@ describe('saveAvatar', () => {
   // it is a profile with no face, which renders initials.
   it('writes nothing and reports failure when conversion fails', async () => {
     const h = new FakeHermes(INSTALLED_EMPTY);
-    const ok = await saveAvatar(h, 'default', JPEG, 'image/jpeg', () => null);
+    const ok = await saveAvatar(h, 'default', find(JPEG, 'image/jpeg'), () => null);
     expect(ok).toBe(false);
     expect(await h.readHomeFileBytes('avatar.png')).toBeNull();
   });
@@ -61,7 +86,7 @@ describe('saveAvatar', () => {
       converted = true;
       return bytes;
     };
-    const ok = await saveAvatar(h, 'default', PNG, 'image/png; charset=binary', trackingToPng);
+    const ok = await saveAvatar(h, 'default', find(PNG, 'image/png; charset=binary'), trackingToPng);
     expect(ok).toBe(true);
     expect(converted).toBe(false);
     expect(await h.readHomeFileBytes('avatar.png')).toEqual(PNG);
@@ -73,7 +98,7 @@ describe('saveAvatar', () => {
     h.writeHomeFileBytes = async () => {
       throw new Error('disk full');
     };
-    const ok = await saveAvatar(h, 'default', PNG, 'image/png', toPng);
+    const ok = await saveAvatar(h, 'default', find(PNG, 'image/png'), toPng);
     expect(ok).toBe(false);
   });
 });
@@ -81,7 +106,7 @@ describe('saveAvatar', () => {
 describe('readAvatarDataUrl', () => {
   it('reads a stored face back as a data URL the renderer can use', async () => {
     const h = new FakeHermes(INSTALLED_EMPTY);
-    await saveAvatar(h, 'default', PNG, 'image/png', toPng);
+    await saveAvatar(h, 'default', find(PNG, 'image/png'), toPng);
     const url = await readAvatarDataUrl(h, 'default');
     expect(url).toMatch(/^data:image\/png;base64,/);
   });
@@ -96,5 +121,94 @@ describe('readAvatarDataUrl', () => {
 describe('dataUrl', () => {
   it('encodes bytes with their type', () => {
     expect(dataUrl(new Uint8Array([1, 2, 3]), 'image/png')).toBe('data:image/png;base64,AQID');
+  });
+});
+
+/** What the lookup hands the store, with only the fields provenance reads. */
+const FIND: AvatarFind = {
+  bytes: PNG,
+  contentType: 'image/png',
+  source: 'wikipedia',
+  title: 'Data (Star Trek)',
+  articleUrl: 'https://en.wikipedia.org/wiki/Data_(Star_Trek)',
+  imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/3/32/Data_ST.jpg',
+  license: 'commons',
+};
+
+describe('avatarProvenancePath', () => {
+  // Beside the image, in the profile, for the same reason the image is there:
+  // constraint 10 says a profile describes itself, and where a face came from
+  // is a fact about that profile and about nothing else.
+  it('sits beside the face it describes', () => {
+    expect(avatarProvenancePath('default')).toBe('avatar.json');
+    expect(avatarProvenancePath('killick')).toBe('profiles/killick/avatar.json');
+  });
+});
+
+describe('saveAvatar provenance', () => {
+  it('records where the face came from, beside the face', async () => {
+    const h = new FakeHermes(INSTALLED_EMPTY);
+    await saveAvatar(h, 'default', FIND, toPng);
+    const written = JSON.parse((await h.readHomeFile('avatar.json'))!);
+    expect(written).toMatchObject({
+      source: 'wikipedia',
+      title: 'Data (Star Trek)',
+      articleUrl: 'https://en.wikipedia.org/wiki/Data_(Star_Trek)',
+      imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/3/32/Data_ST.jpg',
+      license: 'commons',
+    });
+    expect(typeof written.retrievedAt).toBe('string');
+  });
+
+  // `unknown` is the honest record for a Fandom image, which carries no
+  // machine-readable licence at all. Writing nothing, or guessing, is what
+  // makes the licensing position unauditable.
+  it('records an unknown licence rather than omitting it', async () => {
+    const h = new FakeHermes(INSTALLED_EMPTY);
+    await saveAvatar(
+      h,
+      'default',
+      { ...FIND, source: 'fandom', license: 'unknown', articleUrl: 'https://lotr.fandom.com/wiki/Samwise_Gamgee' },
+      toPng,
+    );
+    const written = JSON.parse((await h.readHomeFile('avatar.json'))!);
+    expect(written.source).toBe('fandom');
+    expect(written.license).toBe('unknown');
+  });
+
+  // The two files are written by one call so they cannot disagree. A record
+  // describing a face that is not there is worse than no record: it is a claim
+  // about a file nobody can check.
+  it('writes no record when the image could not be written', async () => {
+    const h = new FakeHermes(INSTALLED_EMPTY);
+    const ok = await saveAvatar(h, 'default', { ...FIND, contentType: 'image/jpeg' }, () => null);
+    expect(ok).toBe(false);
+    expect(await h.readHomeFile('avatar.json')).toBeNull();
+  });
+
+  // Accepting a second character overwrites the face, so the record beside it
+  // has to move too, or it describes the previous agent.
+  it('replaces the record when the face is replaced', async () => {
+    const h = new FakeHermes(INSTALLED_EMPTY);
+    await saveAvatar(h, 'default', FIND, toPng);
+    await saveAvatar(h, 'default', { ...FIND, source: 'fandom', title: 'Kaywinnet Lee Frye', license: 'unknown' }, toPng);
+    const written = JSON.parse((await h.readHomeFile('avatar.json'))!);
+    expect(written.title).toBe('Kaywinnet Lee Frye');
+    expect(written.source).toBe('fandom');
+  });
+});
+
+describe('readProvenance', () => {
+  it('reads a record back', async () => {
+    const h = new FakeHermes(INSTALLED_EMPTY);
+    await saveAvatar(h, 'default', FIND, toPng);
+    expect((await readProvenance(h, 'default'))?.title).toBe('Data (Star Trek)');
+  });
+
+  it('is null for a profile with no face, and for an unreadable record', async () => {
+    const h = new FakeHermes(INSTALLED_EMPTY);
+    expect(await readProvenance(h, 'default')).toBeNull();
+    await h.writeHomeFile('avatar.json', 'not json');
+    expect(await readProvenance(h, 'default')).toBeNull();
   });
 });

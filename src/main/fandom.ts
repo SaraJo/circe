@@ -171,10 +171,11 @@ export async function findFandomAvatar(
     const title = wikiPageTitle(raw, page);
     return await fetchFace(
       {
-        source: renditionUrl(source),
+        imageUrl: renditionUrl(source),
         title,
         license: 'unknown',
         articleUrl: `https://${wiki}/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`,
+        source: 'fandom',
       },
       deps,
     );

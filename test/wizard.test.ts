@@ -725,7 +725,9 @@ describe('the character gets a face', () => {
   const found = {
     bytes: PNG,
     contentType: 'image/png',
+    source: 'wikipedia' as const,
     articleUrl: 'https://en.wikipedia.org/wiki/Trillian',
+    imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/a/b/Trillian.jpg',
     title: 'Trillian',
     license: 'commons' as const,
   };
@@ -1001,6 +1003,40 @@ describe('the character gets a face', () => {
     await w.start();
     await w.submitFandom("Hitchhiker's");
     expect(asked).toBe(0);
+  });
+
+  // The seam. `avatarStore` writes both files and its own tests prove it, but
+  // the guarantee that matters is that accepting a character leaves a face on
+  // disk with a record of where it came from beside it, and that crosses two
+  // modules. §10.7's licensing position is only auditable if this holds.
+  it('leaves a provenance record beside the face it accepted', async () => {
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
+    const w = new Wizard(h, { ...avatar(), find: async () => found });
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    await w.accept();
+    expect(await h.readHomeFileBytes('avatar.png')).toEqual(PNG);
+    const record = JSON.parse((await h.readHomeFile('avatar.json'))!);
+    expect(record).toMatchObject({
+      source: 'wikipedia',
+      title: 'Trillian',
+      articleUrl: 'https://en.wikipedia.org/wiki/Trillian',
+      license: 'commons',
+    });
+  });
+
+  // And on the late path too, which writes through the same function for
+  // exactly this reason.
+  it('records provenance for a face that arrived after acceptance', async () => {
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
+    let release: (v: typeof found) => void = () => {};
+    const w = new Wizard(h, { ...avatar(), find: () => new Promise((r) => (release = r)) });
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    await w.accept();
+    release(found);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(JSON.parse((await h.readHomeFile('avatar.json'))!).title).toBe('Trillian');
   });
 
   // Every failure is silent, and onboarding must complete regardless.

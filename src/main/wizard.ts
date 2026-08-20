@@ -274,7 +274,7 @@ export class Wizard {
   private async writeAvatar(find: AvatarFind): Promise<void> {
     if (!this.avatar) return;
     try {
-      await saveAvatar(this.hermes, 'default', find.bytes, find.contentType, this.avatar.toPng);
+      await saveAvatar(this.hermes, 'default', find, this.avatar.toPng);
     } catch (err) {
       console.warn('Could not write the avatar for the new profile.', err);
     }

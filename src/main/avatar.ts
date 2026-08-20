@@ -42,13 +42,28 @@ const MAX_BYTES = 3_000_000;
  */
 export type AvatarLicense = 'commons' | 'non-free' | 'unknown';
 
+export type AvatarSource = 'wikipedia' | 'fandom';
+
 export interface AvatarFind {
   bytes: Uint8Array;
   contentType: string;
+  /** Which source answered. Recorded rather than inferred from the licence. */
+  source: AvatarSource;
   /** The article the face came from, kept so attribution stays possible. */
   articleUrl: string;
+  /** The image itself, which is a different URL from the article's. */
+  imageUrl: string;
   title: string;
   license: AvatarLicense;
+}
+
+/** What the guardrails agree on before any bytes are fetched. */
+export interface TrustedFace {
+  imageUrl: string;
+  title: string;
+  license: AvatarLicense;
+  articleUrl: string;
+  source: AvatarSource;
 }
 
 export interface AvatarDeps {
@@ -212,10 +227,7 @@ export function licenseOf(thumbnailUrl: string): AvatarLicense | null {
 }
 
 /** Rules 1 to 4, read off a summary payload. Null means "do not trust this". */
-function trustSummary(
-  raw: unknown,
-  fandom: string,
-): { source: string; title: string; license: AvatarLicense; articleUrl: string } | null {
+function trustSummary(raw: unknown, fandom: string): TrustedFace | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const s = raw as Record<string, unknown>;
 
@@ -239,15 +251,18 @@ function trustSummary(
   const desktop = ((s.content_urls ?? {}) as Record<string, unknown>).desktop;
   const page = ((desktop ?? {}) as Record<string, unknown>).page;
 
-  return { source, title, license, articleUrl: typeof page === 'string' ? page : '' };
+  return {
+    imageUrl: source,
+    title,
+    license,
+    articleUrl: typeof page === 'string' ? page : '',
+    source: 'wikipedia',
+  };
 }
 
 /** Rule 5 and the size bound, applied to the bytes themselves. */
-export async function fetchFace(
-  trusted: { source: string; title: string; license: AvatarLicense; articleUrl: string },
-  deps: AvatarDeps,
-): Promise<AvatarFind | null> {
-  const { bytes, contentType } = await retrying(deps, () => deps.fetchImage(trusted.source));
+export async function fetchFace(trusted: TrustedFace, deps: AvatarDeps): Promise<AvatarFind | null> {
+  const { bytes, contentType } = await retrying(deps, () => deps.fetchImage(trusted.imageUrl));
   if (bytes.length === 0 || bytes.length > MAX_BYTES) return null;
   // Rule 5: the write path converts with Electron's `nativeImage`, which
   // decodes only PNG and JPEG. Accepting any `image/*` here would let a GIF
@@ -261,7 +276,9 @@ export async function fetchFace(
   return {
     bytes,
     contentType,
+    source: trusted.source,
     articleUrl: trusted.articleUrl,
+    imageUrl: trusted.imageUrl,
     title: trusted.title,
     license: trusted.license,
   };
