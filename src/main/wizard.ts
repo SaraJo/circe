@@ -7,7 +7,7 @@ import { loadTemplate, renderOrchestratorSoul } from './orchestrator/soulTemplat
 import { installOrchestratorSkill } from './orchestrator/skill';
 import { LAST_LAUNCH_PATH, serializeLastLaunch } from './startup';
 import { writeProfileTheme } from './profileTheme';
-import { findAvatar, type AvatarDeps, type AvatarFind } from './avatar';
+import { findAvatar, type AvatarDeps, type AvatarFind, type FindOptions } from './avatar';
 import { dataUrl, saveAvatar, type ToPng } from './avatarStore';
 
 /**
@@ -18,7 +18,12 @@ import { dataUrl, saveAvatar, type ToPng } from './avatarStore';
 export interface AvatarOptions {
   deps: AvatarDeps;
   toPng: ToPng;
-  find?: (name: string, fandom: string, deps: AvatarDeps) => Promise<AvatarFind | null>;
+  find?: (
+    name: string,
+    fandom: string,
+    deps: AvatarDeps,
+    opts?: FindOptions,
+  ) => Promise<AvatarFind | null>;
 }
 
 /**
@@ -206,7 +211,7 @@ export class Wizard {
     const avatar = this.avatar;
     if (!avatar) return;
     const find = avatar.find ?? findAvatar;
-    void find(character.name, character.fandom, avatar.deps)
+    void find(character.name, character.fandom, avatar.deps, { fullName: character.fullName })
       .then((found) => {
         // The same staleness rule the derivation itself uses. Without it a face
         // for a character the user has already replaced attaches to the one on

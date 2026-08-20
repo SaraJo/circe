@@ -22,6 +22,7 @@ import {
 
 const REPLY = JSON.stringify({
   name: 'Trillian',
+  fullName: 'Trillian Astra',
   tagline: 'the one who keeps the plot',
   palette: { bg: '#1e2952', border: '#c7d2fe', accent: '#a5b4fc' },
   why: 'She tracks what everyone else is doing.',
@@ -737,6 +738,25 @@ describe('the character gets a face', () => {
    * leave nothing behind. A face on disk for a character nobody accepted is a
    * write to a profile the user never asked Circe to touch.
    */
+  // The display name is what the meet screen shows; the full name is what
+  // Wikipedia can resolve. The wizard is the only place that holds both, so a
+  // wizard that forgets to pass it silently reverts the lookup to the 1-in-12
+  // behaviour the full name exists to fix, with every test below still green.
+  it('gives the lookup the full name as well as the display name', async () => {
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
+    const seen: Array<[string, string | undefined]> = [];
+    const w = new Wizard(h, {
+      ...avatar(),
+      find: async (name, _fandom, _deps, opts) => {
+        seen.push([name, opts?.fullName]);
+        return found;
+      },
+    });
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    expect(seen).toEqual([['Trillian', 'Trillian Astra']]);
+  });
+
   it('writes no face before the user accepts', async () => {
     const h = new FakeHermes(scenario(INSTALLED_EMPTY));
     const w = new Wizard(h, { ...avatar(), find: async () => found });
