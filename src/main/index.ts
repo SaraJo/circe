@@ -7,14 +7,17 @@ import { FleetWatch, tileableProfiles } from './fleet';
 import { openingMessage } from './orchestrator/opening';
 import { characterFor, readStartup } from './startup';
 import { TileRegistry } from './tiles';
+import { httpDeps } from './avatar';
 
 app.setName('Circe');
 
-// Wikimedia's API policy asks callers to identify themselves. `contentType` is
-// unused by `nativeImage`, which sniffs the bytes; it stays in the signature so
-// the store can shortcut a PNG without decoding it.
+// `contentType` is unused by `nativeImage`, which sniffs the bytes; it stays in
+// the signature so the store can shortcut a PNG without decoding it.
+
+// Wikimedia's API policy asks callers to identify themselves. It lives here and
+// not in `avatar.ts` because it names a host that is never contacted, and the
+// provenance test reads that file's hostnames as outbound destinations.
 const USER_AGENT = 'Circe/0.1 (https://github.com/sarachipps/circe-desktop)';
-const timeout = () => AbortSignal.timeout(8000);
 
 let wizardWin: BrowserWindow | null = null;
 let hermes: RealHermes;
@@ -68,21 +71,7 @@ function createRegistry(): TileRegistry {
 /** Creates the wizard and its window, and wires the one to the other. */
 function openWizard(): void {
   const w = new Wizard(hermes, {
-    deps: {
-      fetchJson: async (url) => {
-        const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: timeout() });
-        if (!res.ok) throw new Error(`summary ${res.status}`);
-        return res.json();
-      },
-      fetchImage: async (url) => {
-        const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: timeout() });
-        if (!res.ok) throw new Error(`image ${res.status}`);
-        return {
-          bytes: new Uint8Array(await res.arrayBuffer()),
-          contentType: res.headers.get('content-type') ?? '',
-        };
-      },
-    },
+    deps: httpDeps((url, init) => fetch(url, init), USER_AGENT),
     toPng: (bytes, contentType) => {
       const img = nativeImage.createFromBuffer(Buffer.from(bytes));
       return img.isEmpty() ? null : new Uint8Array(img.toPNG());

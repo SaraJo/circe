@@ -49,6 +49,59 @@ export interface AvatarFind {
 export interface AvatarDeps {
   fetchJson(url: string): Promise<unknown>;
   fetchImage(url: string): Promise<{ bytes: Uint8Array; contentType: string }>;
+  /** Injected so tests never spend real time on the backoff. */
+  sleep?(ms: number): Promise<void>;
+}
+
+/**
+ * A failed request that still knows what went wrong. The fetch layer throws
+ * this so the retry can tell a rate limit from a missing article without
+ * reading error messages.
+ */
+export class HttpError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'HttpError';
+  }
+
+  /**
+   * Rate limiting and server faults are transient; a 404 is the ordinary
+   * answer for a character with no article. Retrying a 404 would double the
+   * cost of every miss, and search has made misses the common case.
+   */
+  get retryable(): boolean {
+    return this.status === 429 || this.status >= 500;
+  }
+}
+
+/**
+ * Long enough to clear a burst limit, short enough to stay invisible behind a
+ * derivation that already costs 20 to 60 seconds.
+ */
+const RETRY_DELAY_MS = 400;
+
+const realSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * One retry, on the failures worth retrying.
+ *
+ * Wikipedia rate-limits anonymous callers, and this is not hypothetical: the
+ * probe that measured this feature was itself 429ed, and reported the
+ * throttling as twelve characters having no face. A user who hits the same
+ * limit gets initials and no way to tell why. Search made this likelier by
+ * turning one request per onboarding into several.
+ */
+async function retrying<T>(deps: AvatarDeps, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (err) {
+    if (!(err instanceof HttpError) || !err.retryable) throw err;
+    await (deps.sleep ?? realSleep)(RETRY_DELAY_MS);
+    return run();
+  }
 }
 
 /**
@@ -189,7 +242,7 @@ async function fetchFace(
   trusted: { source: string; title: string; license: AvatarLicense; articleUrl: string },
   deps: AvatarDeps,
 ): Promise<AvatarFind | null> {
-  const { bytes, contentType } = await deps.fetchImage(trusted.source);
+  const { bytes, contentType } = await retrying(deps, () => deps.fetchImage(trusted.source));
   if (bytes.length === 0 || bytes.length > MAX_BYTES) return null;
   // Rule 5: the write path converts with Electron's `nativeImage`, which
   // decodes only PNG and JPEG. Accepting any `image/*` here would let a GIF
@@ -221,7 +274,8 @@ async function tryTitle(
   names: string[] | null,
 ): Promise<AvatarFind | null> {
   try {
-    const raw = await deps.fetchJson(SUMMARY + encodeURIComponent(title.replace(/ /g, '_')));
+    const url = SUMMARY + encodeURIComponent(title.replace(/ /g, '_'));
+    const raw = await retrying(deps, () => deps.fetchJson(url));
     const trusted = trustSummary(raw, fandom);
     if (!trusted) return null;
     if (names) {
@@ -239,9 +293,8 @@ async function tryTitle(
 /** The titles search offers, in its own order, bounded before anything is fetched. */
 async function searchTitles(query: string, deps: AvatarDeps): Promise<string[]> {
   try {
-    const raw = await deps.fetchJson(
-      `${SEARCH}?q=${encodeURIComponent(query)}&limit=${MAX_CANDIDATES}`,
-    );
+    const url = `${SEARCH}?q=${encodeURIComponent(query)}&limit=${MAX_CANDIDATES}`;
+    const raw = await retrying(deps, () => deps.fetchJson(url));
     const pages = (raw as Record<string, unknown> | null)?.pages;
     if (!Array.isArray(pages)) return [];
     return pages
@@ -251,6 +304,49 @@ async function searchTitles(query: string, deps: AvatarDeps): Promise<string[]> 
   } catch {
     return [];
   }
+}
+
+/** A face is worth a few seconds and no more. */
+const REQUEST_TIMEOUT_MS = 8000;
+
+/**
+ * The real network deps, built here rather than at the call site so the error
+ * type crossing this boundary is covered by a test.
+ *
+ * `retrying` only recognises an `HttpError`. A fetch layer that threw a plain
+ * `Error` would leave every retry test green and the retry itself inert in
+ * production, which is precisely the between-two-modules defect this project
+ * has already shipped once.
+ */
+export function httpDeps(
+  fetchImpl: (url: string, init?: RequestInit) => Promise<Response>,
+  /**
+   * Wikimedia's API policy asks callers to identify themselves, and an
+   * unidentified caller is the first one rate-limited. Passed in rather than
+   * declared here because it carries a project URL, and the provenance test
+   * reads every hostname in this file as an outbound destination.
+   */
+  userAgent: string,
+): AvatarDeps {
+  const init = (): RequestInit => ({
+    headers: { 'User-Agent': userAgent },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  return {
+    async fetchJson(url) {
+      const res = await fetchImpl(url, init());
+      if (!res.ok) throw new HttpError(res.status, `summary ${res.status}`);
+      return res.json();
+    },
+    async fetchImage(url) {
+      const res = await fetchImpl(url, init());
+      if (!res.ok) throw new HttpError(res.status, `image ${res.status}`);
+      return {
+        bytes: new Uint8Array(await res.arrayBuffer()),
+        contentType: res.headers.get('content-type') ?? '',
+      };
+    },
+  };
 }
 
 export interface FindOptions {

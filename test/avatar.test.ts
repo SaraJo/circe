@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   fandomTokens,
   findAvatar,
+  httpDeps,
+  HttpError,
   licenseOf,
   looksLikeCharacter,
   mentionsFandom,
@@ -27,6 +29,8 @@ function deps(over: Partial<AvatarDeps> = {}): AvatarDeps {
   return {
     fetchJson: async () => summary(),
     fetchImage: async () => IMG,
+    // No test may spend real time on the retry backoff.
+    sleep: async () => {},
     ...over,
   };
 }
@@ -418,5 +422,150 @@ describe('findAvatar: the search fallback', () => {
     expect(await findAvatar('Kaylee', 'Firefly', a)).toBeNull();
     const { deps: b } = wiki({});
     expect(await findAvatar('Kaylee', 'Firefly', b)).toBeNull();
+  });
+});
+
+describe('HttpError', () => {
+  // Which failures are worth a second attempt, stated once so the retry and
+  // the fetch layer cannot disagree about it.
+  it('treats rate limiting and server faults as retryable', () => {
+    expect(new HttpError(429, 'x').retryable).toBe(true);
+    expect(new HttpError(500, 'x').retryable).toBe(true);
+    expect(new HttpError(503, 'x').retryable).toBe(true);
+  });
+
+  // A 404 is the ordinary answer for a character with no article. Retrying it
+  // doubles every miss, and search now makes misses the common case.
+  it('treats a missing article and a bad request as final', () => {
+    expect(new HttpError(404, 'x').retryable).toBe(false);
+    expect(new HttpError(400, 'x').retryable).toBe(false);
+  });
+});
+
+describe('findAvatar: retrying', () => {
+  // Wikipedia rate-limits anonymous callers, and this was not hypothetical:
+  // the probe that measured this feature was itself 429ed, and read the
+  // throttling as twelve characters having no face. A user hitting the same
+  // limit gets initials and no way to tell why.
+  it('retries a rate-limited summary once and succeeds', async () => {
+    let calls = 0;
+    const fetchJson = async () => {
+      calls += 1;
+      if (calls === 1) throw new HttpError(429, 'summary 429');
+      return summary();
+    };
+    expect(await findAvatar('X', 'Treasure Island', deps({ fetchJson }))).not.toBeNull();
+    expect(calls).toBe(2);
+  });
+
+  it('retries a server fault on the image too', async () => {
+    let calls = 0;
+    const fetchImage = async () => {
+      calls += 1;
+      if (calls === 1) throw new HttpError(503, 'image 503');
+      return IMG;
+    };
+    expect(await findAvatar('X', 'Treasure Island', deps({ fetchImage }))).not.toBeNull();
+    expect(calls).toBe(2);
+  });
+
+  // Once, not until it works. Onboarding is already 20 to 60 seconds and a
+  // face is worth none of it.
+  it('gives up after a single retry', async () => {
+    let calls = 0;
+    const fetchJson = async () => {
+      calls += 1;
+      throw new HttpError(429, 'summary 429');
+    };
+    expect(await findAvatar('X', 'Treasure Island', deps({ fetchJson }))).toBeNull();
+    // Two attempts on the full name, two on the search. The display name and
+    // the full name are the same string here, so it is looked up once.
+    expect(calls).toBe(4);
+  });
+
+  it('does not retry an article that simply is not there', async () => {
+    let calls = 0;
+    const fetchJson = async () => {
+      calls += 1;
+      throw new HttpError(404, 'summary 404');
+    };
+    await findAvatar('X', 'Treasure Island', deps({ fetchJson }));
+    expect(calls).toBe(2);
+  });
+
+  it('waits before trying again rather than hammering the limit', async () => {
+    const waits: number[] = [];
+    let calls = 0;
+    const fetchJson = async () => {
+      calls += 1;
+      if (calls === 1) throw new HttpError(429, 'summary 429');
+      return summary();
+    };
+    await findAvatar('X', 'Treasure Island', deps({ fetchJson, sleep: async (ms) => void waits.push(ms) }));
+    expect(waits).toEqual([expect.any(Number)]);
+    expect(waits[0]).toBeGreaterThan(0);
+  });
+});
+
+describe('httpDeps', () => {
+  /** Stands in for the platform `fetch`, with only the fields the deps read. */
+  function response(over: Partial<Response> & { body?: unknown } = {}): Response {
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'image/png' }),
+      json: async () => over.body ?? summary(),
+      arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+      ...over,
+    } as unknown as Response;
+  }
+
+  // The seam this whole feature dies at silently. `retrying` only ever sees an
+  // `HttpError`, so a fetch layer that throws a plain Error leaves every test
+  // above green and the retry doing nothing in production. This is the module
+  // boundary the last branch's worst defect lived in.
+  it('throws a typed, retryable error for a rate-limited summary', async () => {
+    const d = httpDeps(async () => response({ ok: false, status: 429 }), 'ua');
+    await expect(d.fetchJson('https://en.wikipedia.org/x')).rejects.toMatchObject({
+      status: 429,
+      retryable: true,
+    });
+  });
+
+  it('throws a typed, final error for a missing article', async () => {
+    const d = httpDeps(async () => response({ ok: false, status: 404 }), 'ua');
+    await expect(d.fetchJson('https://en.wikipedia.org/x')).rejects.toMatchObject({
+      status: 404,
+      retryable: false,
+    });
+  });
+
+  it('throws a typed error for a failed image too', async () => {
+    const d = httpDeps(async () => response({ ok: false, status: 503 }), 'ua');
+    await expect(d.fetchImage('https://upload.wikimedia.org/x.png')).rejects.toMatchObject({
+      status: 503,
+      retryable: true,
+    });
+  });
+
+  // Wikimedia's API policy asks callers to identify themselves, and an
+  // unidentified caller is the one that gets rate-limited first.
+  it('identifies the caller and bounds the request', async () => {
+    let seen: RequestInit | undefined;
+    const d = httpDeps(async (_url, init) => {
+      seen = init;
+      return response();
+    }, 'Circe/0.1 (test)');
+    await d.fetchJson('https://en.wikipedia.org/x');
+    expect((seen?.headers as Record<string, string>)['User-Agent']).toBe('Circe/0.1 (test)');
+    expect(seen?.signal).toBeDefined();
+  });
+
+  it('returns the bytes and the content type of an image', async () => {
+    const d = httpDeps(async () => response(), 'ua');
+    expect(await d.fetchImage('https://upload.wikimedia.org/x.png')).toEqual({
+      bytes: new Uint8Array([1, 2, 3]),
+      contentType: 'image/png',
+    });
   });
 });
