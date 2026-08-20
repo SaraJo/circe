@@ -97,7 +97,8 @@ describe('deriveCharacter', () => {
   });
 
   const FULL_REPLY = JSON.stringify({
-    name: 'Long John Silver',
+    name: 'Silver',
+    fullName: 'Long John Silver',
     tagline: 'the quartermaster who runs the crew',
     palette: { bg: '#1b2a1f', border: '#d8c9a3', accent: '#e0a458' },
     why: 'He keeps the crew pointed at one plan.',
@@ -105,6 +106,32 @@ describe('deriveCharacter', () => {
     intro: 'Long John Silver, quartermaster. Ye could do worse for a navigator.',
     greeting: 'Aye, friend — Long John Silver, at your service.',
     voiceCheck: "Do ye like bein' spoke to this way, or shall I drop the salt?",
+  });
+
+  // The lookup name, separate from the display name. Measured against the live
+  // endpoint, a short display name resolves to the character in 1 of 12 cases:
+  // "Tyrion" is a disambiguation page and "Willow" is a tree. The model already
+  // knows the full name, so asking for it costs nothing at runtime and is what
+  // the avatar lookup actually searches on.
+  it('carries the full name through, separate from the display name', async () => {
+    const h = new FakeHermes(withReply(FULL_REPLY));
+    const c = await deriveCharacter(h, 'pirates');
+    expect(c.name).toBe('Silver');
+    expect(c.fullName).toBe('Long John Silver');
+  });
+
+  // The display name is what every screen shows, so a model that omits the
+  // field must not leave the lookup searching for an empty string.
+  it('falls back to the display name when no full name comes back', async () => {
+    const h = new FakeHermes(withReply(GOOD_REPLY));
+    expect((await deriveCharacter(h, 'anything')).fullName).toBe('Trillian');
+  });
+
+  // The profile id follows the display name, not the full name: it is the
+  // directory the user sees in `hermes profile list`.
+  it('builds the profile id from the display name', async () => {
+    const h = new FakeHermes(withReply(FULL_REPLY));
+    expect((await deriveCharacter(h, 'pirates')).profileId).toBe('silver');
   });
 
   it('carries the voice, greeting and check through', async () => {

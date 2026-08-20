@@ -48,7 +48,8 @@ export function DERIVATION_PROMPT(fandom: string): string {
     '\\n\\n inside the string instead of pressing return.',
     '',
     '{',
-    '  "name": "<the character\'s name>",',
+    '  "name": "<the character\'s name as it should appear on screen, short>",',
+    '  "fullName": "<the same character\'s full name as an encyclopaedia would title it: Tyrion Lannister for a short name of Tyrion. Repeat the short name when there is no longer form>",',
     '  "tagline": "<four to eight words naming their role>",',
     '  "palette": { "bg": "<#rrggbb, dark tile background>", "border": "<#rrggbb, light tile border>", "accent": "<#rrggbb, bright, readable on bg>" },',
     '  "why": "<one sentence: why this character coordinates>",',
@@ -125,6 +126,10 @@ function optionalText(value: unknown, max: number): string {
 function validate(raw: unknown, fandom: string): Character {
   const o = raw as Record<string, unknown>;
   const name = typeof o.name === 'string' ? o.name.trim() : '';
+  // The lookup name. A model that omits it, or returns something unusable,
+  // leaves the avatar searching for an empty string, so the display name is
+  // the floor rather than an error: a worse lookup, never a failed derivation.
+  const fullName = typeof o.fullName === 'string' && o.fullName.trim() ? o.fullName.trim() : name;
   const tagline = typeof o.tagline === 'string' ? o.tagline.trim() : '';
   const why = typeof o.why === 'string' ? o.why.trim() : '';
   const p = (o.palette ?? {}) as Record<string, unknown>;
@@ -164,7 +169,19 @@ function validate(raw: unknown, fandom: string): Character {
   // the bound's test for the height arithmetic.
   const intro = voice ? optionalText(o.intro, 120) : '';
 
-  return { name, profileId, tagline, palette, why, fandom, voice, intro, greeting, voiceCheck };
+  return {
+    name,
+    fullName,
+    profileId,
+    tagline,
+    palette,
+    why,
+    fandom,
+    voice,
+    intro,
+    greeting,
+    voiceCheck,
+  };
 }
 
 export interface DeriveOptions {

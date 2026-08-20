@@ -110,6 +110,11 @@ export async function characterFor(
   const heading = soulText === null ? null : parseSoulHeading(soulText);
   return {
     name: heading?.name ?? profile.displayName,
+    // Rebuilt from disk, and nothing on disk records a full name: it exists
+    // only to give the avatar lookup something Wikipedia can resolve, and the
+    // lookup runs once, during onboarding. A restored character never looks
+    // one up, so the display name is the whole truth here.
+    fullName: heading?.name ?? profile.displayName,
     tagline: heading?.tagline ?? '',
     profileId: profile.id,
     palette: await readProfilePalette(hermes, profile.id),

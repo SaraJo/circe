@@ -12,6 +12,13 @@ export interface Palette {
 export interface Character {
   /** Display name, e.g. `Trillian`. */
   name: string;
+  /**
+   * The character's full name as the wider world writes it, e.g. `Trillian
+   * Astra` for a display name of `Trillian`. Used only by the avatar lookup,
+   * which needs a name Wikipedia can resolve; every screen shows `name`.
+   * Falls back to `name` when the model gives nothing better.
+   */
+  fullName: string;
   /** Hermes on-disk profile id: lowercase, `[a-z0-9-]`, <= 32 chars. */
   profileId: string;
   /** Four to eight words, e.g. `the one who keeps the plot`. */
