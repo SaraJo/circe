@@ -991,3 +991,143 @@ it is a design change, not a defect, and it was found after the plan was approve
   that does not exist. Low impact — real usage is one lookup per onboarding — but the design and the
   code disagree.
 
+
+## The face lookup actually finds faces (2026-08-20)
+
+Branch `avatar-lookup-recall`, four commits, 511 tests. This closes the first and third of
+the three items the avatar-sourcing entry left open for the product owner, and one it did not
+know it was leaving.
+
+### The measured baseline was wrong, and wrong in the direction that hides the problem
+
+The avatar-sourcing design probed thirteen characters and found thumbnails for nine. That probe
+typed the names by hand: "Hermione Granger", "Tyrion Lannister". Derivation does not produce
+those names. It produces "Hermione" and "Tyrion", and re-running the same guardrails over
+realistic derived names across twelve fandoms finds **one** face, not nine.
+
+So the feature shipped believing it worked three quarters of the time while working roughly
+one time in twelve. The previous entry already suspected the hit rate was "lower than the design
+measured" and named the cause correctly; what it did not do was re-measure, and the gap between
+"lower" and "1 in 12" is the difference between a rough edge and a feature that does not work.
+
+**Worth keeping as a class:** a probe that supplies its own inputs measures the probe. The
+inputs have to come from the thing that will really supply them.
+
+### The follow-up the last entry proposed does not work
+
+That entry recommended "a second attempt at `<name> (<fandom>)` on a miss, which would likely
+recover much of the gap", and offered `Data (Star Trek)` as the evidence. Checked against the
+live endpoint, `Data (Star Trek: The Next Generation)` is not an article and returns an error.
+The real title is `Data (Star Trek)`, and the only reason the entry could name it is that a
+human had already found it by hand. The rule that would have had to produce it does not exist,
+because Wikipedia's disambiguator is not the fandom string and nothing derives one from the
+other.
+
+A recommendation written from a worked example, where the example was worked by a person, and
+the rule was never stated. It looked like a plan and was a wish.
+
+### Search finds the character, and cannot be trusted with the rules that exist
+
+Searching `en.wikipedia.org` for `"<name> <fandom>"` does find `Data (Star Trek)` and
+`Trillian (character)` at the top, which is the class of article no name reaches, since
+Wikipedia disambiguates most fictional characters.
+
+It also answers a question nobody asked. Rules 1 to 5 were written for a lookup by exact name,
+where the only question was whether the article was trustworthy. They pass the show, the film,
+the episode and the actor, because all four are standard articles that carry a free image and
+mention the fandom, and rule 4 asks for nothing more. Measured over the same twelve fandoms,
+search behind the existing rules takes a **wrong face in eight of them**:
+
+- "Kaylee Frye Firefly" returns `Firefly (TV series)` and, one place later, **Jewel Staite**.
+- "Samwise Gamgee Lord of the Rings" returns **Sean Astin**.
+- "Willow Buffy the Vampire Slayer" returns `Oz (Buffy the Vampire Slayer)` — the right show,
+  the wrong character.
+- "Mrs. Hudson Sherlock Holmes" returns a photograph of 221B Baker Street.
+
+Two of those are photographs of living people, which would have been written into the user's
+profile and presented as their coordinator. The module's founding asymmetry, that a wrong face
+is worse than no face, is not a slogan here: search without new rules is a feature that
+confidently assigns strangers' faces to two thirds of its users.
+
+### Two rules, and both are load-bearing
+
+**Rule 6 reads the title.** Strip a trailing disambiguator, and what remains must be a name we
+asked for or extend it on a word boundary. This is what separates the character from the show
+and from the actor, and it is a title check rather than a prose check because prose about
+Firefly legitimately mentions Firefly.
+
+**Rule 7 reads the article's own description.** Rule 6 cannot reach `Janet(s)`, the tenth
+episode of The Good Place season 3, whose title honestly is the character's name plus a
+parenthetical. Its description, "10th episode of the 3rd season", is the only thing that gives
+it away.
+
+Neither applies to the two direct lookups. Applied there, rule 6 rejects "Vimes" reaching
+`Sam Vimes` by redirect, which is a case that works today. The rules exist to judge an article
+nobody asked for by name, and the direct path asked for it by name.
+
+Over the twelve: **1 face before, 7 after, no wrong faces.** The five that still miss are
+characters with no article of their own (Cher Horowitz and Kaylee Frye both redirect to a
+character list, Janet is a disambiguation page) or with an article carrying no free image
+(Mrs. Hudson, Samwise Gamgee). Nothing recovers those, and every near miss for them is one of
+the hazards above, so ending in initials is the design working.
+
+### The retry was in the design, absent from the code, and demonstrated by accident
+
+The avatar-sourcing design specified a single retry on 429/5xx and its test list named a test
+for it. Neither was built, and the previous entry recorded the disagreement as low impact
+because real usage was one lookup per onboarding.
+
+Search changes that: a miss now costs several requests, and misses run at 7 of 12. The
+demonstration came free — **the probe that produced every number above was itself 429ed by
+Wikipedia, and reported the throttling as twelve characters having no face.** The tool measuring
+the failure mode reproduced it. A user who hits the same limit gets initials, silently, exactly
+as §10.7 requires and exactly as invisibly.
+
+A 404 is deliberately not retried: it is the ordinary answer for a character with no article,
+and retrying it would double the cost of every miss.
+
+### The seam, again
+
+`retrying` only recognises an `HttpError`. The real fetch layer lived in `index.ts` and threw a
+plain `Error`, which would have left every retry test green and the retry inert in production —
+the same shape as the defect the last branch's whole-branch review caught between two tasks that
+had each passed their own review. Building the real deps as `httpDeps` in `avatar.ts` puts the
+error type under test.
+
+The user agent stays in `index.ts`, because it carries a project URL and the provenance test
+reads every hostname in `avatar.ts` as an outbound destination. That test was written to be
+blunt on purpose and it caught this on the first run; the right move was to move the string, not
+to teach the guard about exceptions.
+
+### And the half of a known bug that was never fixed
+
+`accept()` reads `pendingAvatar` once, as it runs. A lookup still in flight when it passed left
+the face found, held in memory, and never written. The last entry described this exact
+interleaving and fixed the half that double-launched the tile; the half that silently dropped
+the face was described and left.
+
+It was survivable at one request per lookup. At up to eleven, each with an eight second ceiling,
+it would have quietly undone the entire point of this branch, because a face found and then
+dropped is indistinguishable from a face never found — including in any measurement we would
+have taken afterwards.
+
+`committed` marks the moment the persona reaches disk, which is exactly when constraint 9 stops
+applying. Both write paths now go through one `writeAvatar`: two copies of that procedure are
+two chances for the late path and the accept path to disagree about where a face goes, which is
+the same lesson as the SOUL template carrying its own stale copy of a skill's procedure.
+
+### Verified against the live endpoint, through this code
+
+Ten fandoms, the real `findAvatar` and the real `httpDeps` against live Wikipedia: six faces,
+four initials, **every single result the one predicted**, no wrong faces. `Data (Star Trek)`,
+`Hermione Granger`, `Tyrion Lannister`, `Trillian (character)`, `Sam Vimes`, `Willow Rosenberg`;
+initials for Kaylee, Janet, Cher Horowitz and Samwise.
+
+### Still open
+
+- **The `claim-default` screen still shows no face.** Untouched by this branch, and still the
+  one display site the design names that does not display.
+- **The tile header's layout** still wants an eye: avatar hard left, name hard right, 22px.
+- **Hit rate above 7 in 12 needs a different source.** The remaining misses are Wikipedia not
+  having the material, not the lookup failing to find it. A character-wiki source would be a
+  new outbound host and a constraint 4 decision, not an implementation one.
