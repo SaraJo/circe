@@ -31,23 +31,67 @@ function el(html: string): HTMLElement {
   return wrap.firstElementChild as HTMLElement;
 }
 
-function renderCharacter(c: Character): HTMLElement {
+/**
+ * How a character is presented, which differs between the two screens that
+ * present one and nothing else does.
+ *
+ * `claim-default` used to render no character at all: a returning user
+ * confirmed replacing their agent with a name in a sentence, and was then given
+ * a face they had never seen. Rather than invent a second, lesser way of
+ * showing a character, both screens render this card. There is one presentation
+ * and it cannot drift, and the late-arriving face already targets
+ * `.screen.character .avatar`, so it reaches both without a second selector.
+ */
+interface CharacterCard {
+  /** A heading above the card, used where the screen is about a decision. */
+  title?: string;
+  lead: string;
+  /**
+   * `h1` where the character's name is the page's heading, `h2` where the
+   * title above it is. Exactly one `h1` per screen either way.
+   */
+  nameTag: 'h1' | 'h2';
+  primary: { label: string; onClick: () => void };
+  secondary: { label: string; onClick: () => void };
+  /**
+   * Circe's third-person sentence about why this character coordinates. Shown
+   * on `meet`, dropped on `claim-default`, and the reason is arithmetic rather
+   * than taste: that screen also carries a heading and a four line replacement
+   * warning, and the window is a fixed 640x560. With everything on it the
+   * content ran to 659px and put the primary action 67px below the fold, which
+   * is the same defect class as the 624px-in-a-520px window this project has
+   * already shipped once. The face, the name, the tagline and the character's
+   * own line all survive; the paragraph explaining the choice is the one thing
+   * a user deciding whether to *replace* an agent needs least.
+   */
+  showWhy: boolean;
+}
+
+function renderCharacter(c: Character, card: CharacterCard): HTMLElement {
   const node = el(`
     <section class="screen character">
-      <p class="lead">${COPY.meet.lead}</p>
+      ${card.title ? '<h1 class="claim"></h1>' : ''}
+      <p class="lead"></p>
       <div class="preview">
         <div class="avatar"></div>
-        <h1></h1>
+        <${card.nameTag}></${card.nameTag}>
         <p class="tagline"></p>
       </div>
       <p class="intro"></p>
       <p class="why"></p>
       <div class="actions">
         <button class="primary" id="accept"></button>
-        <button class="quiet" id="another">${COPY.meet.another}</button>
+        <button class="quiet" id="another"></button>
       </div>
     </section>
   `);
+  if (card.title) {
+    node.querySelector('h1.claim')!.textContent = card.title;
+    // The tighter vertical rhythm this screen needs to keep its primary action
+    // above the fold. See `.screen.character.claiming` in wizard.css.
+    node.classList.add('claiming');
+  }
+  node.querySelector('.lead')!.textContent = card.lead;
   // The character's own colours arrive with the character: a subtle wash
   // behind this one screen (§7), softened by color-mix in wizard.css so it
   // reads as a wash rather than a full-bleed colour field standing in front
@@ -63,7 +107,7 @@ function renderCharacter(c: Character): HTMLElement {
   avatar.style.background = c.palette.bg;
   avatar.style.borderColor = c.palette.border;
   avatar.style.color = c.palette.accent;
-  node.querySelector('h1')!.textContent = c.name;
+  node.querySelector(`.preview ${card.nameTag}`)!.textContent = c.name;
   node.querySelector('.tagline')!.textContent = c.tagline;
   // The one line on this screen the character says itself. Everything else
   // here is Circe describing them in the third person, which reads identically
@@ -78,10 +122,15 @@ function renderCharacter(c: Character): HTMLElement {
   const intro = node.querySelector<HTMLElement>('.intro')!;
   if (c.intro) intro.textContent = c.intro;
   else intro.remove();
-  node.querySelector('.why')!.textContent = c.why;
-  node.querySelector('#accept')!.textContent = fill(COPY.meet.action, { NAME: c.name });
-  node.querySelector('#accept')!.addEventListener('click', () => window.circe.accept());
-  node.querySelector('#another')!.addEventListener('click', () => window.circe.retry());
+  const why = node.querySelector<HTMLElement>('.why')!;
+  if (card.showWhy) why.textContent = c.why;
+  else why.remove();
+  const primary = node.querySelector('#accept')!;
+  primary.textContent = card.primary.label;
+  primary.addEventListener('click', card.primary.onClick);
+  const secondary = node.querySelector('#another')!;
+  secondary.textContent = card.secondary.label;
+  secondary.addEventListener('click', card.secondary.onClick);
   return node;
 }
 
@@ -231,28 +280,45 @@ function render(step: WizardStep): void {
     }
 
     case 'claim-default': {
-      const node = el(`
-        <section class="screen">
-          <h1>${COPY.claimDefault.title}</h1>
-          <p class="lead"></p>
-          <div class="actions">
-            <button class="primary" id="confirm">${COPY.claimDefault.action}</button>
-            <button class="quiet" id="decline">${COPY.claimDefault.decline}</button>
-          </div>
-        </section>
-      `);
-      node.querySelector('.lead')!.textContent = fill(COPY.claimDefault.lead, {
-        EXISTING: step.existingName,
-        NAME: step.character.name,
-      });
-      node.querySelector('#confirm')!.addEventListener('click', () => window.circe.confirmClaim());
-      node.querySelector('#decline')!.addEventListener('click', () => window.circe.declineClaim());
-      screenEl.append(node);
+      // The same card the meet screen shows. This screen asks a returning user
+      // to give up the agent they have; it should at least show them the one
+      // they are being offered, including the face that is about to be written
+      // into their profile.
+      screenEl.append(
+        renderCharacter(step.character, {
+          title: COPY.claimDefault.title,
+          lead: fill(COPY.claimDefault.lead, {
+            EXISTING: step.existingName,
+            NAME: step.character.name,
+          }),
+          nameTag: 'h2',
+          showWhy: false,
+          primary: {
+            label: COPY.claimDefault.action,
+            onClick: () => window.circe.confirmClaim(),
+          },
+          secondary: {
+            label: COPY.claimDefault.decline,
+            onClick: () => window.circe.declineClaim(),
+          },
+        }),
+      );
       break;
     }
 
     case 'meet':
-      screenEl.append(renderCharacter(step.character));
+      screenEl.append(
+        renderCharacter(step.character, {
+          lead: COPY.meet.lead,
+          nameTag: 'h1',
+          showWhy: true,
+          primary: {
+            label: fill(COPY.meet.action, { NAME: step.character.name }),
+            onClick: () => window.circe.accept(),
+          },
+          secondary: { label: COPY.meet.another, onClick: () => window.circe.retry() },
+        }),
+      );
       break;
 
     case 'saving': {

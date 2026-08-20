@@ -126,8 +126,23 @@ button:active { transform: translateY(1px); }
 .link:hover { color: var(--ink); }
 .link:active { transform: none; }
 
+/*
+ * The claim screen carries a heading and a four line replacement warning that
+ * the meet screen does not, inside the same fixed 640x560 window. Measured in
+ * the running app with the longest realistic lead and a maximum-length intro,
+ * the shared rhythm put the primary action 14px below the fold, so this screen
+ * keeps a tighter one. Verified by measurement rather than by eye: the button
+ * being visible in one screenshot is not the same as it being reachable for
+ * every character a derivation can return.
+ */
+.screen.character.claiming { padding-top: 28px; gap: 13px; }
+
 .preview { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 12px 0 4px; text-align: center; }
-.preview h1 { font-size: 26px; }
+.preview h1,
+/* The claim-default screen carries its own `h1` (the decision it is asking
+   about), so the character's name is an `h2` there and an `h1` on the meet
+   screen. One `h1` per screen, one appearance for the name. */
+.preview h2 { font-size: 26px; }
 .avatar {
   width: 84px; height: 84px; border-radius: 50%;
   border: 2px solid; display: grid; place-items: center;
