@@ -5,6 +5,8 @@ import type { Character } from '../src/shared/types';
 const TRILLIAN: Character = {
   name: 'Trillian',
   fullName: 'Trillian',
+  wiki: '',
+  wikiPage: 'Trillian',
   profileId: 'trillian',
   tagline: 'the one who keeps the plot',
   palette: { bg: '#1e2952', border: '#c7d2fe', accent: '#a5b4fc' },
@@ -121,6 +123,8 @@ describe('openingMessage', () => {
       ...TRILLIAN,
       name: 'Marvin <b>the Paranoid Android</b>',
       fullName: 'Marvin <b>the Paranoid Android</b>',
+      wiki: '',
+      wikiPage: 'Marvin <b>the Paranoid Android</b>',
       fandom: 'The <script>Hitchhiker\'s</script> Guide',
     };
     const message = openingMessage(withMarkup);
@@ -131,6 +135,8 @@ describe('openingMessage', () => {
   const SILVER: Character = {
     name: 'Long John Silver',
     fullName: 'Long John Silver',
+    wiki: '',
+    wikiPage: 'Long John Silver',
     profileId: 'long-john-silver',
     tagline: 'the quartermaster who runs the crew',
     palette: { bg: '#1b2a1f', border: '#d8c9a3', accent: '#e0a458' },

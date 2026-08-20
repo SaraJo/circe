@@ -115,6 +115,10 @@ export async function characterFor(
     // lookup runs once, during onboarding. A restored character never looks
     // one up, so the display name is the whole truth here.
     fullName: heading?.name ?? profile.displayName,
+    // Same reasoning as `fullName`: the lookup runs once, during onboarding,
+    // and nothing on disk records where the face came from.
+    wiki: '',
+    wikiPage: heading?.name ?? profile.displayName,
     tagline: heading?.tagline ?? '',
     profileId: profile.id,
     palette: await readProfilePalette(hermes, profile.id),

@@ -52,4 +52,29 @@ describe('avatar provenance (spec §10.7)', () => {
     const hosts = [...src.matchAll(/\b(?:[a-z0-9-]+\.)+(?:org|com|net|io)\b/g)].map((m) => m[0]);
     expect([...new Set(hosts)].sort()).toEqual(['en.wikipedia.org', 'upload.wikimedia.org']);
   });
+
+  // The second source, added once Wikipedia was measured at 7 of 12 and shown
+  // not to carry the rest. Constraint 4 now permits two more destinations, and
+  // this states exactly which: any Fandom wiki, because the wiki is named per
+  // character and cannot be enumerated here, and the single host every Fandom
+  // wiki serves its images from.
+  it('names only fandom wikis and their image host in the second source', async () => {
+    const src = await readFile(join(ROOT, 'src/main/fandom.ts'), 'utf8');
+    const hosts = [...src.matchAll(/\b(?:[a-z0-9-]+\.)+(?:org|com|net|io)\b/g)].map((m) => m[0]);
+    const strays = [...new Set(hosts)].filter(
+      (h) => h !== 'static.wikia.nocookie.net' && !/^[a-z0-9-]+\.fandom\.com$/.test(h),
+    );
+    expect(strays).toEqual([]);
+  });
+
+  // The wiki host is the one value in a model's reply that chooses where Circe
+  // connects to. The validator that bounds it is the whole defence, so its
+  // anchors are pinned here rather than left to be loosened by a later edit
+  // that only means to be permissive.
+  it('bounds the model-supplied wiki host at both ends', async () => {
+    for (const file of ['src/main/derive.ts', 'src/main/fandom.ts']) {
+      const src = await readFile(join(ROOT, file), 'utf8');
+      expect(src, file).toMatch(/\/\^\[a-z0-9-\]\+\\\.fandom\\\.com\$\//);
+    }
+  });
 });

@@ -23,6 +23,8 @@ import {
 const REPLY = JSON.stringify({
   name: 'Trillian',
   fullName: 'Trillian Astra',
+  wiki: 'hitchhikers.fandom.com',
+  wikiPage: 'Trillian Astra',
   tagline: 'the one who keeps the plot',
   palette: { bg: '#1e2952', border: '#c7d2fe', accent: '#a5b4fc' },
   why: 'She tracks what everyone else is doing.',
@@ -939,6 +941,66 @@ describe('the character gets a face', () => {
     release(found);
     await new Promise((r) => setTimeout(r, 0));
     expect(h.bytes.size).toBe(0);
+  });
+
+  // Wikipedia first, Fandom for the tail. Wikipedia is the only source that
+  // says anything about an image's licence, so it keeps first refusal; Fandom
+  // has the five characters in twelve that Wikipedia simply does not carry.
+  it('falls back to the fandom wiki when Wikipedia has nothing', async () => {
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
+    const asked: Array<[string, string]> = [];
+    const w = new Wizard(h, {
+      ...avatar(),
+      find: async () => null,
+      findFandom: async (wiki, page) => {
+        asked.push([wiki, page]);
+        return found;
+      },
+    });
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    expect(asked).toEqual([['hitchhikers.fandom.com', 'Trillian Astra']]);
+    // One tick more than the Wikipedia-only path: the fallback is a second
+    // await, so the face lands a microtask later than the tests above expect it.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(w.avatarDataUrl()).toMatch(/^data:image\/png;base64,/);
+  });
+
+  it('does not ask the wiki when Wikipedia already found a face', async () => {
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
+    let asked = 0;
+    const w = new Wizard(h, {
+      ...avatar(),
+      find: async () => found,
+      findFandom: async () => {
+        asked += 1;
+        return found;
+      },
+    });
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    expect(asked).toBe(0);
+  });
+
+  // A model that named no wiki, or named one that was rejected as a host, must
+  // not send Circe to `https:///api.php`.
+  it('does not ask the wiki when the derivation named none', async () => {
+    const h = new FakeHermes({
+      ...INSTALLED_EMPTY,
+      replies: [{ match: 'coordinator', reply: JSON.stringify({ ...JSON.parse(REPLY), wiki: '' }) }],
+    });
+    let asked = 0;
+    const w = new Wizard(h, {
+      ...avatar(),
+      find: async () => null,
+      findFandom: async () => {
+        asked += 1;
+        return found;
+      },
+    });
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    expect(asked).toBe(0);
   });
 
   // Every failure is silent, and onboarding must complete regardless.

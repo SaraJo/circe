@@ -8,6 +8,8 @@ import type { Character } from '../src/shared/types';
 const TRILLIAN: Character = {
   name: 'Trillian',
   fullName: 'Trillian',
+  wiki: '',
+  wikiPage: 'Trillian',
   profileId: 'trillian',
   tagline: 'the one who keeps the plot',
   palette: { bg: '#1e2952', border: '#c7d2fe', accent: '#a5b4fc' },
@@ -190,6 +192,8 @@ describe('renderOrchestratorSoul', () => {
       ...TRILLIAN,
       name: 'Trillian $&',
       fullName: 'Trillian $&',
+      wiki: '',
+      wikiPage: 'Trillian $&',
       tagline: "the one who keeps $` the plot $'",
     };
     const rendered = renderOrchestratorSoul(dollarCharacter, '{{NAME}} — {{TAGLINE}}');

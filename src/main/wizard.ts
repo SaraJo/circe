@@ -8,6 +8,7 @@ import { installOrchestratorSkill } from './orchestrator/skill';
 import { LAST_LAUNCH_PATH, serializeLastLaunch } from './startup';
 import { writeProfileTheme } from './profileTheme';
 import { findAvatar, type AvatarDeps, type AvatarFind, type FindOptions } from './avatar';
+import { findFandomAvatar } from './fandom';
 import { dataUrl, saveAvatar, type ToPng } from './avatarStore';
 
 /**
@@ -24,6 +25,7 @@ export interface AvatarOptions {
     deps: AvatarDeps,
     opts?: FindOptions,
   ) => Promise<AvatarFind | null>;
+  findFandom?: (wiki: string, page: string, deps: AvatarDeps) => Promise<AvatarFind | null>;
 }
 
 /**
@@ -218,7 +220,18 @@ export class Wizard {
     const avatar = this.avatar;
     if (!avatar) return;
     const find = avatar.find ?? findAvatar;
-    void find(character.name, character.fandom, avatar.deps, { fullName: character.fullName })
+    const findFandom = avatar.findFandom ?? findFandomAvatar;
+    // Wikipedia first: it is the only source that says anything about an
+    // image's licence, so it keeps first refusal. Fandom carries the tail it
+    // does not have, and is asked only when the first source came back empty.
+    const lookUp = async (): Promise<AvatarFind | null> => {
+      const first = await find(character.name, character.fandom, avatar.deps, {
+        fullName: character.fullName,
+      });
+      if (first || !character.wiki) return first;
+      return findFandom(character.wiki, character.wikiPage, avatar.deps);
+    };
+    void lookUp()
       .then((found) => {
         // The same staleness rule the derivation itself uses. Without it a face
         // for a character the user has already replaced attaches to the one on

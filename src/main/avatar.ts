@@ -35,7 +35,12 @@ const IMAGE_HOST = 'upload.wikimedia.org';
 /** A thumbnail is a thumbnail. Anything larger is not what we asked for. */
 const MAX_BYTES = 3_000_000;
 
-export type AvatarLicense = 'commons' | 'non-free';
+/**
+ * `unknown` is the honest answer for a Fandom image: unlike Wikipedia, whose
+ * URL path distinguishes Commons from non-free, Fandom exposes no
+ * machine-readable licence at all. Recorded rather than guessed.
+ */
+export type AvatarLicense = 'commons' | 'non-free' | 'unknown';
 
 export interface AvatarFind {
   bytes: Uint8Array;
@@ -94,7 +99,7 @@ const realSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r
  * limit gets initials and no way to tell why. Search made this likelier by
  * turning one request per onboarding into several.
  */
-async function retrying<T>(deps: AvatarDeps, run: () => Promise<T>): Promise<T> {
+export async function retrying<T>(deps: AvatarDeps, run: () => Promise<T>): Promise<T> {
   try {
     return await run();
   } catch (err) {
@@ -238,7 +243,7 @@ function trustSummary(
 }
 
 /** Rule 5 and the size bound, applied to the bytes themselves. */
-async function fetchFace(
+export async function fetchFace(
   trusted: { source: string; title: string; license: AvatarLicense; articleUrl: string },
   deps: AvatarDeps,
 ): Promise<AvatarFind | null> {

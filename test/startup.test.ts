@@ -70,6 +70,8 @@ describe('characterFor', () => {
     expect(await characterFor(hermes, profile())).toEqual({
       name: 'Trillian',
       fullName: 'Trillian',
+      wiki: '',
+      wikiPage: 'Trillian',
       tagline: 'the one who keeps the plot',
       profileId: 'default',
       palette: PALETTE,

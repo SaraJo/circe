@@ -99,6 +99,8 @@ describe('deriveCharacter', () => {
   const FULL_REPLY = JSON.stringify({
     name: 'Silver',
     fullName: 'Long John Silver',
+    wiki: 'treasureisland.fandom.com',
+    wikiPage: 'Long John Silver',
     tagline: 'the quartermaster who runs the crew',
     palette: { bg: '#1b2a1f', border: '#d8c9a3', accent: '#e0a458' },
     why: 'He keeps the crew pointed at one plan.',
@@ -132,6 +134,47 @@ describe('deriveCharacter', () => {
   it('builds the profile id from the display name', async () => {
     const h = new FakeHermes(withReply(FULL_REPLY));
     expect((await deriveCharacter(h, 'pirates')).profileId).toBe('silver');
+  });
+
+  // The second source. Nothing derives "lotr.fandom.com" from "The Lord of the
+  // Rings" or "bakerstreet.fandom.com" from "Sherlock Holmes", and the model
+  // knows both, which is the same reason it is asked for the full name.
+  it('carries the wiki and the page the character lives on', async () => {
+    const h = new FakeHermes(withReply(FULL_REPLY));
+    const c = await deriveCharacter(h, 'pirates');
+    expect(c.wiki).toBe('treasureisland.fandom.com');
+    expect(c.wikiPage).toBe('Long John Silver');
+  });
+
+  // The model is naming a host that Circe will then make a request to. Anything
+  // that is not a Fandom wiki is dropped rather than trusted, because the reply
+  // is model output and this field is the one field in it that chooses an
+  // outbound destination.
+  it('refuses a wiki host that is not a fandom.com subdomain', async () => {
+    for (const wiki of [
+      'evil.example.com',
+      'fandom.com.evil.net',
+      'http://lotr.fandom.com',
+      'lotr.fandom.com/../../etc',
+      'LOTR.FANDOM.COM/path',
+    ]) {
+      const reply = JSON.stringify({ ...JSON.parse(FULL_REPLY), wiki });
+      const c = await deriveCharacter(new FakeHermes(withReply(reply)), 'pirates');
+      expect(c.wiki, wiki).toBe('');
+    }
+  });
+
+  it('accepts a plain fandom subdomain, lowercased', async () => {
+    const reply = JSON.stringify({ ...JSON.parse(FULL_REPLY), wiki: 'Memory-Alpha.Fandom.com' });
+    const c = await deriveCharacter(new FakeHermes(withReply(reply)), 'trek');
+    expect(c.wiki).toBe('memory-alpha.fandom.com');
+  });
+
+  it('falls back to the full name when no wiki page is named', async () => {
+    const h = new FakeHermes(withReply(GOOD_REPLY));
+    const c = await deriveCharacter(h, 'anything');
+    expect(c.wiki).toBe('');
+    expect(c.wikiPage).toBe('Trillian');
   });
 
   it('carries the voice, greeting and check through', async () => {

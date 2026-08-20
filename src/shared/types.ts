@@ -19,6 +19,14 @@ export interface Character {
    * Falls back to `name` when the model gives nothing better.
    */
   fullName: string;
+  /**
+   * The Fandom wiki this character lives on, e.g. `lotr.fandom.com`, or `''`
+   * when the model named nothing usable. Validated at derivation, because it
+   * is the one model-supplied field that chooses an outbound destination.
+   */
+  wiki: string;
+  /** The page title on that wiki. Falls back to `fullName`. */
+  wikiPage: string;
   /** Hermes on-disk profile id: lowercase, `[a-z0-9-]`, <= 32 chars. */
   profileId: string;
   /** Four to eight words, e.g. `the one who keeps the plot`. */

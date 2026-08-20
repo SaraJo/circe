@@ -12,6 +12,8 @@ function character(profileId: string): Character {
   return {
     name: profileId,
     fullName: profileId,
+    wiki: '',
+    wikiPage: profileId,
     profileId,
     tagline: '',
     palette: PALETTE,

@@ -3,6 +3,13 @@ import { liftDegenerateBackground } from './palette';
 import type { HermesRuntime } from './hermes/runtime';
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
+/**
+ * A bare Fandom wiki host and nothing else. Anchored at both ends, so
+ * `fandom.com.example.net` and `lotr.fandom.com/../x` are rejected rather than
+ * matched loosely, and no scheme, port, path, credentials or dots beyond the
+ * one label can survive it.
+ */
+const FANDOM_HOST = /^[a-z0-9-]+\.fandom\.com$/;
 /** White body text needs a genuinely dark tile behind it. */
 const MAX_BG_LUMINANCE = 0.22;
 
@@ -52,6 +59,8 @@ export function DERIVATION_PROMPT(fandom: string): string {
     '  "fullName": "<the same character\'s full name as an encyclopaedia would title it: Tyrion Lannister for a short name of Tyrion. Repeat the short name when there is no longer form>",',
     '  "tagline": "<four to eight words naming their role>",',
     '  "palette": { "bg": "<#rrggbb, dark tile background>", "border": "<#rrggbb, light tile border>", "accent": "<#rrggbb, bright, readable on bg>" },',
+    '  "wiki": "<the Fandom wiki host this character has a page on, as a bare hostname such as lotr.fandom.com or memory-alpha.fandom.com. Empty string if you are not confident it exists>",',
+    '  "wikiPage": "<the exact page title on that wiki>",',
     '  "why": "<one sentence: why this character coordinates>",',
     '  "voice": "<two sentences at most: how they speak>",',
     '  "intro": "<one short sentence, in that voice, that this character would say on being introduced, before the user has chosen them. Not a greeting and not an offer of help: one line that shows how they talk. Under 120 characters>",',
@@ -130,6 +139,14 @@ function validate(raw: unknown, fandom: string): Character {
   // leaves the avatar searching for an empty string, so the display name is
   // the floor rather than an error: a worse lookup, never a failed derivation.
   const fullName = typeof o.fullName === 'string' && o.fullName.trim() ? o.fullName.trim() : name;
+  // The model is naming a host Circe will make a request to, so this is
+  // validated rather than trusted. Anything that is not a plain Fandom
+  // subdomain becomes '', which turns the second source off for this
+  // character instead of failing the derivation.
+  const rawWiki = typeof o.wiki === 'string' ? o.wiki.trim().toLowerCase() : '';
+  const wiki = FANDOM_HOST.test(rawWiki) ? rawWiki : '';
+  const wikiPage =
+    typeof o.wikiPage === 'string' && o.wikiPage.trim() ? o.wikiPage.trim() : fullName;
   const tagline = typeof o.tagline === 'string' ? o.tagline.trim() : '';
   const why = typeof o.why === 'string' ? o.why.trim() : '';
   const p = (o.palette ?? {}) as Record<string, unknown>;
@@ -172,6 +189,8 @@ function validate(raw: unknown, fandom: string): Character {
   return {
     name,
     fullName,
+    wiki,
+    wikiPage,
     profileId,
     tagline,
     palette,
