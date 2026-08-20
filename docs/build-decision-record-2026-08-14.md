@@ -1260,3 +1260,76 @@ shipped in until today.
 - **Attribution is recorded but never shown.** Deliberate: the file makes the licensing position
   auditable, which is what the blocker needed. Whether a user should *see* where their agent's
   face came from is a question about the meet screen and the tile header, not about records.
+
+## The claim screen, and who actually reaches it (2026-08-20)
+
+Branch `claim-default-face`. The last of the three items the avatar-sourcing entry left open.
+
+### The framing in every previous entry is stale
+
+Both this record and `.claude/skills/run-circe` describe `claim-default` as the screen a
+**returning user** sees. Tracing it, that has not been true since the 2026-08-15 ruling that
+`SOUL.md` outranks Circe's own record.
+
+`openWizard()` has exactly one caller, and it runs only when `readStartup` returns `wizard`,
+which happens when `SOUL.md` is absent, stock boilerplate, or **unreadable**. `claim-default`
+fires on `hasConfiguredDefault`, which is `unreadable || isRealSoul(soul)`. Both read the same
+file by the same path, so the two conditions overlap in exactly one case: **a `SOUL.md` that
+exists but cannot be read.**
+
+A returning user with a real persona now opens the fleet and never sees the wizard at all. A
+user with a stock or absent persona goes to `meet`. So this screen's live role is not "you are
+replacing your agent" in general; it is the confirm screen for the deliberate asymmetry in
+`real.ts`, which treats an unreadable persona as real precisely so the user gets "a confirm
+screen they can decline" rather than a silent overwrite.
+
+Confirmed by running it: a sandbox whose `SOUL.md` was `chmod 000` opened the wizard, derived a
+character, and landed on `claim-default`. The screen is reachable and worth fixing. It is just
+reached by a route nobody had written down.
+
+**Worth keeping as a class:** a screen's entry condition is not documentation, it is the
+conjunction of every guard on the path to it, and those guards were edited by three different
+branches for three unrelated reasons. Nobody re-derived the conjunction.
+
+### One card, two screens
+
+`claim-default` rendered a name inside a sentence and two buttons. Rather than invent a second,
+lesser presentation of a character, both screens now render the same card. The late-arriving
+face already targets `.screen.character .avatar`, so it reaches this screen with no second
+selector, and there is one presentation that cannot drift out of step with the other.
+
+### The part that had to be measured
+
+Reusing the card put the primary action **67px below the fold**. The claim screen also carries a
+heading and a four line replacement warning, inside the same fixed 640x560 window, and the sum
+came to 659px. That is the identical defect class as the 624px-in-a-520px window this project
+shipped once and the 200-character intro bound caught before it shipped twice.
+
+Dropping `why` on this screen brought it back inside. Then the worst realistic case - the longest
+existing-agent name in the lead, and a maximum-length intro - still overflowed by 14px, so the
+screen also keeps a tighter vertical rhythm of its own. Worst case now lands 26px inside the
+fold.
+
+None of that was visible in a screenshot of one character. The first screenshot looked fine and
+was 67px broken; the fix looked fine and was still 14px broken for a name one word longer. **The
+arithmetic caught both, and the eye caught neither.** Every number here came from
+`getBoundingClientRect` in the running app.
+
+### Verified against the real runtime
+
+Sandboxed `HERMES_HOME`, both paths:
+
+- **claim screen** (unreadable `SOUL.md`): Firefly derived Wash, whose face came from
+  `firefly.fandom.com`, with his tagline and his own line, and both buttons reachable.
+- **meet screen** (fresh sandbox): Discworld derived Ponder Stibbons, one `h1`, `why` intact,
+  buttons clear. Unchanged by the refactor.
+
+The real `~/.hermes` was untouched: `SOUL.md` still dated 29 July, all eight profiles present.
+
+### Still open
+
+- **The tile header's layout.** The last item, and the one that wants an eye rather than a
+  measurement.
+- **`.intro` does not break an unbreakable token.** A 120-character word scrolls sideways inside
+  its own element rather than wrapping. Pre-existing, affects both screens, and no real intro
+  looks like that - recorded because it was seen, not because it was judged.
