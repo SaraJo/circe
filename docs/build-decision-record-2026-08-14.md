@@ -1207,3 +1207,56 @@ One property worth recording: the split between the two sources is **not stable 
 Wikipedia lookup was rate limited. The face is right either way, which is the point of having
 two, but any future measurement of "how many come from where" needs more than one run to mean
 anything.
+
+## Provenance, the blocker that was one line of plumbing (2026-08-20)
+
+Branch `avatar-provenance`, 545 tests. The avatar-sourcing entry recorded that "the design
+claimed provenance is written alongside the image and leaned on that to justify the licensing
+decision. It is not written anywhere." That stayed true through two further branches.
+
+The shape of it is worth naming. `findAvatar` computed the article URL, the title and the
+licence, `AvatarFind` carried all three through every layer, and `wizard.ts` destructured
+`bytes` and `contentType` and dropped the rest on the floor. Nothing was missing, nothing was
+wrong, and no test failed. **The data was collected correctly and then discarded by the last
+caller**, which is a failure mode no unit test looks for, because every unit was doing its job.
+
+Adding Fandom sharpened it rather than changing it. Those images carry no machine-readable
+licence, so `unknown` is the only honest record, and writing nothing at all meant a profile held
+a likeness from an unnamed wiki under an unstated licence.
+
+### Where it lives, and why not in `circe.json`
+
+`avatar.json`, beside `avatar.png`, inside the profile. Constraint 10 settles the location:
+which article a likeness came from and under what licence is a fact about that profile and about
+nothing else. Not a field in `circe.json`, for two reasons: that file is the palette and is
+rewritten on every re-theme, and a face and its provenance have to move together or the record
+starts describing a previous agent.
+
+### One call writes both
+
+`saveAvatar` now takes what the lookup found rather than loose bytes. That is the whole point:
+two write sites would be two chances for the face and its record to disagree, the same argument
+that put both accept paths through one `writeAvatar` on the previous branch, and the same
+argument the SOUL template lost when it kept its own copy of a skill's procedure.
+
+The image is written first, and a failure to write the record afterwards is swallowed. The face
+is already on disk and is what the user sees; failing the save at that point would trade a
+working avatar for its paperwork, and §10.7 keeps every avatar failure silent.
+
+The ordering matters in one direction only: a record with no image is refused, because it is a
+claim about a file nobody can check. An image with no record is merely the state everything
+shipped in until today.
+
+### Verified live, both sources
+
+- `Data (Star Trek)` records `en.wikipedia.org`, licence `commons`.
+- `Samwise Gamgee` records `lotr.fandom.com`, licence `unknown`.
+
+### Still open
+
+- **The `claim-default` screen shows no face.** Named in the avatar-sourcing entry, untouched
+  since. A returning user confirms replacing their agent and is given a face they never saw.
+- **The tile header's layout.** Avatar hard left, name hard right, 22px.
+- **Attribution is recorded but never shown.** Deliberate: the file makes the licensing position
+  auditable, which is what the blocker needed. Whether a user should *see* where their agent's
+  face came from is a question about the meet screen and the tile header, not about records.
