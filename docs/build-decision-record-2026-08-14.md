@@ -1131,3 +1131,79 @@ initials for Kaylee, Janet, Cher Horowitz and Samwise.
 - **Hit rate above 7 in 12 needs a different source.** The remaining misses are Wikipedia not
   having the material, not the lookup failing to find it. A character-wiki source would be a
   new outbound host and a constraint 4 decision, not an implementation one.
+
+## A second source, and three things only the live one could tell us (2026-08-20)
+
+Same branch, two more commits, 536 tests. The product owner's call: "having both Wikipedia and
+Fandom seems to work in most cases." Constraint 4 now permits two more destinations, any
+`*.fandom.com` wiki and `static.wikia.nocookie.net`.
+
+**Wikipedia keeps first refusal** because it is the only source that says anything about an
+image's licence. Fandom is asked only on a miss, and its faces are recorded as `unknown` rather
+than guessed at, which is the honest answer: Fandom exposes no machine-readable licence at all.
+The licensing question the avatar-sourcing entry flagged as a release blocker is narrower than
+it looked. Circe hosts nothing and ships nothing; the repo bundles zero images, the fetch happens
+on the user's machine, and the file lands in their own profile directory.
+
+### The model names the wiki
+
+Nothing derives `lotr.fandom.com` from "The Lord of the Rings" or `bakerstreet.fandom.com` from
+"Sherlock Holmes", and Fandom's own wiki-search endpoint answers 403. The model knows both, and
+it is already being asked for the character, so it is asked for the wiki in the same call. The
+same move as the full name, and it generalises: **when a lookup needs a key that only a human
+would know, the model is already holding it.**
+
+That also makes it the one model-supplied value that chooses where Circe connects to, so it is
+bounded twice by the same anchored pattern: in `derive.ts`, where anything that is not a plain
+Fandom subdomain becomes `''`, and again in `fandom.ts`, which is what actually opens the
+connection. A host check that lives only in the validator is one refactor from being gone, and
+the provenance test now pins both.
+
+### Three defects the documentation could not have shown, and one that hid the others
+
+**The placeholder.** `bakerstreet.fandom.com` answers "Mrs. Hudson" with `Silhouette-female.png`.
+Right host, right page, right character's article, and a grey outline. Every rule on the branch
+passes it. This is a different failure class from the wrong-subject ones the Wikipedia rules
+catch: not the wrong person, a non-person, and it is the more dangerous of the two because **it
+counts as a hit in any measurement of how often a face was found.** A source that answers every
+query with a silhouette would have measured as perfect.
+
+**The format.** Fandom serves WebP for every image, whatever the URL extension says. `Kaylee.jpg`
+returns `image/webp`, and so does the same URL requested with `Accept: image/png,image/jpeg`,
+with `image/*`, with a scaling path, and with `format=jpg`. `nativeImage` decodes PNG and JPEG
+only. So the first live run found a face for all five characters and dropped all five at the
+final conversion, silently, presenting exactly as a source that has no pictures. `format=original`
+is the one parameter of the six tried that returns the real JPEG.
+
+**The size.** The original is the full upload. Janet's is 1.6MB, for a face drawn at 22 pixels in
+a tile header, and it would have been converted to PNG and written into the user's profile at
+that size. `scale-to-width-down/256` returns the same image at 16KB, a hundredfold difference
+nobody would have noticed until a profile directory did.
+
+**And the one that hid them.** The first live run of the two-source chain returned initials for
+every case, including two that had passed minutes earlier. Reading it as "the second source does
+not work" would have been wrong twice over: the WebP defect was real, and the Wikipedia
+regressions in the same run were rate limiting, the same 429 the retry exists for. A failing
+verification run had two independent causes and one of them was noise. Walking it by hand, one
+request at a time, was what separated them.
+
+### The rule this keeps proving
+
+Every defect in this entry was found by running the real code against the real source, and not
+one of them was reachable from the API's documentation or from any test written against a
+fixture. The fixtures in `fandom.test.ts` are all *derived from* live responses for this reason;
+a fixture written from the docs would have described a JPEG at a `.jpg` URL and been wrong in the
+same way for both the format and the size.
+
+### Where it stands
+
+Verified end to end against both live sources: **10 of 12**, five from Wikipedia and five from
+Fandom, every image a JPEG between 10 and 59KB. The two remaining misses are both correct
+behaviour - `clueless.fandom.com` genuinely has no page for Cher Horowitz, and Mrs. Hudson is the
+silhouette being refused.
+
+One property worth recording: the split between the two sources is **not stable run to run**.
+"Vimes" came from Wikipedia in one verification run and from Fandom in the next, because the
+Wikipedia lookup was rate limited. The face is right either way, which is the point of having
+two, but any future measurement of "how many come from where" needs more than one run to mean
+anything.
