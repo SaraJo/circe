@@ -1333,3 +1333,55 @@ The real `~/.hermes` was untouched: `SOUL.md` still dated 29 July, all eight pro
 - **`.intro` does not break an unbreakable token.** A 120-character word scrolls sideways inside
   its own element rather than wrapping. Pre-existing, affects both screens, and no real intro
   looks like that - recorded because it was seen, not because it was judged.
+
+## The tile header, and a rule nobody wrote (2026-08-20)
+
+Branch `tile-header-pairing`. The last of the three items the avatar-sourcing entry left open,
+and the only one that was a judgement rather than a measurement.
+
+The entry recorded it as "§6.3 names the header's parts without fixing their arrangement, so
+this was the implementation's call and wants an eye." Looking at it, it was not the
+implementation's call either. `#bar` is `justify-content: space-between` with exactly two
+children, so the face and the name were pushed to opposite ends of a 400px bar and the
+`gap: 10px` sitting right beneath it never applied to anything. **Nobody decided the face should
+be 380px away from the name.** The rule was written when the bar held different contents and
+kept working, in the sense that it did not throw.
+
+Worth keeping as a class alongside the claim screen's entry condition, found the same day: both
+were behaviours nobody had chosen, produced by a rule that outlived the shape it was written
+for. Neither was a bug in the sense of anything being incorrect.
+
+### 34px
+
+The product owner picked the largest of three options rendered in the running tile. The
+reasoning is the one that matters for this whole feature: at 22px a fetched face is a coloured
+smudge, near enough indistinguishable at a glance from the initials it replaces. Three branches
+went into finding real faces; a size that throws away the difference between a face and its
+fallback wastes all of it.
+
+Recorded because the premise in the question was worth correcting and is worth not re-confusing
+later: this is the **persistent** header, above every conversation for as long as the tile is
+open, not the reveal. The meet screen's face is 84px and was never in question.
+
+### Verified against the real runtime
+
+Sandboxed `HERMES_HOME`. Buffy derived Giles, whose face came from `buffy.fandom.com` through
+the two-source lookup. Both cases a single screenshot cannot show were checked by measurement:
+the initials fallback fills the larger circle at 14px, and a 27 character name leaves 138px of
+headroom before the bar's right edge. The real `~/.hermes` was untouched.
+
+### The avatar work is done
+
+All three items the avatar-sourcing entry left open are closed, and the licensing blocker with
+them:
+
+| | then | now |
+|---|---|---|
+| faces found, 12 fandoms | 1 | 10 |
+| sources | Wikipedia | Wikipedia, then Fandom |
+| provenance on disk | none | `avatar.json` beside the face |
+| shown on `claim-default` | no | the full character card |
+| tile header | 22px, opposite edges | 34px, paired |
+
+What remains is not avatar work: `.intro` does not break an unbreakable token, pre-existing and
+cosmetic, recorded on the previous branch because it was seen.
