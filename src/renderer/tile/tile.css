@@ -79,30 +79,48 @@ footer {
  * an otherwise correct tile look cheap. The prototype gives the agent's name
  * the weight of a name and lets the card's own edge do the separating.
  */
+/*
+ * The face and the name are one object and sit together, at the start of the
+ * bar. This was `space-between`, which with exactly two children pushed them to
+ * opposite edges of a 400px bar and left the `gap` doing nothing: a 22px dot
+ * hard left, a name hard right, and the whole width empty between them. Nothing
+ * chose that arrangement. It fell out of a rule written when the bar held
+ * different contents, and it read as two unrelated pieces of chrome rather than
+ * as an agent identifying itself.
+ */
 #bar {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   margin-bottom: 8px;
 }
 #who {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   letter-spacing: 0.3px;
 }
 
+/*
+ * 34px, not 22px. At 22 a fetched face is a coloured smudge - the shape of a
+ * head, no features, indistinguishable from the initials it replaced at a
+ * glance. Compared against 22 and 28 in the running tile: 34 is the first size
+ * where the character is recognisably a person, which is the entire point of
+ * having gone and found their face. It costs about 12px of height in a 480px
+ * tile, which the log absorbs.
+ */
 #bar .avatar {
   position: relative;
   overflow: hidden;
   flex: none;
-  width: 22px;
-  height: 22px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   border: 1px solid var(--tile-border);
   display: grid;
   place-items: center;
-  font-size: 10px;
+  /* Scaled with the circle so the initials fallback still fills it. */
+  font-size: 14px;
   font-weight: 600;
 }
 #bar .avatar img {
