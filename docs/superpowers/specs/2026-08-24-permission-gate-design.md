@@ -191,16 +191,25 @@ left to expire. Hermes is holding a thread for it.
 
 ### IPC
 
-Three channels out, two in, following the existing `tile:` convention (`tile:character`, `tile:prompt`,
-`tile:close`):
+The card is transcript content, so it does not get a channel of its own. It rides the existing
+`tile:update` channel as a synthetic `circe/` session update, which is the pattern `circe/turn-end`,
+`circe/exited` and `circe/replay-abandoned` already use (`tiles.ts:168`, `:274`). That is what puts
+the card in transcript order, between the bubbles it belongs between, without the renderer having to
+reconcile two orderings.
 
-| Channel | Direction | Payload |
+The mode is header state rather than transcript content, so it gets its own channel, next to
+`tile:character` which is the other thing the header draws.
+
+| Message | Direction | Payload |
 |---|---|---|
-| `tile:permission` | main → renderer | `{ id, description, command }` |
-| `tile:permission-resolved` | main → renderer | `{ id, outcome }` — for expiry and for cancellation |
+| `circe/permission` | main → renderer, via `tile:update` | `{ id, description, command }` |
+| `circe/permission-resolved` | main → renderer, via `tile:update` | `{ id, outcome }` — answered, expired, or cancelled |
 | `tile:permission-answer` | renderer → main | `{ id, choice }` |
 | `tile:mode` | main → renderer | the current `ApprovalMode` |
-| `tile:cycle-mode` | renderer → main | no payload; main writes and echoes back `tile:mode` |
+| `tile:cycle-mode` | renderer → main | no payload; main writes, re-reads, and echoes `tile:mode` |
+
+Both renderer-to-main messages are routed by `profileForSender`, never by a profile id the renderer
+supplies, for the reason `tile:prompt` already documents at `index.ts:200`.
 
 The renderer never decides anything. It draws what it is told and reports what was clicked, which is
 the same division `applyCharacter` already uses and the reason a bad update there costs colours
