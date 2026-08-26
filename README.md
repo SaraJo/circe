@@ -9,6 +9,8 @@ For the authoritative implementation status and near-term roadmap, see
 [docs/CURRENT_BUILD.md](docs/CURRENT_BUILD.md). Dated plans and specs are
 historical records, not an implementation backlog.
 
+For a small trusted test, use the guided [beta checklist](docs/BETA_TEST.md).
+
 ## What it does
 
 1. Checks that [Hermes](https://hermes-agent.nousresearch.com) is installed and
@@ -68,8 +70,10 @@ configured agents. That is how the off-machine cases are covered.
 npm run dist
 ```
 
-Note: `resources/icon.png` is a placeholder solid-colour image and should be
-replaced with real artwork before release.
+The application icon is generated from `resources/icon-v4.png`, whose warm,
+flat visual style matches the onboarding experience. Earlier concepts remain at
+`resources/icon-v2.png`, `resources/icon-v3.png`, and `resources/icon.png` for
+comparison.
 
 Note: the build is unsigned and unnotarised, so macOS quarantines a downloaded
 `.dmg` — Gatekeeper refuses it on a double-click. Right-click the app and choose

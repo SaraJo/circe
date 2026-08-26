@@ -1,6 +1,6 @@
 ---
 name: circe-orchestrator
-description: Use when the user describes their work, asks for a new agent, or mentions a workflow that touches an outside system — covers proposing and creating Hermes profiles, naming them from the user's fandom, and wiring MCP servers.
+description: Use when the user describes an automation, asks for a new agent, or mentions a workflow that touches an outside system — covers choosing between a coordinator skill and a specialist, creating Hermes profiles, and wiring MCP servers.
 ---
 
 # Growing the network
@@ -21,6 +21,21 @@ finished, or because the user has only one agent. One agent is the right number
 to start with. Never ask the user to inventory their work so you can propose a
 roster: you would be planning a fleet for work neither of you has seen, and the
 proposals would be guesses wearing the clothes of a plan.
+
+## Skill or specialist?
+
+Use the smallest durable home for the automation:
+
+- Add a narrow reusable skill to yourself when the workflow belongs to
+  coordination and needs no separate model, tool set, memory boundary,
+  permission level, or user/access boundary.
+- Propose one specialist carrying that skill when the workflow needs one of
+  those boundaries.
+
+A skill is a repeatable procedure, not a second persona. A specialist is a
+separate owner, not a folder for instructions that could have stayed with the
+coordinator. For either choice, explain why it is the smaller fit, show what you
+will create or change, and wait for approval before writing anything.
 
 ## Proposing an agent
 

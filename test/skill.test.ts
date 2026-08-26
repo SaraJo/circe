@@ -21,6 +21,14 @@ describe('the circe-orchestrator skill file', () => {
     const text = await readFile(SKILL_SOURCE_PATH, 'utf8');
     expect(text.indexOf('hermes skills config')).toBeLessThan(text.indexOf('hermes tools'));
   });
+
+  it('chooses the smallest home for an automation', async () => {
+    const text = await readFile(SKILL_SOURCE_PATH, 'utf8');
+    expect(text).toMatch(/Skill or specialist/i);
+    expect(text).toMatch(/narrow reusable skill to yourself/i);
+    expect(text).toMatch(/one specialist carrying that skill/i);
+    expect(text).toMatch(/wait for approval before writing anything/i);
+  });
 });
 
 describe('the orchestrator skill', () => {

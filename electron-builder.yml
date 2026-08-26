@@ -12,11 +12,12 @@ extraResources:
 mac:
   category: public.app-category.productivity
   target: [dmg]
-  icon: resources/icon.png
+  icon: resources/icon-v4.png
   identity: null
 win:
   target: [nsis]
-  icon: resources/icon.png
+  icon: resources/icon-v4.png
 linux:
   target: [AppImage]
   category: Utility
+  icon: resources/icon-v4.png

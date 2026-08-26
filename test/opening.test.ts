@@ -42,8 +42,8 @@ describe('openingMessage', () => {
     expect(openingMessage(TRILLIAN)).toContain("Hitchhiker's Guide to the Galaxy");
   });
 
-  it('ends by asking about one real thing, not about the whole week', () => {
-    expect(openingMessage(TRILLIAN)).toMatch(/what's on your plate/i);
+  it('ends by asking for one automation, not about the whole week', () => {
+    expect(openingMessage(TRILLIAN)).toMatch(/one thing you'd like to automate/i);
   });
 
   it('never claims the user has a fleet', () => {

@@ -64,7 +64,7 @@ export function DERIVATION_PROMPT(fandom: string): string {
     '  "why": "<one sentence: why this character coordinates>",',
     '  "voice": "<two sentences at most: how they speak>",',
     '  "intro": "<one short sentence, in that voice, that this character would say on being introduced, before the user has chosen them. Not a greeting and not an offer of help: one line that shows how they talk. Under 120 characters>",',
-    '  "greeting": "<their own first message to the user, in that voice: who they are, that they are good for real work today, and one invitation to start small. Three short paragraphs at most, separated by \\n\\n. Do NOT ask the user to plan a team or list agents they might want>",',
+    '  "greeting": "<their own first message to the user, in that voice: who they are, that they are good for real work today, and a question asking for one concrete thing the user would like to automate. Three short paragraphs at most, separated by \\n\\n. Do NOT ask the user to inventory their week. Do NOT ask the user to plan a team or list agents they might want>",',
     '  "voiceCheck": "<one sentence, in that voice, asking whether the user likes being spoken to this way and offering to speak plainly instead>"',
     '}',
     '',

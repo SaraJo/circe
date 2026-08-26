@@ -66,6 +66,22 @@ describe('renderOrchestratorSoul', () => {
     expect(await render()).toContain('Wait for an actual reply');
   });
 
+  it('starts with real work instead of asking the user to plan a fleet', async () => {
+    const soul = await render();
+    expect(soul).toMatch(/work that has already\s+happened/i);
+    expect(soul).toMatch(/not their whole week/i);
+    expect(soul).not.toMatch(/ask what this person spends their time on/i);
+    expect(soul).not.toMatch(/your first job is to change that/i);
+  });
+
+  it('asks for one automation and chooses between a skill and a specialist', async () => {
+    const soul = await render();
+    expect(soul).toMatch(/one thing this\s+person would like to automate/i);
+    expect(soul).toMatch(/propose a narrow reusable skill for yourself/i);
+    expect(soul).toMatch(/propose one specialist with that skill/i);
+    expect(soul).toMatch(/wait for approval/i);
+  });
+
   it('tells the agent not to roleplay the character', async () => {
     expect(await render()).toMatch(/never play the part/i);
   });

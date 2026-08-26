@@ -343,6 +343,11 @@ describe('DERIVATION_PROMPT', () => {
     expect(String(skeleton().greeting)).toMatch(/first message to the user, in that voice/i);
   });
 
+  it('makes the first question one concrete automation', () => {
+    expect(String(skeleton().greeting)).toMatch(/one concrete thing.*like to automate/i);
+    expect(String(skeleton().greeting)).toMatch(/not ask the user to inventory their week/i);
+  });
+
   it('describes the voiceCheck as offering to speak plainly', () => {
     expect(String(skeleton().voiceCheck)).toMatch(/speak plainly/i);
   });

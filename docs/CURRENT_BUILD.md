@@ -59,9 +59,8 @@ packaged onboarding-window launch pass on the development machine.
 Before public release:
 
 1. Exercise a real Hermes permission request through every card action.
-2. Replace the placeholder icon.
-3. Sign and notarize the macOS app and DMG.
-4. Test onboarding on a clean Mac and startup against an existing multi-profile
+2. Sign and notarize the macOS app and DMG.
+3. Test onboarding on a clean Mac and startup against an existing multi-profile
    Hermes home.
 
 ## Next product milestone
@@ -70,6 +69,9 @@ Run a small beta. Fix failures in onboarding, permission handling, restoration,
 and multi-window placement before adding new surfaces. Window arrangement is the
 first likely product improvement because a larger fleet currently creates many
 independent windows with no management view.
+
+Use [BETA_TEST.md](BETA_TEST.md) for the guided session and feedback questions.
+The current unsigned build is suitable only for a small trusted group.
 
 ## Working rule for coding agents
 

@@ -22,8 +22,9 @@ import type { Character } from '../../shared/types';
  * The examples above are deliberately **tasks, not agents.** That is the whole
  * distinction. Naming specialists here invites a roster; naming jobs invites
  * work, and work is what a specialist has to come out of. They are also
- * deliberately unglamorous and single-session, because the first ask should be
- * something the agent can finish.
+ * deliberately unglamorous and concrete, because the first ask is one
+ * automation the agent can understand end to end before choosing whether it
+ * belongs in a skill or with a specialist.
  *
  * An earlier draft opened with "right now I'm the only agent you have", which
  * is true and useless: it frames a capable partner as a shortfall to be
@@ -63,7 +64,7 @@ function scripted(c: Character): string {
     `Hi, I'm ${c.name}, your partner for whatever's on your plate. Tell me what you need and I'll make it happen.`,
     `Draft the email you've been avoiding. Build out a financial model. Research something properly. Turn a pile of notes into a plan you can act on. Small and real is a good place to start.`,
     `As we go I'll notice where a specialist would do better than me, and when that happens I'll introduce you to your next partner from ${c.fandom}. You decide whether they earn their place.`,
-    `So, what's on your plate?`,
+    `What's one thing you'd like to automate?`,
   ].join('\n\n');
 }
 

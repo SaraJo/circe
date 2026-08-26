@@ -23,6 +23,9 @@
   --code-bg: rgba(28, 24, 21, 0.08);
   --underline: rgba(28, 24, 21, 0.32);
   --spinner-track: rgba(28, 24, 21, 0.16);
+  --pink: #ead6d0;
+  --lime: #ecf0da;
+  --peach: #f5dec0;
   --radius: 14px;
   --gap: 18px;
   --step: 30px;
@@ -37,6 +40,9 @@ body {
 }
 
 .screen {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   padding: 48px 40px 32px;
   display: flex;
   flex-direction: column;
@@ -89,6 +95,7 @@ input:focus {
   outline: none;
   border-color: var(--input-border-focus);
   background: var(--input-bg-focus);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--screen-accent, var(--pink)) 70%, transparent);
 }
 
 .actions { display: flex; gap: 12px; align-items: center; margin-top: auto; }
@@ -103,7 +110,7 @@ input:focus {
  */
 button {
   font: inherit;
-  border-radius: var(--radius);
+  border-radius: 999px;
   padding: 13px 22px;
   cursor: pointer;
   border: 1px solid transparent;
@@ -174,19 +181,53 @@ button:active { transform: translateY(1px); }
   justify-content: center;
 }
 
-/*
- * The three screens above are also the three that get their own pastel
- * ground (spec §7 / reference-palette.png: dusty pink, pale lime, peach) —
- * one colour per screen, flat, no gradient. Every other render branch
- * (runtime-missing, provider-missing, derive-failed, claim-default, saving,
- * write-failed, launching) has no scoped class, so it falls through to
- * `body`'s `--bg`, a neutral warm cream from the same family. That is the
- * "sensible default ground" for screens with no pastel of their own — never
- * the old dark tokens on a light screen, or vice versa.
- */
-.screen.intro { background: #ead6d0; }
-.screen.ask { background: #ecf0da; }
-.screen.working { background: #f5dec0; }
+/* Cream canvas, pastel nodes, and a near-black orbit: the app icon's grammar. */
+.screen.intro { --screen-accent: var(--pink); }
+.screen.ask { --screen-accent: var(--lime); }
+.screen.working { --screen-accent: var(--peach); }
+
+.screen.ask::before,
+.screen.working::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  width: 250px;
+  height: 250px;
+  top: -142px;
+  right: -105px;
+  border: 2px solid rgba(28, 24, 21, 0.72);
+  border-radius: 50%;
+}
+
+.screen.ask::after,
+.screen.working::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  width: 78px;
+  height: 78px;
+  top: 34px;
+  right: 33px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--screen-accent);
+}
+
+.brand-mark {
+  align-self: center;
+  width: 180px;
+  height: 132px;
+  color: var(--ink);
+}
+.brand-mark svg { display: block; width: 100%; height: 100%; }
+.brand-mark path,
+.brand-mark circle { stroke: currentColor; stroke-width: 3; stroke-linecap: round; }
+.brand-mark .node { stroke-width: 2.5; }
+.brand-mark .node-pink { fill: var(--pink); }
+.brand-mark .node-peach { fill: var(--peach); }
+.brand-mark .node-lime { fill: var(--lime); }
+.brand-mark .hub-ring { fill: var(--bg); stroke-width: 7; }
+.brand-mark .hub { fill: var(--ink); }
 
 /*
  * The input used to stretch to the window's full width (560px), reading as

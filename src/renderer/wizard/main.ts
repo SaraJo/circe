@@ -143,6 +143,21 @@ function render(step: WizardStep): void {
       screenEl.append(
         el(`
         <section class="screen intro">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 180 132" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M52 29C74 13 112 14 136 37" />
+              <path d="M144 51C154 77 140 106 113 117" />
+              <path d="M78 119C47 114 27 87 33 58" />
+              <path d="M61 42C68 52 74 57 84 61" />
+              <path d="M111 65C121 63 128 60 135 54" />
+              <path d="M91 83C89 94 85 102 77 109" />
+              <circle class="node node-pink" cx="52" cy="35" r="13" />
+              <circle class="node node-peach" cx="142" cy="48" r="13" />
+              <circle class="node node-lime" cx="74" cy="115" r="13" />
+              <circle class="hub-ring" cx="92" cy="70" r="20" />
+              <circle class="hub" cx="92" cy="70" r="10" />
+            </svg>
+          </div>
           <h1>${COPY.welcome.title}</h1>
           <p class="lead">${COPY.welcome.lead}</p>
           <p class="sub">${COPY.welcome.sub}</p>
