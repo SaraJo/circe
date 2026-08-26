@@ -4,10 +4,11 @@ import { Wizard } from './wizard';
 import { adaptTileWindow, createTileWindow, createWizardWindow } from './windows';
 import { AcpClient, isPermissionChoice } from './acp';
 import { FleetWatch, tileableProfiles } from './fleet';
-import { openingMessage } from './orchestrator/opening';
+import { adoptionOpeningMessage, openingMessage } from './orchestrator/opening';
 import { characterFor, readStartup } from './startup';
 import { TileRegistry } from './tiles';
 import { httpDeps } from './avatar';
+import type { HermesProfile } from '../shared/types';
 
 app.setName('Circe');
 
@@ -69,14 +70,14 @@ function createRegistry(): TileRegistry {
 }
 
 /** Creates the wizard and its window, and wires the one to the other. */
-function openWizard(): void {
+function openWizard(existingProfiles: HermesProfile[] = []): void {
   const w = new Wizard(hermes, {
     deps: httpDeps((url, init) => fetch(url, init), USER_AGENT),
     toPng: (bytes, contentType) => {
       const img = nativeImage.createFromBuffer(Buffer.from(bytes));
       return img.isEmpty() ? null : new Uint8Array(img.toPNG());
     },
-  });
+  }, existingProfiles);
   wizard = w;
   wizardWin = createWizardWindow();
   wizardWin.on('closed', () => {
@@ -88,6 +89,13 @@ function openWizard(): void {
   // resolve into a *replacement* wizard's window.
   w.onChange((s) => {
     if (wizard !== w) return;
+    if (s.kind === 'fleet-launching') {
+      wizardWin?.close();
+      wizardWin = null;
+      mainProfileId = s.mainProfileId;
+      void openFleet(s.mainProfileId, s.openingProfileId);
+      return;
+    }
     if (wizardWin && !wizardWin.isDestroyed()) {
       wizardWin.webContents.send('wizard:step', s);
       wizardWin.webContents.send('wizard:avatar', w.avatarDataUrl());
@@ -192,6 +200,22 @@ function registerIpc(): void {
   ipcMain.on('wizard:accept', () => void wizard?.accept());
   ipcMain.on('wizard:confirm-claim', () => void wizard?.confirmClaimDefault());
   ipcMain.on('wizard:decline-claim', () => wizard?.declineClaimDefault());
+  ipcMain.on('wizard:personalize-fleet', () => wizard?.personalizeExistingFleet());
+  ipcMain.on('wizard:keep-fleet-names', () => wizard?.keepExistingFleetNames());
+  ipcMain.on('wizard:fleet-fandom', (_e, text: string) => void wizard?.submitFleetFandom(text));
+  ipcMain.on('wizard:retry-fleet', () => void wizard?.retryFleetDerivation());
+  ipcMain.on('wizard:accept-fleet-renames', (_e, profileIds: unknown) => {
+    if (!Array.isArray(profileIds) || !profileIds.every((id) => typeof id === 'string')) return;
+    void wizard?.acceptFleetRenames(profileIds);
+  });
+  ipcMain.on('wizard:choose-coordinator', (_e, profileId: unknown) => {
+    if (profileId !== null && typeof profileId !== 'string') return;
+    void wizard?.chooseExistingCoordinator(profileId as string | null);
+  });
+  ipcMain.on('wizard:new-coordinator', () => wizard?.beginNewCoordinator());
+  ipcMain.on('wizard:accept-new-coordinator', () => void wizard?.acceptNewCoordinator());
+  ipcMain.on('wizard:retry-new-coordinator', () => wizard?.retryNewCoordinator());
+  ipcMain.on('wizard:resume-adoption', () => void wizard?.resumeAdoption());
   ipcMain.on('open-external', (_e, url: string) => openExternalSafely(url));
 
   // Routed by sender, never by a profile id the renderer supplies: a tile
@@ -252,16 +276,15 @@ async function doBoot(): Promise<void> {
   tiles = createRegistry();
   registerIpc();
 
-  // SOUL.md, not the record, decides whether onboarding has happened — so a
-  // user who hand-edits their persona keeps their agent instead of being sent
-  // back through a wizard whose next move is to overwrite it. Without this,
-  // every cold start reopened onboarding no matter what was already on disk,
-  // and re-deriving a character was the only route back to your own agent.
+  // A real SOUL proves Hermes already has an agent; Circe's last-launch record
+  // proves the user has completed or skipped Circe adoption. Existing profiles
+  // discovered without that record are passed into the non-destructive adoption
+  // branch instead of being mistaken for a finished Circe setup.
   const startup = await readStartup(hermes);
   if (startup.kind === 'fleet') {
     await openFleet(startup.mainProfileId);
   } else {
-    openWizard();
+    openWizard(startup.profiles ?? []);
   }
 }
 
@@ -291,7 +314,7 @@ async function doBoot(): Promise<void> {
  * a profile whose `SOUL.md` can't be read (falls back to `displayName`), so
  * this needs nothing else from it.
  */
-async function openFleet(mainId: string): Promise<void> {
+async function openFleet(mainId: string, openingProfileId: string | null = null): Promise<void> {
   const profiles = await tileableProfiles(hermes);
   const main = profiles.find((p) => p.id === mainId) ??
     profiles.find((p) => p.id === 'default') ??
@@ -304,7 +327,12 @@ async function openFleet(mainId: string): Promise<void> {
   const ordered = [...profiles.filter((p) => p.id !== main.id), main];
 
   for (const profile of ordered) {
-    await tiles.launch(await characterFor(hermes, profile), profile.id);
+    const character = await characterFor(hermes, profile);
+    await tiles.launch(
+      character,
+      profile.id,
+      profile.id === openingProfileId ? adoptionOpeningMessage(character) : null,
+    );
   }
 
   // Exactly what this call just launched — not re-enumerated — so the

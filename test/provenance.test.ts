@@ -22,7 +22,13 @@ describe('avatar provenance (spec §10.7)', () => {
     const tracked = ls.split('\n').filter((line) => line.length > 0);
 
     // Image files in the repo. allowlist is explicit with comments on why.
-    const allowlist = ['resources/icon.png']; // application icon, not character likeness
+    // Application icon concepts, not character likenesses.
+    const allowlist = [
+      'resources/icon.png',
+      'resources/icon-v2.png',
+      'resources/icon-v3.png',
+      'resources/icon-v4.png',
+    ];
 
     const images = tracked.filter((file) => /\.(png|jpe?g|gif|webp)$/i.test(file));
     const offenders = images.filter((file) => !allowlist.includes(file));

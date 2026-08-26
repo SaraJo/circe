@@ -74,6 +74,13 @@ export class FakeHermes implements HermesRuntime {
     return this.scenario.hasProvider;
   }
 
+  async createProfile(profileId: string, _description: string): Promise<void> {
+    if (this.scenario.models[profileId]) throw new Error(`Profile ${profileId} already exists.`);
+    this.scenario.models[profileId] = this.scenario.models.default ?? 'unknown';
+    const source = this.files.get('SOUL.md') ?? SCAFFOLD_SOUL;
+    this.files.set(`profiles/${profileId}/SOUL.md`, source);
+  }
+
   async listProfiles(): Promise<HermesProfile[]> {
     if (this.scenario.version === null) return [];
     const ids = Object.keys(this.scenario.models);

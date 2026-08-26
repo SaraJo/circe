@@ -1,9 +1,9 @@
 # Circe
 
-Circe onboards a Hermes coordinator — named and coloured after a fandom you
-pick — and gives each usable Hermes profile a tile on your desktop. The
-coordinator's job is to help you build the rest of your agents through
-conversation.
+Circe creates or adopts a Hermes fleet and gives each usable profile a tile on
+your desktop. New users can make a fandom-themed coordinator; existing users
+can keep their setup, selectively rename and skin agents from a fandom, and
+choose whether an existing or new agent should coordinate.
 
 For the authoritative implementation status and near-term roadmap, see
 [docs/CURRENT_BUILD.md](docs/CURRENT_BUILD.md). Dated plans and specs are
@@ -15,15 +15,19 @@ For a small trusted test, use the guided [beta checklist](docs/BETA_TEST.md).
 
 1. Checks that [Hermes](https://hermes-agent.nousresearch.com) is installed and
    that a model provider is connected.
-2. Asks what fandom, universe, or community you love.
-3. Asks your model to pick the coordinator from that world, and three colours
+2. Detects whether this is a new setup or an existing fleet that has not yet
+   made its Circe choices.
+3. Existing users can preserve everything, preview fandom-based names and
+   colours per agent, and choose an orchestrator without changing profile ids.
+4. New users are asked what fandom, universe, or community they love.
+5. Asks your model to pick the coordinator from that world, and three colours
    drawn from them.
-4. Writes that character into your Hermes default profile's `SOUL.md`, along with
+6. Writes that character into your Hermes default profile's `SOUL.md`, along with
    a governance persona covering how to grow an agent network without it
    sprawling.
-5. Installs the `circe-orchestrator` skill into that profile.
-6. Opens a tile, themed by the character, with an opening message.
-7. Opens tiles for existing profiles and notices new profiles created while it
+7. Installs the `circe-orchestrator` skill into that profile.
+8. Opens a tile, themed by the character, with an opening message.
+9. Opens tiles for existing profiles and notices new profiles created while it
    is running.
 
 When Hermes requests approval for a tool action, Circe shows the command in the

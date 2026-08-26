@@ -91,6 +91,10 @@ export class RealHermes implements HermesRuntime {
     }
   }
 
+  async createProfile(profileId: string, description: string): Promise<void> {
+    await this.exec(['profile', 'create', profileId, '--clone', '--description', description]);
+  }
+
   async listProfiles(): Promise<HermesProfile[]> {
     let stdout: string;
     try {

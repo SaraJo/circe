@@ -64,6 +64,49 @@ export const COPY = {
     // the instruction or promise a flow that doesn't exist. See
     // task-5-report.md.
   },
+  existingFleet: {
+    title: 'Your agents are already here',
+    lead: 'Circe found an existing Hermes setup. Nothing will be renamed, recoloured, or given new responsibilities unless you choose it and confirm the preview.',
+    personalize: 'Give them Circe identities',
+    keep: 'Keep their current names',
+  },
+  fleetFandom: {
+    renameTitle: 'Choose a world for your fleet',
+    renameLead: 'Circe will propose a distinct name and colour palette for each existing agent, matched to the role it already has. Their profile ids and instructions stay in place.',
+    coordinatorTitle: 'Choose a world for your coordinator',
+    coordinatorLead: 'Circe will create one new coordinator beside your existing agents. Nothing in the current fleet will be replaced.',
+    action: 'Show me',
+  },
+  fleetDeriving: {
+    renameTitle: 'Finding your fleet',
+    renameLead: 'Matching each existing role with a distinct identity from {{FANDOM}}. This can take up to a minute.',
+    coordinatorTitle: 'Finding your coordinator',
+    coordinatorLead: 'Looking through {{FANDOM}} for the one who keeps everyone else on track. This can take up to a minute.',
+  },
+  fleetPreview: {
+    title: 'Choose which agents to rename',
+    lead: 'Only checked agents will change. Circe replaces their visible name and tagline, saves the original SOUL.md first, and writes their colours. Their profile ids and remaining instructions stay unchanged.',
+    action: 'Apply selected changes',
+    savingTitle: 'Updating your fleet',
+    savingLead: 'Saving backups, names, and colours before Circe opens any agents.',
+  },
+  coordinatorChoice: {
+    title: 'Who should coordinate?',
+    lead: 'You can give one existing agent the ability to build skills and specialists, create a new dedicated coordinator, or leave the fleet as it is for now.',
+    existing: 'Use this agent as coordinator',
+    create: 'Create a new coordinator',
+    skip: 'Skip for now',
+    opening: 'Opening your fleet',
+  },
+  newCoordinator: {
+    title: 'Meet your new coordinator',
+    lead: 'This agent will be added beside the assistants you already have. Nothing existing will be replaced.',
+    another: 'Try someone else',
+  },
+  adoptionFailed: {
+    title: "I couldn't finish that safely",
+    action: 'Review my existing agents',
+  },
   fandom: {
     title: 'What do you love?',
     lead: 'Name a world you like: a show, a book, a game, a hobby, a group chat. We ask because your agents get their names and their character from it, so it may as well be somewhere you enjoy.',

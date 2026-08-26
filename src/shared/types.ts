@@ -70,11 +70,39 @@ export interface HermesProfile {
   isReal: boolean;
 }
 
+export interface FleetIdentityProposal {
+  profile: HermesProfile;
+  character: Character;
+}
+
+export type FleetFandomIntent = 'rename' | 'new-coordinator';
+
 export type WizardStep =
   | { kind: 'welcome' }
   | { kind: 'runtime-checking' }
   | { kind: 'runtime-missing' }
   | { kind: 'provider-missing' }
+  | { kind: 'existing-fleet'; profiles: HermesProfile[] }
+  | { kind: 'fleet-fandom'; profiles: HermesProfile[]; intent: FleetFandomIntent }
+  | {
+      kind: 'fleet-deriving';
+      profiles: HermesProfile[];
+      intent: FleetFandomIntent;
+      fandom: string;
+    }
+  | {
+      kind: 'fleet-derive-failed';
+      profiles: HermesProfile[];
+      intent: FleetFandomIntent;
+      fandom: string;
+      message: string;
+    }
+  | { kind: 'fleet-preview'; proposals: FleetIdentityProposal[]; fandom: string }
+  | { kind: 'fleet-saving'; proposals: FleetIdentityProposal[]; selectedProfileIds: string[] }
+  | { kind: 'coordinator-choice'; profiles: HermesProfile[]; fandom: string | null }
+  | { kind: 'new-coordinator-preview'; profiles: HermesProfile[]; character: Character }
+  | { kind: 'adoption-write-failed'; message: string }
+  | { kind: 'fleet-launching'; mainProfileId: string; openingProfileId: string | null }
   | { kind: 'fandom' }
   | { kind: 'deriving'; fandom: string }
   | { kind: 'derive-failed'; fandom: string; message: string }

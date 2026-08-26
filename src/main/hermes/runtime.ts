@@ -53,6 +53,8 @@ export interface HermesRuntime {
   version(): Promise<string | null>;
   /** Profiles on disk, including `default`, with realness already computed. */
   listProfiles(): Promise<HermesProfile[]>;
+  /** Creates a named profile cloned from the default profile's working configuration. */
+  createProfile(profileId: string, description: string): Promise<void>;
   /** True when at least one provider is authenticated. */
   hasProvider(): Promise<boolean>;
   /** One-shot non-interactive query. Returns the agent's text reply. */

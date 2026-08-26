@@ -10,6 +10,18 @@ contextBridge.exposeInMainWorld('circe', {
   accept: () => ipcRenderer.send('wizard:accept'),
   confirmClaim: () => ipcRenderer.send('wizard:confirm-claim'),
   declineClaim: () => ipcRenderer.send('wizard:decline-claim'),
+  personalizeFleet: () => ipcRenderer.send('wizard:personalize-fleet'),
+  keepFleetNames: () => ipcRenderer.send('wizard:keep-fleet-names'),
+  submitFleetFandom: (text: string) => ipcRenderer.send('wizard:fleet-fandom', text),
+  retryFleet: () => ipcRenderer.send('wizard:retry-fleet'),
+  acceptFleetRenames: (profileIds: string[]) =>
+    ipcRenderer.send('wizard:accept-fleet-renames', profileIds),
+  chooseCoordinator: (profileId: string | null) =>
+    ipcRenderer.send('wizard:choose-coordinator', profileId),
+  newCoordinator: () => ipcRenderer.send('wizard:new-coordinator'),
+  acceptNewCoordinator: () => ipcRenderer.send('wizard:accept-new-coordinator'),
+  retryNewCoordinator: () => ipcRenderer.send('wizard:retry-new-coordinator'),
+  resumeAdoption: () => ipcRenderer.send('wizard:resume-adoption'),
   openExternal: (url: string) => ipcRenderer.send('open-external', url),
   onAvatar: (cb: (dataUrl: string | null) => void) =>
     ipcRenderer.on('wizard:avatar', (_e, url: string | null) => cb(url)),

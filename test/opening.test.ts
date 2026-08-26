@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { openingMessage } from '../src/main/orchestrator/opening';
+import { adoptionOpeningMessage, openingMessage } from '../src/main/orchestrator/opening';
 import type { Character } from '../src/shared/types';
 
 const TRILLIAN: Character = {
@@ -17,6 +17,15 @@ const TRILLIAN: Character = {
   greeting: '',
   voiceCheck: '',
 };
+
+describe('adoptionOpeningMessage', () => {
+  it('states that the existing role survives and asks for one automation', () => {
+    const message = adoptionOpeningMessage(TRILLIAN);
+    expect(message).toMatch(/existing role and instructions are still intact/i);
+    expect(message).toMatch(/one thing you'd like to automate/i);
+    expect(message).not.toMatch(/plan.*fleet|list.*agents/i);
+  });
+});
 
 describe('openingMessage', () => {
   it('introduces the agent by name', () => {

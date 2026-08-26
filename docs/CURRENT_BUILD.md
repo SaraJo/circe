@@ -7,9 +7,9 @@ and must not override the checked-in code or this document.
 
 ## Product
 
-Circe is a small macOS desktop companion for Hermes. It helps someone turn the
-Hermes default profile into a themed coordinator, then gives each usable Hermes
-profile its own lightweight conversation tile.
+Circe is a small macOS desktop companion for Hermes. It can create a themed
+coordinator for a new setup or adopt an existing Hermes fleet, then gives each
+usable profile its own lightweight conversation tile.
 
 Hermes remains responsible for providers, profiles, sessions, tools, and agent
 data. Circe owns onboarding, desktop windows, presentation, and the small amount
@@ -19,6 +19,12 @@ of state needed to reopen a conversation.
 
 - Detects Hermes and whether a model provider is available.
 - Onboards the default profile from a fandom or universe chosen by the user.
+- Detects unadopted existing fleets and inventories them without writing.
+- Can propose fandom-based names and palettes for the whole existing fleet in
+  one model call; the user confirms agents individually, profile ids stay fixed,
+  and each changed `SOUL.md` is backed up before its heading changes.
+- Lets an existing user keep every name, install orchestration on one chosen
+  agent, create a separate cloned coordinator, or skip orchestration.
 - Writes the coordinator persona and installs the `circe-orchestrator` skill.
 - Opens existing usable profiles as separate themed desktop tiles.
 - Notices profiles created while Circe is running and opens their tiles.
@@ -60,8 +66,8 @@ Before public release:
 
 1. Exercise a real Hermes permission request through every card action.
 2. Sign and notarize the macOS app and DMG.
-3. Test onboarding on a clean Mac and startup against an existing multi-profile
-   Hermes home.
+3. Test clean onboarding and every existing-fleet adoption branch against real
+   multi-profile Hermes homes.
 
 ## Next product milestone
 

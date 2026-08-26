@@ -1,7 +1,6 @@
 import type { Character, HermesProfile } from '../shared/types';
 import { profileFilePath, soulPath, type HermesRuntime } from './hermes/runtime';
 import { DEFAULT_PALETTE } from './palette';
-import { isRealSoul } from './profiles';
 import { parseProfileTheme, readProfilePalette, THEME_FILE, writeProfileTheme } from './profileTheme';
 import { parseSoulHeading } from './soul';
 
@@ -26,7 +25,9 @@ const RECORD_VERSION = 2;
 /** Where the record lives, relative to the Hermes home. */
 export const LAST_LAUNCH_PATH = 'circe/last-launch.json';
 
-export type Startup = { kind: 'wizard' } | { kind: 'fleet'; mainProfileId: string };
+export type Startup =
+  | { kind: 'wizard'; profiles?: HermesProfile[] }
+  | { kind: 'fleet'; mainProfileId: string };
 
 export function serializeLastLaunch(mainProfileId: string): string {
   const record: LastLaunch = { version: RECORD_VERSION, mainProfileId };
@@ -145,31 +146,42 @@ export async function characterFor(
  */
 export async function readStartup(hermes: HermesRuntime): Promise<Startup> {
   const soulRel = soulPath('', 'default').replace(/^\//, '');
-  let soulText: string | null;
   let recordJson: string | null;
   try {
-    soulText = await hermes.readHomeFile(soulRel);
+    await hermes.readHomeFile(soulRel);
     recordJson = await hermes.readHomeFile(LAST_LAUNCH_PATH);
   } catch (err) {
     console.warn('Could not read the Hermes home on startup; starting onboarding.', err);
     return { kind: 'wizard' };
   }
   await migrateV1Palette(hermes, recordJson);
-  return resolveStartup(recordJson, soulText);
+  const startup = resolveStartup(recordJson);
+  if (startup.kind === 'fleet') return startup;
+  try {
+    return {
+      kind: 'wizard',
+      profiles: (await hermes.listProfiles()).filter((profile) => profile.isReal),
+    };
+  } catch (err) {
+    console.warn('Could not enumerate the existing fleet for onboarding.', err);
+    return { kind: 'wizard' };
+  }
 }
 
 /**
  * Decides whether Circe onboards or opens the fleet, and which tile foregrounds.
  *
- * SOUL.md is the authority. If the root profile holds a real persona then an
- * orchestrator exists and Circe opens onto the fleet, whoever wrote it — a user
- * who hand-edits their own identity file must not be sent back through
- * onboarding, because onboarding's next move is to overwrite the very file they
- * just edited.
+ * Circe's record proves this installation has made an explicit onboarding or
+ * adoption choice. Without it the wizard inventories real Hermes profiles and
+ * chooses adoption or ordinary onboarding; it never treats a persona as
+ * permission to overwrite that persona.
  *
  * Kept pure so every branch is testable without an Electron app around it.
  */
-export function resolveStartup(recordJson: string | null, soulText: string | null): Startup {
-  if (!isRealSoul(soulText)) return { kind: 'wizard' };
-  return { kind: 'fleet', mainProfileId: parseLastLaunch(recordJson)?.mainProfileId ?? 'default' };
+export function resolveStartup(recordJson: string | null): Startup {
+  const record = parseLastLaunch(recordJson);
+  if (record !== null) return { kind: 'fleet', mainProfileId: record.mainProfileId };
+  // With no Circe record, `readStartup` inventories any real profiles and the
+  // wizard chooses between adoption and ordinary onboarding.
+  return { kind: 'wizard' };
 }

@@ -14,6 +14,16 @@ declare global {
       accept(): void;
       confirmClaim(): void;
       declineClaim(): void;
+      personalizeFleet(): void;
+      keepFleetNames(): void;
+      submitFleetFandom(text: string): void;
+      retryFleet(): void;
+      acceptFleetRenames(profileIds: string[]): void;
+      chooseCoordinator(profileId: string | null): void;
+      newCoordinator(): void;
+      acceptNewCoordinator(): void;
+      retryNewCoordinator(): void;
+      resumeAdoption(): void;
       openExternal(url: string): void;
       onAvatar(cb: (dataUrl: string | null) => void): void;
     };
@@ -201,6 +211,209 @@ function render(step: WizardStep): void {
       screenEl.append(node);
       break;
     }
+
+    case 'existing-fleet': {
+      const node = el(`
+        <section class="screen fleet-adoption">
+          <h1>${COPY.existingFleet.title}</h1>
+          <p class="lead">${COPY.existingFleet.lead}</p>
+          <div class="fleet-list" aria-label="Existing agents"></div>
+          <div class="actions">
+            <button class="primary" id="personalize">${COPY.existingFleet.personalize}</button>
+            <button class="quiet" id="keep">${COPY.existingFleet.keep}</button>
+          </div>
+        </section>
+      `);
+      const list = node.querySelector('.fleet-list')!;
+      for (const profile of step.profiles) {
+        const row = el('<div class="fleet-row"><strong></strong><span></span></div>');
+        row.querySelector('strong')!.textContent = profile.displayName;
+        row.querySelector('span')!.textContent = profile.id;
+        list.append(row);
+      }
+      node.querySelector('#personalize')!.addEventListener('click', () => window.circe.personalizeFleet());
+      node.querySelector('#keep')!.addEventListener('click', () => window.circe.keepFleetNames());
+      screenEl.append(node);
+      break;
+    }
+
+    case 'fleet-fandom': {
+      const rename = step.intent === 'rename';
+      const node = el(`
+        <section class="screen ask fleet-fandom">
+          <h1>${rename ? COPY.fleetFandom.renameTitle : COPY.fleetFandom.coordinatorTitle}</h1>
+          <p class="lead">${rename ? COPY.fleetFandom.renameLead : COPY.fleetFandom.coordinatorLead}</p>
+          <input id="fleet-fandom" placeholder="${COPY.fandom.placeholder}" autofocus />
+          <div class="actions">
+            <button class="primary" id="fleet-go">${COPY.fleetFandom.action}</button>
+          </div>
+        </section>
+      `);
+      const input = node.querySelector<HTMLInputElement>('#fleet-fandom')!;
+      const submit = () => window.circe.submitFleetFandom(input.value);
+      node.querySelector('#fleet-go')!.addEventListener('click', submit);
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') submit();
+      });
+      screenEl.append(node);
+      input.focus();
+      break;
+    }
+
+    case 'fleet-deriving': {
+      const rename = step.intent === 'rename';
+      const lead = fill(
+        rename ? COPY.fleetDeriving.renameLead : COPY.fleetDeriving.coordinatorLead,
+        { FANDOM: step.fandom },
+      );
+      screenEl.append(
+        el(`
+          <section class="screen working">
+            <h1>${rename ? COPY.fleetDeriving.renameTitle : COPY.fleetDeriving.coordinatorTitle}</h1>
+            <p class="lead"></p>
+            <div class="spinner"></div>
+          </section>
+        `),
+      );
+      screenEl.querySelector('.lead')!.textContent = lead;
+      break;
+    }
+
+    case 'fleet-derive-failed': {
+      const node = el(`
+        <section class="screen">
+          <h1>${COPY.deriveFailed.title}</h1>
+          <p class="lead"></p>
+          <div class="actions"><button class="primary" id="retry-fleet">${COPY.deriveFailed.action}</button></div>
+        </section>
+      `);
+      node.querySelector('.lead')!.textContent = step.message;
+      node.querySelector('#retry-fleet')!.addEventListener('click', () => window.circe.retryFleet());
+      screenEl.append(node);
+      break;
+    }
+
+    case 'fleet-preview': {
+      const node = el(`
+        <section class="screen fleet-preview-screen">
+          <h1>${COPY.fleetPreview.title}</h1>
+          <p class="lead">${COPY.fleetPreview.lead}</p>
+          <div class="fleet-proposals"></div>
+          <div class="actions"><button class="primary" id="apply-fleet">${COPY.fleetPreview.action}</button></div>
+        </section>
+      `);
+      const proposals = node.querySelector('.fleet-proposals')!;
+      for (const proposal of step.proposals) {
+        const row = el(`
+          <label class="proposal-row">
+            <input type="checkbox" checked />
+            <span class="proposal-copy"><strong></strong><small></small></span>
+            <span class="palette-preview"><i></i><i></i><i></i></span>
+          </label>
+        `);
+        const checkbox = row.querySelector<HTMLInputElement>('input')!;
+        checkbox.value = proposal.profile.id;
+        row.querySelector('strong')!.textContent = `${proposal.profile.displayName} → ${proposal.character.name}`;
+        row.querySelector('small')!.textContent = proposal.character.tagline;
+        const colours = [proposal.character.palette.bg, proposal.character.palette.border, proposal.character.palette.accent];
+        row.querySelectorAll<HTMLElement>('.palette-preview i').forEach((swatch, index) => {
+          swatch.style.background = colours[index]!;
+        });
+        proposals.append(row);
+      }
+      node.querySelector('#apply-fleet')!.addEventListener('click', () => {
+        const ids = Array.from(
+          node.querySelectorAll<HTMLInputElement>('.proposal-row input:checked'),
+        ).map(
+          (checkbox) => checkbox.value,
+        );
+        window.circe.acceptFleetRenames(ids);
+      });
+      screenEl.append(node);
+      break;
+    }
+
+    case 'fleet-saving':
+      screenEl.append(
+        el(`
+          <section class="screen working">
+            <h1>${COPY.fleetPreview.savingTitle}</h1>
+            <p class="lead">${COPY.fleetPreview.savingLead}</p>
+            <div class="spinner"></div>
+          </section>
+        `),
+      );
+      break;
+
+    case 'coordinator-choice': {
+      const node = el(`
+        <section class="screen coordinator-choice">
+          <h1>${COPY.coordinatorChoice.title}</h1>
+          <p class="lead">${COPY.coordinatorChoice.lead}</p>
+          <select id="coordinator"></select>
+          <div class="actions coordinator-actions">
+            <button class="primary" id="use-existing">${COPY.coordinatorChoice.existing}</button>
+            <button class="quiet" id="create-new">${COPY.coordinatorChoice.create}</button>
+          </div>
+          <button class="link" id="skip-coordinator">${COPY.coordinatorChoice.skip}</button>
+        </section>
+      `);
+      const select = node.querySelector<HTMLSelectElement>('#coordinator')!;
+      for (const profile of step.profiles) {
+        const option = document.createElement('option');
+        option.value = profile.id;
+        option.textContent = profile.displayName;
+        select.append(option);
+      }
+      const defaultProfile = step.profiles.find((profile) => profile.id === 'default');
+      if (defaultProfile) select.value = defaultProfile.id;
+      node.querySelector('#use-existing')!.addEventListener('click', () =>
+        window.circe.chooseCoordinator(select.value),
+      );
+      node.querySelector('#create-new')!.addEventListener('click', () => window.circe.newCoordinator());
+      node.querySelector('#skip-coordinator')!.addEventListener('click', () =>
+        window.circe.chooseCoordinator(null),
+      );
+      screenEl.append(node);
+      break;
+    }
+
+    case 'new-coordinator-preview':
+      screenEl.append(
+        renderCharacter(step.character, {
+          title: COPY.newCoordinator.title,
+          lead: COPY.newCoordinator.lead,
+          nameTag: 'h2',
+          showWhy: true,
+          primary: {
+            label: fill(COPY.meet.action, { NAME: step.character.name }),
+            onClick: () => window.circe.acceptNewCoordinator(),
+          },
+          secondary: {
+            label: COPY.newCoordinator.another,
+            onClick: () => window.circe.retryNewCoordinator(),
+          },
+        }),
+      );
+      break;
+
+    case 'adoption-write-failed': {
+      const node = el(`
+        <section class="screen">
+          <h1>${COPY.adoptionFailed.title}</h1>
+          <p class="lead"></p>
+          <div class="actions"><button class="primary" id="resume-adoption">${COPY.adoptionFailed.action}</button></div>
+        </section>
+      `);
+      node.querySelector('.lead')!.textContent = step.message;
+      node.querySelector('#resume-adoption')!.addEventListener('click', () => window.circe.resumeAdoption());
+      screenEl.append(node);
+      break;
+    }
+
+    case 'fleet-launching':
+      screenEl.append(el(`<section class="screen"><h1>${COPY.coordinatorChoice.opening}</h1></section>`));
+      break;
 
     case 'fandom': {
       const node = el(`

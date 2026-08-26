@@ -1,12 +1,19 @@
-import type { Character, WizardStep } from '../shared/types';
+import type {
+  Character,
+  FleetFandomIntent,
+  FleetIdentityProposal,
+  HermesProfile,
+  WizardStep,
+} from '../shared/types';
 import type { HermesRuntime } from './hermes/runtime';
-import { deriveCharacter } from './derive';
+import { deriveCharacter, deriveFleetCharacters, type FleetIdentityInput } from './derive';
 import { hasConfiguredDefault } from './profiles';
-import { writeSoul } from './soul';
+import { parseSoulHeading, withSoulHeading, writeSoul } from './soul';
 import { loadTemplate, renderOrchestratorSoul } from './orchestrator/soulTemplate';
 import { installOrchestratorSkill } from './orchestrator/skill';
 import { LAST_LAUNCH_PATH, serializeLastLaunch } from './startup';
 import { writeProfileTheme } from './profileTheme';
+import { soulPath } from './hermes/runtime';
 import { findAvatar, type AvatarDeps, type AvatarFind, type FindOptions } from './avatar';
 import { findFandomAvatar } from './fandom';
 import { dataUrl, saveAvatar, type ToPng } from './avatarStore';
@@ -85,6 +92,7 @@ export class Wizard {
   constructor(
     private hermes: HermesRuntime,
     private avatar?: AvatarOptions,
+    private existingProfiles: HermesProfile[] = [],
   ) {}
 
   onChange(cb: (s: WizardStep) => void): void {
@@ -116,7 +124,209 @@ export class Wizard {
       this.set({ kind: 'provider-missing' });
       return;
     }
+    const existing = this.existingProfiles;
+    if (existing.length > 0) {
+      this.set({ kind: 'existing-fleet', profiles: existing });
+      return;
+    }
     this.set({ kind: 'fandom' });
+  }
+
+  personalizeExistingFleet(): void {
+    if (this.state.kind !== 'existing-fleet') return;
+    this.set({ kind: 'fleet-fandom', profiles: this.state.profiles, intent: 'rename' });
+  }
+
+  keepExistingFleetNames(): void {
+    if (this.state.kind !== 'existing-fleet') return;
+    this.set({ kind: 'coordinator-choice', profiles: this.state.profiles, fandom: null });
+  }
+
+  beginNewCoordinator(): void {
+    if (this.state.kind !== 'coordinator-choice') return;
+    const { profiles, fandom } = this.state;
+    this.set({
+      kind: 'fleet-fandom',
+      profiles,
+      intent: 'new-coordinator',
+    });
+    if (fandom) void this.submitFleetFandom(fandom);
+  }
+
+  async submitFleetFandom(fandom: string): Promise<void> {
+    const state = this.state;
+    if (state.kind !== 'fleet-fandom' && state.kind !== 'fleet-derive-failed') return;
+    const trimmed = fandom.trim();
+    if (!trimmed) return;
+    const gen = ++this.generation;
+    const { profiles, intent } = state;
+    this.set({ kind: 'fleet-deriving', profiles, intent, fandom: trimmed });
+    try {
+      if (intent === 'rename') {
+        const inputs = await this.fleetIdentityInputs(profiles);
+        const characters = await deriveFleetCharacters(this.hermes, trimmed, inputs);
+        if (gen !== this.generation) return;
+        const byId = new Map(profiles.map((profile) => [profile.id, profile]));
+        const proposals: FleetIdentityProposal[] = characters.map((character) => ({
+          profile: byId.get(character.profileId)!,
+          character,
+        }));
+        this.set({ kind: 'fleet-preview', proposals, fandom: trimmed });
+        return;
+      }
+
+      const character = await deriveCharacter(this.hermes, trimmed);
+      if (gen !== this.generation) return;
+      this.set({ kind: 'new-coordinator-preview', profiles, character });
+    } catch (err) {
+      if (gen !== this.generation) return;
+      this.set({
+        kind: 'fleet-derive-failed',
+        profiles,
+        intent,
+        fandom: trimmed,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  async retryFleetDerivation(): Promise<void> {
+    if (this.state.kind !== 'fleet-derive-failed') return;
+    await this.submitFleetFandom(this.state.fandom);
+  }
+
+  async acceptFleetRenames(profileIds: string[]): Promise<void> {
+    if (this.state.kind !== 'fleet-preview') return;
+    const proposals = this.state.proposals;
+    const allowed = new Set(proposals.map((proposal) => proposal.profile.id));
+    const selected = [...new Set(profileIds)].filter((id) => allowed.has(id));
+    this.set({ kind: 'fleet-saving', proposals, selectedProfileIds: selected });
+    try {
+      for (const proposal of proposals) {
+        if (!selected.includes(proposal.profile.id)) continue;
+        const rel = soulPath('', proposal.profile.id).replace(/^\//, '');
+        const existing = await this.hermes.readHomeFile(rel);
+        if (existing === null) {
+          throw new Error(`Could not find ${rel}; nothing was changed for that agent.`);
+        }
+        const renamed = withSoulHeading(existing, {
+          name: proposal.character.name,
+          tagline: proposal.character.tagline,
+        });
+        await writeSoul({
+          hermes: this.hermes,
+          profileId: proposal.profile.id,
+          contents: renamed,
+        });
+        await writeProfileTheme(this.hermes, proposal.profile.id, proposal.character.palette);
+      }
+      const profiles = (await this.hermes.listProfiles()).filter((profile) => profile.isReal);
+      this.set({
+        kind: 'coordinator-choice',
+        profiles,
+        fandom: proposals[0]?.character.fandom ?? null,
+      });
+    } catch (err) {
+      this.set({
+        kind: 'adoption-write-failed',
+        message:
+          'Circe stopped at the first failed write. An agent changed before this point has a ' +
+          'SOUL.md backup; unchecked agents were not touched. ' +
+          (err instanceof Error ? err.message : String(err)),
+      });
+    }
+  }
+
+  async chooseExistingCoordinator(profileId: string | null): Promise<void> {
+    if (this.state.kind !== 'coordinator-choice') return;
+    const profiles = this.state.profiles;
+    const selected = profileId === null ? null : profiles.find((profile) => profile.id === profileId);
+    if (profileId !== null && !selected) return;
+    const mainProfileId =
+      selected?.id ??
+      profiles.find((profile) => profile.id === 'default')?.id ??
+      profiles[0]?.id;
+    if (!mainProfileId) return;
+    try {
+      if (selected) await installOrchestratorSkill(this.hermes, selected.id);
+      await this.hermes.writeHomeFile(LAST_LAUNCH_PATH, serializeLastLaunch(mainProfileId));
+      this.set({
+        kind: 'fleet-launching',
+        mainProfileId,
+        openingProfileId: selected?.id ?? null,
+      });
+    } catch (err) {
+      this.set({
+        kind: 'adoption-write-failed',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  async acceptNewCoordinator(): Promise<void> {
+    if (this.state.kind !== 'new-coordinator-preview') return;
+    const proposed = this.state.character;
+    const used = new Set(this.state.profiles.map((profile) => profile.id));
+    let profileId = proposed.profileId || 'coordinator';
+    for (let suffix = 2; used.has(profileId); suffix += 1) {
+      const tail = `-${suffix}`;
+      profileId = `${proposed.profileId.slice(0, 32 - tail.length)}${tail}`;
+    }
+    const character = { ...proposed, profileId };
+    this.set({ kind: 'saving', character });
+    let profileCreated = false;
+    try {
+      await this.hermes.createProfile(profileId, `${character.name}, Circe coordinator`);
+      profileCreated = true;
+      await writeSoul({
+        hermes: this.hermes,
+        profileId,
+        contents: renderOrchestratorSoul(character, await loadTemplate()),
+      });
+      await writeProfileTheme(this.hermes, profileId, character.palette);
+      await installOrchestratorSkill(this.hermes, profileId);
+      await this.hermes.writeHomeFile(LAST_LAUNCH_PATH, serializeLastLaunch(profileId));
+      this.set({ kind: 'launching', character, profileId });
+    } catch (err) {
+      this.set({
+        kind: 'adoption-write-failed',
+        message:
+          (profileCreated
+            ? `The new ${profileId} profile was created, but Circe could not finish configuring it. `
+            : 'Circe could not create the new coordinator profile. ') +
+          (err instanceof Error ? err.message : String(err)),
+      });
+    }
+  }
+
+  retryNewCoordinator(): void {
+    if (this.state.kind !== 'new-coordinator-preview') return;
+    this.set({
+      kind: 'fleet-fandom',
+      profiles: this.state.profiles,
+      intent: 'new-coordinator',
+    });
+  }
+
+  async resumeAdoption(): Promise<void> {
+    if (this.state.kind !== 'adoption-write-failed') return;
+    const profiles = (await this.hermes.listProfiles()).filter((profile) => profile.isReal);
+    this.set({ kind: 'existing-fleet', profiles });
+  }
+
+  private async fleetIdentityInputs(profiles: HermesProfile[]): Promise<FleetIdentityInput[]> {
+    return Promise.all(
+      profiles.map(async (profile) => {
+        const rel = soulPath('', profile.id).replace(/^\//, '');
+        const soul = await this.hermes.readHomeFile(rel);
+        const heading = soul === null ? null : parseSoulHeading(soul);
+        return {
+          profileId: profile.id,
+          name: heading?.name ?? profile.displayName,
+          tagline: heading?.tagline ?? '',
+        };
+      }),
+    );
   }
 
   /**

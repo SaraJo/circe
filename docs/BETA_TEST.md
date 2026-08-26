@@ -40,6 +40,19 @@ Record whether any step required help. Installation friction is product feedback
 
 ## Guided session
 
+If Hermes already has configured agents:
+
+1. Confirm Circe lists them before making any change.
+2. Exercise either **Keep their current names** or **Give them Circe identities**.
+3. On the identity path, uncheck at least one proposal. Confirm only checked
+   agents receive a new visible name, tagline, and colours; their profile ids
+   and remaining instructions must stay unchanged, and a `SOUL.md.bak-*` file
+   must exist for every renamed agent.
+4. Choose an existing coordinator, create a separate one, or skip. Confirm
+   Circe does exactly the selected option and does not replace another profile.
+
+If Hermes has no configured agents:
+
 1. Complete onboarding and choose a fandom or universe you genuinely like.
 2. Confirm the coordinator's first question asks for one concrete thing you
    would like to automate, rather than asking you to design a fleet.

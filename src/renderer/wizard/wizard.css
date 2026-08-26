@@ -81,7 +81,9 @@ h1 {
 .why { margin: 0; color: var(--ink-soft); font-style: italic; max-width: 44ch; }
 code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; }
 
-input {
+input:not([type]),
+input[type='text'],
+select {
   background: var(--input-bg);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -90,8 +92,11 @@ input {
   padding: 15px 16px;
   transition: border-color 0.15s ease, background 0.15s ease;
 }
-input::placeholder { color: var(--placeholder); }
-input:focus {
+input:not([type])::placeholder,
+input[type='text']::placeholder { color: var(--placeholder); }
+input:not([type]):focus,
+input[type='text']:focus,
+select:focus {
   outline: none;
   border-color: var(--input-border-focus);
   background: var(--input-bg-focus);
@@ -250,6 +255,63 @@ button:active { transform: translateY(1px); }
  * center` above already gives the whole block room on both sides.
  */
 .screen.ask .actions { margin-top: 4px; }
+
+.fleet-adoption,
+.coordinator-choice {
+  justify-content: center;
+}
+
+.fleet-list,
+.fleet-proposals {
+  width: 100%;
+  max-height: 210px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.38);
+}
+
+.fleet-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.fleet-row:last-child { border-bottom: none; }
+.fleet-row span { color: var(--ink-faint); font-size: 13px; }
+
+.fleet-preview-screen { padding-top: 30px; gap: 12px; }
+.fleet-preview-screen .lead { font-size: 14px; }
+.fleet-proposals { max-height: 270px; }
+.proposal-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.proposal-row:last-child { border-bottom: none; }
+.proposal-row input { width: 17px; height: 17px; accent-color: var(--ink); }
+.proposal-copy { display: flex; flex-direction: column; min-width: 0; }
+.proposal-copy strong,
+.proposal-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proposal-copy small { color: var(--ink-faint); }
+.palette-preview { display: flex; }
+.palette-preview i {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--ink);
+  border-radius: 50%;
+  margin-left: -4px;
+}
+
+.coordinator-choice select { max-width: 44ch; }
+.coordinator-actions { margin-top: 4px; flex-wrap: wrap; }
+.coordinator-choice .link { align-self: flex-start; }
 
 /*
  * One inline SVG line illustration, fandom screen only (spec §7): a small

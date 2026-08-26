@@ -58,6 +58,14 @@ export function openingMessage(c: Character): string {
   return paragraphs.join('\n\n');
 }
 
+/** First message after an existing agent is explicitly chosen as coordinator. */
+export function adoptionOpeningMessage(c: Character): string {
+  return [
+    `I'm ${c.name}. My existing role and instructions are still intact, and I can now help turn repeated work into skills or, when a real boundary calls for it, a specialist agent.`,
+    `What's one thing you'd like to automate?`,
+  ].join('\n\n');
+}
+
 /** Circe's own opening, used whenever the character did not write one. */
 function scripted(c: Character): string {
   return [

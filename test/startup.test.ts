@@ -10,7 +10,7 @@ import {
   serializeLastLaunch,
 } from '../src/main/startup';
 import { serializeProfileTheme } from '../src/main/profileTheme';
-import { FakeHermes, INSTALLED_EMPTY, SCAFFOLD_SOUL } from './fake/hermes';
+import { FakeHermes, INSTALLED_EMPTY } from './fake/hermes';
 import type { HermesProfile, Palette } from '../src/shared/types';
 
 const PALETTE: Palette = { bg: '#1e2952', border: '#c7d2fe', accent: '#a5b4fc' };
@@ -21,36 +21,23 @@ function profile(over: Partial<HermesProfile> = {}): HermesProfile {
 }
 
 describe('resolveStartup', () => {
-  it('opens onboarding when SOUL.md is the stock scaffold', () => {
-    expect(resolveStartup(null, SCAFFOLD_SOUL)).toEqual({ kind: 'wizard' });
-  });
-
-  it('opens onboarding when there is no SOUL.md at all', () => {
-    expect(resolveStartup(null, null)).toEqual({ kind: 'wizard' });
-  });
-
-  // SOUL.md is the authority: a hand-edited persona keeps its agent rather than
-  // being sent back through a wizard whose next move is to overwrite it.
-  it('opens the fleet when a persona exists, with no record at all', () => {
-    expect(resolveStartup(null, REAL_SOUL)).toEqual({ kind: 'fleet', mainProfileId: 'default' });
+  it('opens onboarding or adoption when Circe has no setup record', () => {
+    expect(resolveStartup(null)).toEqual({ kind: 'wizard' });
   });
 
   it('foregrounds the profile the record names', () => {
     const record = serializeLastLaunch('ford');
-    expect(resolveStartup(record, REAL_SOUL)).toEqual({ kind: 'fleet', mainProfileId: 'ford' });
+    expect(resolveStartup(record)).toEqual({ kind: 'fleet', mainProfileId: 'ford' });
   });
 
-  it('falls back to default for a corrupt record', () => {
-    expect(resolveStartup('{ broken', REAL_SOUL)).toEqual({
-      kind: 'fleet',
-      mainProfileId: 'default',
-    });
+  it('opens adoption for a corrupt record rather than guessing setup completed', () => {
+    expect(resolveStartup('{ broken')).toEqual({ kind: 'wizard' });
   });
 
   // A v1 record carries a `character` block this build would half-read.
-  it('falls back to default for a v1 record', () => {
+  it('opens adoption for a v1 record after its palette migration', () => {
     const v1 = JSON.stringify({ version: 1, profileId: 'ford', character: { name: 'Ford' } });
-    expect(resolveStartup(v1, REAL_SOUL)).toEqual({ kind: 'fleet', mainProfileId: 'default' });
+    expect(resolveStartup(v1)).toEqual({ kind: 'wizard' });
   });
 });
 
@@ -156,11 +143,35 @@ describe('migrateV1Palette', () => {
 });
 
 describe('readStartup', () => {
-  it('opens the fleet for a configured install', async () => {
+  it('opens adoption and carries the configured profiles when Circe has no record', async () => {
     const hermes = new FakeHermes(INSTALLED_EMPTY);
     await hermes.writeHomeFile('SOUL.md', REAL_SOUL);
 
-    expect(await readStartup(hermes)).toEqual({ kind: 'fleet', mainProfileId: 'default' });
+    expect(await readStartup(hermes)).toEqual({
+      kind: 'wizard',
+      profiles: [expect.objectContaining({ id: 'default', displayName: 'Trillian', isReal: true })],
+    });
+  });
+
+  it('finds named specialists even when the default profile is still a scaffold', async () => {
+    const hermes = new FakeHermes({
+      ...INSTALLED_EMPTY,
+      files: {
+        ...INSTALLED_EMPTY.files,
+        'profiles/writer/SOUL.md': '# Writer — turns findings into prose\n',
+      },
+      models: { ...INSTALLED_EMPTY.models, writer: 'claude-opus-5' },
+    });
+    expect(await readStartup(hermes)).toEqual({
+      kind: 'wizard',
+      profiles: [expect.objectContaining({ id: 'writer', displayName: 'Writer' })],
+    });
+  });
+
+  it('honours completed adoption when the default profile remains a scaffold', async () => {
+    const hermes = new FakeHermes(INSTALLED_EMPTY);
+    await hermes.writeHomeFile(LAST_LAUNCH_PATH, serializeLastLaunch('writer'));
+    expect(await readStartup(hermes)).toEqual({ kind: 'fleet', mainProfileId: 'writer' });
   });
 
   it("honours the record's main operator", async () => {

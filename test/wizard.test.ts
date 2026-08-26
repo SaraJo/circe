@@ -30,6 +30,55 @@ const REPLY = JSON.stringify({
   why: 'She tracks what everyone else is doing.',
 });
 
+const ADOPTION_BASE: Scenario = {
+  version: '0.14.0',
+  hasProvider: true,
+  files: {
+    'SOUL.md': '# Research — finds the useful source\n\nKeep the evidence straight.\n',
+    'profiles/writer/SOUL.md': '# Writer — turns findings into prose\n\nWrite clearly.\n',
+  },
+  models: { default: 'claude-opus-5', writer: 'claude-opus-5' },
+};
+
+const FLEET_REPLY = JSON.stringify({
+  agents: [
+    {
+      profileId: 'default',
+      name: 'Spock',
+      fullName: 'Spock',
+      tagline: 'the one who tests every premise',
+      palette: { bg: '#17324d', border: '#b9d8ee', accent: '#65c7e8' },
+      wiki: 'memory-alpha.fandom.com',
+      wikiPage: 'Spock',
+    },
+    {
+      profileId: 'writer',
+      name: 'Uhura',
+      fullName: 'Nyota Uhura',
+      tagline: 'the voice that makes meaning clear',
+      palette: { bg: '#4a1825', border: '#f1bcc8', accent: '#f06a86' },
+      wiki: 'memory-alpha.fandom.com',
+      wikiPage: 'Nyota Uhura',
+    },
+  ],
+});
+
+async function adoptionWizard() {
+  const hermes = new FakeHermes({
+    ...ADOPTION_BASE,
+    files: { ...ADOPTION_BASE.files },
+    models: { ...ADOPTION_BASE.models },
+    replies: [
+      { match: 'existing assistant', reply: FLEET_REPLY },
+      { match: 'coordinator', reply: REPLY },
+    ],
+  });
+  const profiles = (await hermes.listProfiles()).filter((profile) => profile.isReal);
+  const wizard = new Wizard(hermes, undefined, profiles);
+  await wizard.start();
+  return { hermes, wizard };
+}
+
 function scenario(base: Scenario): Scenario {
   return { ...base, replies: [{ match: 'coordinator', reply: REPLY }] };
 }
@@ -172,6 +221,89 @@ describe('a machine that already has agents', () => {
     w.declineClaimDefault();
     expect(w.state.kind).toBe('fandom');
     expect(hermes.files).toEqual(snapshot);
+  });
+});
+
+describe('adopting an existing Hermes fleet', () => {
+  it('starts with a non-destructive inventory instead of the fresh-user fandom question', async () => {
+    const { wizard } = await adoptionWizard();
+    expect(wizard.state).toMatchObject({
+      kind: 'existing-fleet',
+      profiles: [
+        { id: 'default', displayName: 'Research' },
+        { id: 'writer', displayName: 'Writer' },
+      ],
+    });
+  });
+
+  it('renames and skins only the agents selected in the preview', async () => {
+    const { hermes, wizard } = await adoptionWizard();
+    const defaultBefore = await hermes.readHomeFile('SOUL.md');
+    wizard.personalizeExistingFleet();
+    await wizard.submitFleetFandom('Star Trek');
+    expect(wizard.state.kind).toBe('fleet-preview');
+
+    await wizard.acceptFleetRenames(['writer']);
+
+    expect(wizard.state.kind).toBe('coordinator-choice');
+    expect(await hermes.readHomeFile('SOUL.md')).toBe(defaultBefore);
+    expect(await hermes.readHomeFile('circe.json')).toBeNull();
+    expect(await hermes.readHomeFile('profiles/writer/SOUL.md')).toContain(
+      '# Uhura — the voice that makes meaning clear',
+    );
+    expect(await hermes.readHomeFile('profiles/writer/SOUL.md')).toContain('Write clearly.');
+    expect(await hermes.readHomeFile('profiles/writer/circe.json')).toContain('#f06a86');
+    expect(
+      [...hermes.files.keys()].some((path) => path.startsWith('profiles/writer/SOUL.md.bak-')),
+    ).toBe(true);
+  });
+
+  it('can add orchestration to an existing agent without rewriting its persona', async () => {
+    const { hermes, wizard } = await adoptionWizard();
+    const before = await hermes.readHomeFile('profiles/writer/SOUL.md');
+    wizard.keepExistingFleetNames();
+    await wizard.chooseExistingCoordinator('writer');
+
+    expect(wizard.state).toEqual({
+      kind: 'fleet-launching',
+      mainProfileId: 'writer',
+      openingProfileId: 'writer',
+    });
+    expect(await hermes.readHomeFile('profiles/writer/SOUL.md')).toBe(before);
+    expect(await hermes.readHomeFile('profiles/writer/skills/circe-orchestrator/SKILL.md')).toContain(
+      'Growing the network',
+    );
+    expect(await hermes.readHomeFile(LAST_LAUNCH_PATH)).toContain('writer');
+  });
+
+  it('can preserve the fleet and skip orchestration', async () => {
+    const { hermes, wizard } = await adoptionWizard();
+    wizard.keepExistingFleetNames();
+    await wizard.chooseExistingCoordinator(null);
+    expect(wizard.state).toEqual({
+      kind: 'fleet-launching',
+      mainProfileId: 'default',
+      openingProfileId: null,
+    });
+    expect([...hermes.files.keys()].some((path) => path.includes('circe-orchestrator'))).toBe(false);
+  });
+
+  it('can create a dedicated coordinator beside the existing profiles', async () => {
+    const { hermes, wizard } = await adoptionWizard();
+    const defaultBefore = await hermes.readHomeFile('SOUL.md');
+    wizard.keepExistingFleetNames();
+    wizard.beginNewCoordinator();
+    await wizard.submitFleetFandom("Hitchhiker's Guide");
+    expect(wizard.state.kind).toBe('new-coordinator-preview');
+
+    await wizard.acceptNewCoordinator();
+
+    expect(wizard.state).toMatchObject({ kind: 'launching', profileId: 'trillian' });
+    expect(await hermes.readHomeFile('SOUL.md')).toBe(defaultBefore);
+    expect(await hermes.readHomeFile('profiles/trillian/SOUL.md')).toContain('# Trillian');
+    expect(await hermes.readHomeFile('profiles/trillian/skills/circe-orchestrator/SKILL.md')).toContain(
+      'Growing the network',
+    );
   });
 });
 
@@ -592,11 +724,18 @@ describe('onboarding copy (spec §1.4, amended 2026-08-18)', () => {
     expect(Object.keys(COPY).sort()).toEqual(
       [
         'claimDefault',
+        'adoptionFailed',
+        'coordinatorChoice',
         'deriveFailed',
         'deriving',
+        'existingFleet',
         'fandom',
+        'fleetDeriving',
+        'fleetFandom',
+        'fleetPreview',
         'launching',
         'meet',
+        'newCoordinator',
         'provider',
         'runtime',
         'saving',
@@ -656,8 +795,20 @@ describe('onboarding copy (spec §1.4, amended 2026-08-18)', () => {
   // screen, and "helps you build the others" is exactly the line that must not
   // drift into promising them.
   it('does not promise the others already exist', () => {
-    const all = Object.values(COPY).flatMap((s) => Object.values(s)).join(' ');
-    expect(all).not.toMatch(/your fleet|your agents are ready|set up your agents/i);
+    const freshFlow = [
+      COPY.welcome,
+      COPY.runtime,
+      COPY.provider,
+      COPY.fandom,
+      COPY.deriving,
+      COPY.deriveFailed,
+      COPY.claimDefault,
+      COPY.meet,
+      COPY.saving,
+      COPY.writeFailed,
+      COPY.launching,
+    ].flatMap((screen) => Object.values(screen)).join(' ');
+    expect(freshFlow).not.toMatch(/your fleet|your agents are ready|set up your agents/i);
   });
 
   /**
