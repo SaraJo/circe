@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AcpClient, parseFrames } from '../src/main/acp';
+import { AcpClient, optionIdFor, parseFrames } from '../src/main/acp';
 
 // Reaches into the private `request` method the same way the idempotence test
 // below reaches into `doStart`: no subprocess, no faked ACP traffic. `request`'s
@@ -112,6 +112,74 @@ describe('session/update forwarding', () => {
     (client as unknown as WithHandle).handle({ method: 'session/update' });
 
     expect(seen).toEqual([]);
+  });
+});
+
+describe('session/request_permission', () => {
+  const options = [
+    { optionId: 'allow_always', kind: 'allow_always', name: 'Always allow' },
+    { optionId: 'allow_once', kind: 'allow_once', name: 'Allow once' },
+    { optionId: 'allow_session', kind: 'allow_always', name: 'Allow for session' },
+    { optionId: 'deny', kind: 'reject_once', name: 'Deny' },
+  ];
+
+  it('never maps a Circe answer to a permanent option', () => {
+    expect(optionIdFor('allow_once', options)).toBe('allow_once');
+    expect(optionIdFor('allow_session', options)).toBe('allow_session');
+    expect(optionIdFor('deny', options)).toBe('deny');
+  });
+
+  it('asks the caller and sends the selected non-persistent option', async () => {
+    const onPermission = vi.fn(async () => 'allow_session' as const);
+    const client = new AcpClient({
+      profileId: 'test',
+      onUpdate: () => {},
+      onExit: () => {},
+      onPermission,
+    });
+    const send = vi
+      .spyOn(client as unknown as { send(frame: unknown): void }, 'send')
+      .mockImplementation(() => {});
+
+    (client as unknown as WithHandle).handle({
+      method: 'session/request_permission',
+      id: 7,
+      params: {
+        toolCall: { rawInput: { command: 'rm -rf build', description: 'Delete build output' } },
+        options,
+      },
+    });
+    await Promise.resolve();
+
+    expect(onPermission).toHaveBeenCalledWith({
+      id: 7,
+      command: 'rm -rf build',
+      description: 'Delete build output',
+    });
+    expect(send).toHaveBeenCalledWith({
+      jsonrpc: '2.0',
+      id: 7,
+      result: { outcome: { outcome: 'selected', optionId: 'allow_session' } },
+    });
+  });
+
+  it('fails closed when no permission UI is connected', () => {
+    const client = new AcpClient({ profileId: 'test', onUpdate: () => {}, onExit: () => {} });
+    const send = vi
+      .spyOn(client as unknown as { send(frame: unknown): void }, 'send')
+      .mockImplementation(() => {});
+
+    (client as unknown as WithHandle).handle({
+      method: 'session/request_permission',
+      id: 8,
+      params: { toolCall: { title: 'Run command' }, options },
+    });
+
+    expect(send).toHaveBeenCalledWith({
+      jsonrpc: '2.0',
+      id: 8,
+      result: { outcome: { outcome: 'cancelled' } },
+    });
   });
 });
 

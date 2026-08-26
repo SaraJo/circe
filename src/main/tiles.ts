@@ -1,4 +1,5 @@
 import type { Character } from '../shared/types';
+import type { PermissionChoice, PermissionRequest } from './acp';
 import { readAvatarDataUrl } from './avatarStore';
 import type { HermesRuntime } from './hermes/runtime';
 import { restoreOrCreateSession, TileSession, type SessionClient } from './restore';
@@ -36,6 +37,7 @@ export interface TileClientOptions {
   profileId: string;
   onUpdate(sessionId: string, update: Record<string, unknown>): void;
   onExit(code: number | null): void;
+  onPermission(request: PermissionRequest): Promise<PermissionChoice>;
 }
 
 export interface TileDeps {
@@ -74,7 +76,10 @@ interface Tile {
   loaded: boolean;
   queue: string[];
   ready: Promise<void>;
+  pendingPermissions: Map<number, (choice: PermissionChoice, outcome?: string) => void>;
 }
+
+export const PERMISSION_TIMEOUT_MS = 60_000;
 
 export class TileRegistry {
   private readonly tiles = new Map<string, Tile>();
@@ -167,6 +172,7 @@ export class TileRegistry {
         if (!isCurrent()) return; // the exit belongs to an already-replaced client
         this.emit(win, { sessionUpdate: 'circe/exited', code });
       },
+      onPermission: (request) => this.askPermission(profileId, request),
     });
 
     const newTile: Tile = {
@@ -182,6 +188,7 @@ export class TileRegistry {
       // specialist. Reopening a tile must not replay it.
       queue: greeting === null ? [] : [greeting],
       ready: Promise.resolve(),
+      pendingPermissions: new Map(),
     };
     tile = newTile;
     this.tiles.set(profileId, newTile);
@@ -208,6 +215,7 @@ export class TileRegistry {
     // path stopping the client leaks a `hermes acp` process per close.
     // `stop()` tolerates a second call, so no dedup is needed.
     win.onceClosed(() => {
+      for (const answer of newTile.pendingPermissions.values()) answer('deny');
       client.stop();
       if (isCurrent()) this.tiles.delete(profileId);
     });
@@ -278,10 +286,52 @@ export class TileRegistry {
     await this.send(tile, route.sessionId, text);
   }
 
+  private askPermission(
+    profileId: string,
+    request: PermissionRequest,
+  ): Promise<PermissionChoice> {
+    const tile = this.tiles.get(profileId);
+    if (!tile || tile.win.isDestroyed()) return Promise.resolve('deny');
+
+    // A repeated protocol id cannot leave the older request hanging.
+    tile.pendingPermissions.get(request.id)?.('deny');
+
+    return new Promise((resolve) => {
+      let finished = false;
+      const finish = (choice: PermissionChoice, outcome: string = choice) => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        tile.pendingPermissions.delete(request.id);
+        this.emit(tile.win, {
+          sessionUpdate: 'circe/permission-resolved',
+          id: request.id,
+          outcome,
+        });
+        resolve(choice);
+      };
+      const timer = setTimeout(() => finish('deny', 'expired'), PERMISSION_TIMEOUT_MS);
+      tile.pendingPermissions.set(request.id, finish);
+      this.emit(tile.win, {
+        sessionUpdate: 'circe/permission',
+        id: request.id,
+        description: request.description,
+        command: request.command,
+      });
+      this.raiseTile(tile);
+    });
+  }
+
+  /** Answers only a request owned by this tile; unknown and stale ids are ignored. */
+  answerPermission(profileId: string, id: number, choice: PermissionChoice): void {
+    this.tiles.get(profileId)?.pendingPermissions.get(id)?.(choice);
+  }
+
   /** Closes a tile from inside the app. The native close path lands in the same handler. */
   close(profileId: string): void {
     const tile = this.tiles.get(profileId);
     if (!tile) return;
+    for (const answer of tile.pendingPermissions.values()) answer('deny');
     tile.client.stop();
     tile.win.close();
     this.tiles.delete(profileId);

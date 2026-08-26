@@ -1,3 +1,6 @@
+> **Historical record:** This is not the current specification or backlog. See
+> [CURRENT_BUILD.md](CURRENT_BUILD.md) for the authoritative product status.
+
 # Build decision record — 2026-08-14
 
 Circe Desktop was built in twelve tasks, each implemented by a separate agent against its own brief,

@@ -1,3 +1,6 @@
+> **Historical plan:** Do not execute unchecked tasks from this document. See
+> [../../CURRENT_BUILD.md](../../CURRENT_BUILD.md) for the current scope.
+
 # Circe Desktop Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

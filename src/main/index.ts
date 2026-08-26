@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, nativeImage, shell } from 'electron';
 import { RealHermes } from './hermes/real';
 import { Wizard } from './wizard';
 import { adaptTileWindow, createTileWindow, createWizardWindow } from './windows';
-import { AcpClient } from './acp';
+import { AcpClient, isPermissionChoice } from './acp';
 import { FleetWatch, tileableProfiles } from './fleet';
 import { openingMessage } from './orchestrator/opening';
 import { characterFor, readStartup } from './startup';
@@ -206,6 +206,11 @@ function registerIpc(): void {
     const profileId = tiles.profileForSender(e.sender);
     if (profileId === null) return;
     tiles.close(profileId);
+  });
+  ipcMain.on('tile:permission-answer', (e, answer: { id?: unknown; choice?: unknown }) => {
+    const profileId = tiles.profileForSender(e.sender);
+    if (profileId === null || !Number.isInteger(answer?.id) || !isPermissionChoice(answer?.choice)) return;
+    tiles.answerPermission(profileId, answer.id as number, answer.choice);
   });
 }
 

@@ -1,3 +1,6 @@
+> **Historical design:** This does not define the current product boundary. See
+> [../../CURRENT_BUILD.md](../../CURRENT_BUILD.md) for the authoritative scope.
+
 # Tile parity — design
 
 **Date:** 2026-08-16

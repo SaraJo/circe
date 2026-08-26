@@ -1,8 +1,13 @@
 # Circe
 
-Circe onboards one Hermes agent — a coordinator, named and coloured after a
-fandom you pick — and gives it a tile on your desktop. That agent's job is to
-help you build the rest of your agents through conversation.
+Circe onboards a Hermes coordinator — named and coloured after a fandom you
+pick — and gives each usable Hermes profile a tile on your desktop. The
+coordinator's job is to help you build the rest of your agents through
+conversation.
+
+For the authoritative implementation status and near-term roadmap, see
+[docs/CURRENT_BUILD.md](docs/CURRENT_BUILD.md). Dated plans and specs are
+historical records, not an implementation backlog.
 
 ## What it does
 
@@ -16,6 +21,12 @@ help you build the rest of your agents through conversation.
    sprawling.
 5. Installs the `circe-orchestrator` skill into that profile.
 6. Opens a tile, themed by the character, with an opening message.
+7. Opens tiles for existing profiles and notices new profiles created while it
+   is running.
+
+When Hermes requests approval for a tool action, Circe shows the command in the
+tile and offers allow-once, allow-for-session, or deny. Circe never chooses a
+permanent approval option.
 
 Circe never wires up an MCP server itself. That is a conversation you have with
 your orchestrator, which is what the skill teaches it to do.
@@ -65,10 +76,8 @@ Note: the build is unsigned and unnotarised, so macOS quarantines a downloaded
 **Open** the first time, then confirm. Signing and notarising the release
 removes the step.
 
-## What has not been verified
+## Verification status
 
-The onboarding wizard and tile have not been visually confirmed in an automated
-environment — this repo has been built and tested here without a display, so no
-one has watched the wizard's first screen actually render. Run `npm run dev` on a
-machine with a display and step through it by hand before trusting that the UI
-works, not just that the code compiles and the unit tests pass.
+The automated suite, typecheck, production build, DMG creation, and packaged
+onboarding-window launch have been verified. A complete onboarding run on a
+clean Mac and a real Hermes permission-card walkthrough remain release checks.

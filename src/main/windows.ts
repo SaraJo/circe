@@ -12,8 +12,8 @@ const WIZARD_H = 560;
 /**
  * Pins a window to the document it was created with. Both renderers load a
  * preload that exposes `window.circe` — the tile's includes `send()`, which
- * prompts the user's agent, and `acp.ts` auto-approves every permission
- * request that agent makes. Agent output reaches `innerHTML` through `marked`,
+ * prompts the user's agent and answers permission cards. Agent output reaches
+ * `innerHTML` through `marked`,
  * which does not sanitize, so a reply containing a link renders as a live
  * `<a href>`. Without these two guards, clicking it navigates the window to
  * that origin, the preload re-runs on the new document, and an arbitrary web

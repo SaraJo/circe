@@ -1,3 +1,6 @@
+> **Historical design:** This does not define the current product boundary. See
+> [../../CURRENT_BUILD.md](../../CURRENT_BUILD.md) for the authoritative scope.
+
 # Avatar Sourcing — Design
 
 **Status:** approved 2026-08-19, ready for an implementation plan.

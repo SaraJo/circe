@@ -10,6 +10,38 @@ export interface AcpUpdate {
   [key: string]: unknown;
 }
 
+export type PermissionChoice = 'allow_once' | 'allow_session' | 'deny';
+
+export interface PermissionRequest {
+  id: number;
+  description: string;
+  command: string;
+}
+
+interface PermissionOption {
+  optionId?: string;
+  kind?: string;
+  name?: string;
+}
+
+export function isPermissionChoice(value: unknown): value is PermissionChoice {
+  return value === 'allow_once' || value === 'allow_session' || value === 'deny';
+}
+
+/** Maps only Circe's three non-persistent answers to options Hermes offered. */
+export function optionIdFor(
+  choice: PermissionChoice,
+  options: PermissionOption[] = [],
+): string | null {
+  const ids = new Set(options.map((option) => option.optionId).filter(Boolean));
+  const order: Record<PermissionChoice, string[]> = {
+    allow_once: ['allow_once', 'allow_session'],
+    allow_session: ['allow_session', 'allow_once'],
+    deny: ['deny'],
+  };
+  return order[choice].find((id) => ids.has(id)) ?? null;
+}
+
 export interface AcpOptions {
   profileId: string;
   cwd?: string;
@@ -22,6 +54,8 @@ export interface AcpOptions {
    */
   onUpdate(sessionId: string, update: AcpUpdate): void;
   onExit(code: number | null): void;
+  /** Missing handlers deny by default; permission requests are never auto-approved. */
+  onPermission?(request: PermissionRequest): Promise<PermissionChoice>;
 }
 
 /** Splits a newline-delimited JSON stream, returning whatever is left over. */
@@ -330,18 +364,45 @@ export class AcpClient {
       }
       return;
     }
-    // A permission request. This slice runs the tile unlocked, so approve the
-    // first allow-shaped option. A gate UI is a later phase (spec §6.4).
+    // Hermes is blocked waiting for this response. Forward a usable request to
+    // the tile and fail closed on every malformed, missing, or rejected path.
     if (msg.method === 'session/request_permission' && typeof msg.id === 'number') {
-      const params = (msg.params ?? {}) as { options?: Array<Record<string, string>> };
-      const allow = params.options?.find((o) => (o.kind ?? '').startsWith('allow'));
-      this.send({
-        jsonrpc: '2.0',
-        id: msg.id,
-        result: allow
-          ? { outcome: { outcome: 'selected', optionId: allow.optionId || allow.name } }
-          : { outcome: { outcome: 'cancelled' } },
-      });
+      const id = msg.id;
+      const params = (msg.params ?? {}) as {
+        options?: PermissionOption[];
+        toolCall?: {
+          title?: unknown;
+          rawInput?: { command?: unknown; description?: unknown };
+        };
+      };
+      const cancel = () =>
+        this.send({ jsonrpc: '2.0', id, result: { outcome: { outcome: 'cancelled' } } });
+      const raw = params.toolCall?.rawInput ?? {};
+      const command =
+        typeof raw.command === 'string' && raw.command.trim()
+          ? raw.command
+          : typeof params.toolCall?.title === 'string'
+            ? params.toolCall.title.trim()
+            : '';
+
+      if (!command || !this.opts.onPermission) {
+        cancel();
+        return;
+      }
+
+      const description = typeof raw.description === 'string' ? raw.description : '';
+      void this.opts.onPermission({ id, description, command }).then(
+        (choice) => {
+          const optionId = optionIdFor(choice, params.options);
+          if (!optionId) return cancel();
+          this.send({
+            jsonrpc: '2.0',
+            id,
+            result: { outcome: { outcome: 'selected', optionId } },
+          });
+        },
+        cancel,
+      );
     }
   }
 

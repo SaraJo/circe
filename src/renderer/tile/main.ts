@@ -3,6 +3,7 @@ import type { Character } from '../../shared/types';
 import { DEFAULT_PALETTE, isPalette, paletteVars } from '../../main/palette';
 import { applyFace, initials } from '../face';
 import { nextToolTitle, toolLabel } from './toolLabel';
+import { commandPreview, permissionOutcomeLabel } from './permission';
 
 /**
  * The tile and the wizard each load their own preload bridge and never share
@@ -18,6 +19,7 @@ interface TileApi {
   onAvatar(cb: (dataUrl: string | null) => void): void;
   send(text: string): void;
   close(): void;
+  answerPermission(id: number, choice: string): void;
   openExternal(url: string): void;
 }
 const circe = (window as unknown as { circe: TileApi }).circe;
@@ -122,6 +124,47 @@ function appendText(role: 'user' | 'agent' | 'error' | 'tool', text: string): HT
   log.append(node);
   log.scrollTop = log.scrollHeight;
   return node;
+}
+
+function permissionCard(id: number, description: string, command: string): HTMLElement {
+  const card = document.createElement('section');
+  card.className = 'permission';
+  card.dataset.permission = String(id);
+
+  const heading = document.createElement('div');
+  heading.className = 'permission-heading';
+  heading.textContent = description.trim() || 'This action needs your approval';
+  card.append(heading);
+
+  const { lines, overflow } = commandPreview(command);
+  const preview = document.createElement('pre');
+  preview.className = 'permission-command';
+  preview.textContent = lines.join('\n');
+  card.append(preview);
+
+  if (overflow > 0) {
+    const more = document.createElement('div');
+    more.className = 'permission-more';
+    more.textContent = `+${overflow} more line${overflow === 1 ? '' : 's'}`;
+    card.append(more);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'permission-actions';
+  for (const [choice, label] of [
+    ['allow_once', 'Allow once'],
+    ['allow_session', 'Allow session'],
+    ['deny', 'Deny'],
+  ] as const) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    if (choice === 'deny') button.className = 'deny';
+    button.addEventListener('click', () => circe.answerPermission(id, choice));
+    actions.append(button);
+  }
+  card.append(actions);
+  return card;
 }
 
 /**
@@ -268,6 +311,31 @@ circe.onUpdate((update) => {
     case 'circe/turn-end':
       endTurn();
       return;
+    case 'circe/permission': {
+      const request = update as { id?: unknown; description?: unknown; command?: unknown };
+      if (typeof request.id !== 'number' || typeof request.command !== 'string' || !request.command) return;
+      log.append(
+        permissionCard(
+          request.id,
+          typeof request.description === 'string' ? request.description : '',
+          request.command,
+        ),
+      );
+      log.scrollTop = log.scrollHeight;
+      return;
+    }
+    case 'circe/permission-resolved': {
+      const result = update as { id?: unknown; outcome?: unknown };
+      if (typeof result.id !== 'number') return;
+      const card = log.querySelector(`[data-permission="${result.id}"]`);
+      if (!card) return;
+      card.classList.add('resolved');
+      const outcome = document.createElement('div');
+      outcome.className = 'permission-outcome';
+      outcome.textContent = permissionOutcomeLabel(result.outcome);
+      card.querySelector('.permission-actions')?.replaceWith(outcome);
+      return;
+    }
     // The agent process died. Without this the tile just goes quiet forever
     // and the user has no way to tell a dead agent from a thinking one.
     case 'circe/exited': {

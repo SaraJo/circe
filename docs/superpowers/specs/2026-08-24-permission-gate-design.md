@@ -1,3 +1,6 @@
+> **Historical design:** Circe now uses a smaller fail-closed inline gate. See
+> [../../CURRENT_BUILD.md](../../CURRENT_BUILD.md) for the authoritative scope.
+
 # The Permission Gate — Design
 
 **Status:** approved 2026-08-24, ready for an implementation plan.

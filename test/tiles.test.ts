@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TileRegistry, type TileClient, type TileDeps, type TileWindow } from '../src/main/tiles';
+import type { PermissionChoice, PermissionRequest } from '../src/main/acp';
 import { FakeHermes, INSTALLED_EMPTY } from './fake/hermes';
 import type { Character } from '../src/shared/types';
 
@@ -7,6 +8,8 @@ const PALETTE = { bg: '#1e2952', border: '#c7d2fe', accent: '#a5b4fc' };
 
 /** A PNG is identified by its 8-byte signature; these tests never need a real image. */
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+
+afterEach(() => vi.useRealTimers());
 
 function character(profileId: string): Character {
   return {
@@ -169,6 +172,7 @@ class FakeClient implements TileClient {
   private releaseStartFn: (() => void) | null = null;
   onUpdate: (sessionId: string, update: Record<string, unknown>) => void = () => {};
   onExit: (code: number | null) => void = () => {};
+  onPermission: (request: PermissionRequest) => Promise<PermissionChoice> = async () => 'deny';
   private nextSession = 1;
 
   holdStart(): void {
@@ -254,6 +258,7 @@ function harness(startError: Error | null = null): Harness {
       nextHoldStart = false;
       c.onUpdate = opts.onUpdate;
       c.onExit = opts.onExit;
+      c.onPermission = opts.onPermission;
       clients.push(c);
       return c;
     },
@@ -824,5 +829,66 @@ describe('re-theming an open tile', () => {
     h.registry.retheme('ford', { ...character('ford'), palette: RECOLOURED });
 
     expect(h.windows[0]!.characters()).toEqual([]);
+  });
+});
+
+describe('permission requests', () => {
+  const request = { id: 7, description: 'Delete build output', command: 'rm -rf build' };
+
+  it('draws a request and waits for the matching answer', async () => {
+    const h = harness();
+    await launched(h);
+
+    const answer = h.clients[0]!.onPermission(request);
+    expect(h.windows[0]!.updates()).toContainEqual({
+      sessionUpdate: 'circe/permission',
+      ...request,
+    });
+
+    h.registry.answerPermission('default', 7, 'allow_once');
+    await expect(answer).resolves.toBe('allow_once');
+    expect(h.windows[0]!.updates()).toContainEqual({
+      sessionUpdate: 'circe/permission-resolved',
+      id: 7,
+      outcome: 'allow_once',
+    });
+  });
+
+  it('denies a pending request immediately when its window closes', async () => {
+    const h = harness();
+    await launched(h);
+
+    const answer = h.clients[0]!.onPermission(request);
+    h.windows[0]!.fireClosed();
+
+    await expect(answer).resolves.toBe('deny');
+  });
+
+  it('expires a request after 60 seconds instead of leaving a live approval behind', async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    await launched(h);
+
+    const answer = h.clients[0]!.onPermission(request);
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    await expect(answer).resolves.toBe('deny');
+    expect(h.windows[0]!.updates()).toContainEqual({
+      sessionUpdate: 'circe/permission-resolved',
+      id: 7,
+      outcome: 'expired',
+    });
+  });
+
+  it('ignores answers from another tile or for a stale id', async () => {
+    const h = harness();
+    await launched(h);
+    const answer = h.clients[0]!.onPermission(request);
+
+    h.registry.answerPermission('ford', 7, 'allow_once');
+    h.registry.answerPermission('default', 999, 'allow_once');
+    h.registry.answerPermission('default', 7, 'deny');
+
+    await expect(answer).resolves.toBe('deny');
   });
 });

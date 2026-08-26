@@ -180,6 +180,61 @@ footer {
   font-size: 11px;
 }
 
+.permission {
+  border: 1px solid var(--accent-soft);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  align-self: stretch;
+}
+.permission-heading {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 7px;
+}
+.permission-command {
+  margin: 0;
+  padding: 7px 8px;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  font: 11px/1.4 'SF Mono', ui-monospace, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 126px;
+  overflow: auto;
+}
+.permission-more,
+.permission-outcome {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.permission-actions {
+  display: flex;
+  gap: 5px;
+  margin-top: 9px;
+}
+.permission-actions button {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid var(--accent-soft);
+  border-radius: 7px;
+  padding: 6px 4px;
+  background: var(--accent-glow);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.permission-actions button.deny {
+  background: rgba(0, 0, 0, 0.2);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+.permission.resolved {
+  opacity: 0.72;
+}
+
 /* Only bubbles that are literally plain text keep their newlines this way.
    Applying it to the Markdown-rendered bubble too would render the newlines
    *between* block elements as blank lines on top of the elements' own

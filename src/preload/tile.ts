@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('circe', {
     ipcRenderer.on('tile:avatar', (_e, url: string | null) => cb(url)),
   send: (text: string) => ipcRenderer.send('tile:prompt', text),
   close: () => ipcRenderer.send('tile:close'),
+  answerPermission: (id: number, choice: string) =>
+    ipcRenderer.send('tile:permission-answer', { id, choice }),
   // The tile can no longer navigate itself (see `pinToItsOwnDocument`), so a
   // link in an agent reply reaches the user's browser through here, on the
   // same channel and the same https-only vetting the wizard's "Get Hermes"
