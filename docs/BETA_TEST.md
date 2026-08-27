@@ -31,7 +31,7 @@ unredacted screenshots with feedback.
 
 ## Install
 
-1. Open `Circe-0.1.0-arm64.dmg`.
+1. Open `Circe-0.2.2-arm64.dmg`.
 2. Drag Circe into Applications.
 3. Because this beta is unsigned, Control-click Circe, choose **Open**, then
    confirm **Open**. A normal double-click may be rejected by Gatekeeper.
@@ -43,13 +43,30 @@ Record whether any step required help. Installation friction is product feedback
 If Hermes already has configured agents:
 
 1. Confirm Circe lists them before making any change.
-2. Exercise either **Keep their current names** or **Give them Circe identities**.
-3. On the identity path, uncheck at least one proposal. Confirm only checked
-   agents receive a new visible name, tagline, and colours; their profile ids
-   and remaining instructions must stay unchanged, and a `SOUL.md.bak-*` file
-   must exist for every renamed agent.
-4. Choose an existing coordinator, create a separate one, or skip. Confirm
+   If the installation has both a named profile and the root `default` agent,
+   confirm both appear even when the default `SOUL.md` has no Markdown heading.
+2. Choose which existing agents should appear as Circe tiles. Exclude at least
+   one and confirm it remains untouched in Hermes but does not open in Circe.
+3. Exercise either **Keep their current names** or **Give them Circe identities**.
+4. On the identity path, independently keep one included agent's existing name
+   and accept another agent's suggested identity. Confirm the suggestion fits
+   what that agent already does. Only selected agents should receive a new
+   visible name, tagline, and colours; their profile ids and remaining
+   instructions must stay unchanged, and a `SOUL.md.bak-*` file must exist for
+   every renamed agent.
+5. Choose an existing coordinator, create a separate one, or skip. Confirm
    Circe does exactly the selected option and does not replace another profile.
+6. Ask the coordinator to create a Circe tile. Confirm it explains that a tile
+   comes from a Hermes profile and that Circe discovers it automatically. It
+   must not edit `circe/state.json`, start `hermes serve`, register a gateway,
+   or substitute Hermes Desktop documentation for Circe's installed guide.
+7. Install a newer Circe beta and relaunch. Confirm an unchanged orchestrator
+   receives the newer operating guide. If you deliberately edit its installed
+   skill first, confirm Circe preserves that customized file.
+8. Choose **Circe → Run Onboarding Again…**. Cancel once and confirm nothing
+   changes. Try again and confirm; verify adoption reopens, all Hermes agents
+   and conversations remain, tab history is preserved, and the previous
+   `last-launch.json` exists as a timestamped backup.
 
 If Hermes has no configured agents:
 
@@ -71,8 +88,15 @@ If Hermes has no configured agents:
 7. If Hermes asks for tool approval, exercise the permission card. Confirm the
    command is understandable and the available choices are Allow once, Allow
    session, and Deny.
-8. Quit and reopen Circe. Confirm the useful conversation returns and the window
-   arrangement is tolerable.
+8. Press Command-T or Control-T in the tile, send a different message in the new
+   tab, then switch between the two tabs. Confirm each transcript returns and
+   the controls pause while the agent is replying. Confirm `+` creates another
+   tab too. Enter `/clear` and confirm the selected tab becomes blank without
+   adding a tab or appearing as a message to the agent.
+9. Close one tab with `×`. Confirm the tile stays open and understand that this
+   removes Circe's bookmark rather than deleting the Hermes conversation.
+10. Quit and reopen Circe. Confirm the remaining tab returns and the window
+    arrangement is tolerable.
 
 Stop if Circe proposes several agents, modifies structure without approval,
 shows the wrong conversation, or makes it unclear what a permission will do.

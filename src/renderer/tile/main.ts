@@ -1,5 +1,5 @@
 import { marked } from 'marked';
-import type { Character } from '../../shared/types';
+import type { Character, TileTabsView } from '../../shared/types';
 import { DEFAULT_PALETTE, isPalette, paletteVars } from '../../main/palette';
 import { applyFace, initials } from '../face';
 import { nextToolTitle, toolLabel } from './toolLabel';
@@ -17,7 +17,12 @@ interface TileApi {
   onOpening(cb: (text: string) => void): void;
   onCharacter(cb: (character: unknown) => void): void;
   onAvatar(cb: (dataUrl: string | null) => void): void;
+  onTabs(cb: (tabs: unknown) => void): void;
   send(text: string): void;
+  newTab(): void;
+  switchTab(index: number): void;
+  clearTab(): void;
+  closeTab(index: number): void;
   close(): void;
   answerPermission(id: number, choice: string): void;
   openExternal(url: string): void;
@@ -52,6 +57,10 @@ const character = parseCharacter(params.get('character'));
 const log = document.getElementById('log')!;
 const input = document.getElementById('input') as HTMLTextAreaElement;
 const face = document.getElementById('face')!;
+const tabs = document.getElementById('tabs')!;
+const tabList = document.getElementById('tab-list')!;
+const newTab = document.getElementById('new-tab') as HTMLButtonElement;
+let tabsView: TileTabsView | null = null;
 
 /**
  * Draws who this tile belongs to: its colours, its heading, and the name in
@@ -103,6 +112,47 @@ let toolTitle = '';
  * one bubble.
  */
 let replaying = false;
+
+function asTabsView(value: unknown): TileTabsView | null {
+  if (!value || typeof value !== 'object') return null;
+  const view = value as Partial<TileTabsView>;
+  if (!Number.isInteger(view.count) || (view.count ?? -1) < 0) return null;
+  if (!Number.isInteger(view.activeIndex) || (view.activeIndex ?? -1) < 0) return null;
+  if (typeof view.busy !== 'boolean' || typeof view.supported !== 'boolean') return null;
+  return view as TileTabsView;
+}
+
+function renderTabs(view: TileTabsView): void {
+  tabsView = view;
+  tabs.hidden = !view.supported;
+  if (!view.supported) return;
+  tabList.replaceChildren();
+  for (let index = 0; index < view.count; index++) {
+    const item = document.createElement('div');
+    item.className = `conversation-tab${index === view.activeIndex ? ' active' : ''}`;
+
+    const select = document.createElement('button');
+    select.type = 'button';
+    select.className = 'tab-select';
+    select.textContent = `Chat ${index + 1}`;
+    select.role = 'tab';
+    select.setAttribute('aria-selected', String(index === view.activeIndex));
+    select.disabled = view.busy;
+    select.addEventListener('click', () => circe.switchTab(index));
+
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'tab-close';
+    close.textContent = '×';
+    close.title = 'Close conversation';
+    close.setAttribute('aria-label', `Close Chat ${index + 1}`);
+    close.disabled = view.busy;
+    close.addEventListener('click', () => circe.closeTab(index));
+    item.append(select, close);
+    tabList.append(item);
+  }
+  newTab.disabled = view.busy;
+}
 
 /**
  * Plain-text bubble. Used for the user's own messages, the opening handoff
@@ -230,6 +280,32 @@ circe.onCharacter((c) => {
   if (next) applyCharacter(next);
 });
 
+circe.onTabs((value) => {
+  const view = asTabsView(value);
+  if (view) renderTabs(view);
+});
+
+newTab.addEventListener('click', () => circe.newTab());
+
+// Command-T is the native macOS convention; Control-T is supported too so the
+// shortcut the user asked for behaves identically to the visible `+` button.
+// The main process still owns the busy guard, so a shortcut cannot bypass the
+// safety lock while a turn, replay, or permission request is active.
+document.addEventListener('keydown', (event) => {
+  if (event.key.toLowerCase() !== 't' || (!event.metaKey && !event.ctrlKey)) return;
+  if (event.altKey || event.shiftKey) return;
+  event.preventDefault();
+  circe.newTab();
+});
+
+function resetTranscript(): void {
+  replaying = false;
+  streaming = null;
+  toolBubble = null;
+  toolTitle = '';
+  log.replaceChildren();
+}
+
 /**
  * The update kinds this tile acts on. The first four are real ACP
  * `session/update` kinds and are exactly the ones the working prototype
@@ -281,6 +357,9 @@ circe.onUpdate((update) => {
       // Closes the last replayed agent message, which has no turn-end of its own.
       endTurn();
       return;
+    case 'circe/tab-reset':
+      resetTranscript();
+      return;
     // The resume failed after Hermes had already replayed part of the
     // conversation — it emits history *before* it answers `session/load`, so
     // those bubbles are on screen by the time anyone knows it went wrong. They
@@ -296,11 +375,7 @@ circe.onUpdate((update) => {
     // this notice exists to prevent, reached from the other side. `held`
     // carries them, in order, as of the moment the log was cleared.
     case 'circe/replay-abandoned': {
-      replaying = false;
-      streaming = null;
-      toolBubble = null;
-  toolTitle = '';
-      log.replaceChildren();
+      resetTranscript();
       appendText('agent', "Couldn't reopen the previous conversation, so I'm starting a new one.");
       const held = (update as { held?: unknown }).held;
       if (Array.isArray(held)) {
@@ -371,6 +446,15 @@ log.addEventListener('click', (e) => {
 function sendCurrentInput(): void {
   const text = input.value.trim();
   if (!text) return;
+  // A local convenience command, not an agent prompt. It replaces the Hermes
+  // conversation behind this tab, so the tab count and selection stay put.
+  if (text.toLowerCase() === '/clear') {
+    if (!tabsView?.supported || tabsView.busy) return;
+    circe.clearTab();
+    input.value = '';
+    input.focus();
+    return;
+  }
   // A new turn never continues the previous turn's bubbles, even if the last
   // one ended abnormally (the prototype resets the same state on send,
   // renderer.js:583).

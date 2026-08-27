@@ -4,13 +4,19 @@ import type { HermesRuntime } from './hermes/runtime';
 /**
  * The profiles that deserve a tile: the ones that describe themselves.
  *
- * `isReal` is Hermes-derived and is exactly "the SOUL.md has an H1" — spec
- * §5.4's realness rule. A profile that is still Hermes's stock scaffold has no
- * character to show and no persona for an agent to load, so tiling it would put
- * an unnamed grey window in front of the user.
+ * Named profiles become ready once their SOUL.md has an H1. The default
+ * profile is different: Hermes always provides it as a usable root agent, and
+ * existing/user-written default personas do not necessarily use Circe's H1
+ * convention. Omitting it made a real default agent disappear during adoption.
  */
-export async function tileableProfiles(hermes: HermesRuntime): Promise<HermesProfile[]> {
-  return (await hermes.listProfiles()).filter((p) => p.isReal);
+export async function tileableProfiles(
+  hermes: HermesRuntime,
+  ignoredProfileIds: Iterable<string> = [],
+): Promise<HermesProfile[]> {
+  const ignored = new Set(ignoredProfileIds);
+  return (await hermes.listProfiles()).filter(
+    (profile) => (profile.isReal || profile.id === 'default') && !ignored.has(profile.id),
+  );
 }
 
 export interface FleetWatchDeps {
@@ -22,6 +28,8 @@ export interface FleetWatchDeps {
    * the caller already knows, and never re-derives it (and races doing so).
    */
   alreadyTiled: Iterable<string>;
+  /** Existing profiles the user explicitly chose not to show in Circe. */
+  ignoredProfileIds?: Iterable<string>;
   /** True when this profile already has a tile. */
   isOpen(profileId: string): boolean;
   /** Called once per profile that has become tileable. */
@@ -84,9 +92,11 @@ export class FleetWatch {
    * reported once stays reported for this watch's whole lifetime.
    */
   private readonly tiled: Set<string>;
+  private readonly ignored: Set<string>;
 
   constructor(private readonly deps: FleetWatchDeps) {
     this.tiled = new Set(deps.alreadyTiled);
+    this.ignored = new Set(deps.ignoredProfileIds);
   }
 
   start(): () => void {
@@ -153,7 +163,7 @@ export class FleetWatch {
     if (this.stopped) return;
     let profiles: HermesProfile[];
     try {
-      profiles = await tileableProfiles(this.deps.hermes);
+      profiles = await tileableProfiles(this.deps.hermes, this.ignored);
     } catch (err) {
       // A watch that dies on one bad enumeration stops the core loop with no
       // sign to the user. The next event sweeps again.

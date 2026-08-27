@@ -113,6 +113,13 @@ export class FakeHermes implements HermesRuntime {
     this.files.set(relPath, contents);
   }
 
+  async moveHomeFile(fromRelPath: string, toRelPath: string): Promise<void> {
+    const text = this.files.get(fromRelPath);
+    if (text === undefined) throw new Error(`ENOENT: ${fromRelPath}`);
+    this.files.set(toRelPath, text);
+    this.files.delete(fromRelPath);
+  }
+
   async readHomeFileBytes(relPath: string): Promise<Uint8Array | null> {
     return this.bytes.get(relPath) ?? null;
   }

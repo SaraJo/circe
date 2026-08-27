@@ -144,6 +144,11 @@ class FakeWindow implements TileWindow {
       .filter((s) => s.channel === 'tile:avatar')
       .map((s) => s.payload as string | null);
   }
+  tabs(): Array<{ count: number; activeIndex: number; busy: boolean; supported: boolean }> {
+    return this.sent
+      .filter((s) => s.channel === 'tile:tabs')
+      .map((s) => s.payload as { count: number; activeIndex: number; busy: boolean; supported: boolean });
+  }
 }
 
 class FakeClient implements TileClient {
@@ -152,6 +157,7 @@ class FakeClient implements TileClient {
   started = false;
   stopped = 0;
   readonly prompts: Array<{ sessionId: string; text: string }> = [];
+  readonly loads: string[] = [];
   /** How many times this client's own `newSession` was actually called. */
   newSessionCalls = 0;
   /**
@@ -197,7 +203,8 @@ class FakeClient implements TileClient {
     this.newSessionCalls++;
     return `session-${this.nextSession++}`;
   }
-  async loadSession(): Promise<boolean> {
+  async loadSession(sessionId: string): Promise<boolean> {
+    this.loads.push(sessionId);
     return true;
   }
   async listSessions(): Promise<string[] | null> {
@@ -337,6 +344,166 @@ describe('launching a tile', () => {
     expect(h.windows).toHaveLength(2);
     expect(h.clients).toHaveLength(2);
     expect(h.registry.openProfileIds().sort()).toEqual(['default', 'ford']);
+  });
+});
+
+describe('conversation tabs', () => {
+  async function launchedWithTabs(h: Harness): Promise<void> {
+    const launch = h.registry.launch(character('default'), 'default');
+    h.clients[0]!.canLoadSession = true;
+    h.windows[0]!.fireLoaded();
+    await launch;
+  }
+
+  it('shows the restored conversation as the first tab', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+
+    expect(h.windows[0]!.tabs().at(-1)).toEqual({
+      count: 1,
+      activeIndex: 0,
+      busy: false,
+      supported: true,
+    });
+  });
+
+  it('creates a blank conversation and persists both tabs', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+
+    await h.registry.newTab('default');
+
+    expect(h.clients[0]!.newSessionCalls).toBe(2);
+    expect(h.windows[0]!.updates()).toContainEqual({ sessionUpdate: 'circe/tab-reset' });
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ count: 2, activeIndex: 1, busy: false });
+    expect(JSON.parse(h.hermes.files.get('circe/state.json')!)).toEqual({
+      version: 1,
+      profiles: { default: { tabs: ['session-1', 'session-2'], activeIndex: 1 } },
+    });
+  });
+
+  it('clears the active conversation in place without adding a tab', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+    await h.registry.newTab('default');
+
+    await h.registry.clearTab('default');
+
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ count: 2, activeIndex: 1 });
+    expect(JSON.parse(h.hermes.files.get('circe/state.json')!).profiles.default).toEqual({
+      tabs: ['session-1', 'session-3'],
+      activeIndex: 1,
+    });
+  });
+
+  it('replays a selected tab and remembers it across restarts', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+    await h.registry.newTab('default');
+
+    await h.registry.switchTab('default', 0);
+
+    expect(h.clients[0]!.loads).toEqual(['session-1']);
+    expect(h.windows[0]!.updates().slice(-3)).toEqual([
+      { sessionUpdate: 'circe/tab-reset' },
+      { sessionUpdate: 'circe/replay-start' },
+      { sessionUpdate: 'circe/replay-end' },
+    ]);
+    expect(JSON.parse(h.hermes.files.get('circe/state.json')!).profiles.default).toEqual({
+      tabs: ['session-1', 'session-2'],
+      activeIndex: 0,
+    });
+  });
+
+  it('closes an inactive tab without deleting or reloading a Hermes session', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+    await h.registry.newTab('default');
+
+    await h.registry.closeTab('default', 0);
+
+    expect(h.clients[0]!.loads).toEqual([]);
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ count: 1, activeIndex: 0 });
+    expect(JSON.parse(h.hermes.files.get('circe/state.json')!).profiles.default).toEqual({
+      tabs: ['session-2'],
+      activeIndex: 0,
+    });
+  });
+
+  it('replays the neighbouring conversation when the active tab closes', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+    await h.registry.newTab('default');
+
+    await h.registry.closeTab('default', 1);
+
+    expect(h.clients[0]!.loads).toEqual(['session-1']);
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ count: 1, activeIndex: 0 });
+    expect(JSON.parse(h.hermes.files.get('circe/state.json')!).profiles.default.tabs).toEqual([
+      'session-1',
+    ]);
+  });
+
+  it('replaces the last closed tab with a new blank conversation', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+
+    await h.registry.closeTab('default', 0);
+
+    expect(h.clients[0]!.newSessionCalls).toBe(2);
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ count: 1, activeIndex: 0 });
+    expect(JSON.parse(h.hermes.files.get('circe/state.json')!).profiles.default.tabs).toEqual([
+      'session-2',
+    ]);
+  });
+
+  it('does not switch conversations while a turn is still running', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+    await h.registry.newTab('default');
+    const turn = h.registry.prompt('default', 'hello');
+
+    await h.registry.switchTab('default', 0);
+
+    expect(h.clients[0]!.loads).toEqual([]);
+    expect(h.windows[0]!.tabs().at(-1)?.busy).toBe(true);
+    h.clients[0]!.finishTurn();
+    await turn;
+    expect(h.windows[0]!.tabs().at(-1)?.busy).toBe(false);
+  });
+
+  it('keeps the prior conversation usable when creating a tab fails', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+    h.clients[0]!.newSession = async () => {
+      throw new Error('could not create session');
+    };
+
+    await h.registry.newTab('default');
+    const turn = h.registry.prompt('default', 'still here?');
+
+    expect(h.clients[0]!.prompts).toEqual([{ sessionId: 'session-1', text: 'still here?' }]);
+    h.clients[0]!.finishTurn();
+    await turn;
+  });
+
+  it('does not lose one profile’s tabs when two tiles save at once', async () => {
+    const h = harness();
+    const first = h.registry.launch(character('default'), 'default');
+    h.clients[0]!.canLoadSession = true;
+    h.windows[0]!.fireLoaded();
+    await first;
+    const second = h.registry.launch(character('ford'), 'ford');
+    h.clients[1]!.canLoadSession = true;
+    h.windows[1]!.fireLoaded();
+    await second;
+
+    await Promise.all([h.registry.newTab('default'), h.registry.newTab('ford')]);
+
+    expect(JSON.parse(h.hermes.files.get('circe/state.json')!).profiles).toEqual({
+      default: { tabs: ['session-1', 'session-2'], activeIndex: 1 },
+      ford: { tabs: ['session-1', 'session-2'], activeIndex: 1 },
+    });
   });
 });
 

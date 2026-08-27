@@ -7,6 +7,7 @@ import {
   stateFor,
   TILE_STATE_PATH,
   withActiveSession,
+  withProfileTabs,
   writeTileState,
 } from '../src/main/tileState';
 import { FakeHermes, INSTALLED_EMPTY } from './fake/hermes';
@@ -126,6 +127,21 @@ describe('withActiveSession', () => {
   it('round-trips through serialize and parse', () => {
     const next = withActiveSession(EMPTY_STATE, 'default', 's1');
     expect(parseTileState(serializeTileState(next))).toEqual(next);
+  });
+
+  it('replaces only the active tab when a saved conversation is stale', () => {
+    const file = withProfileTabs(EMPTY_STATE, 'default', ['s1', 'stale', 's3'], 1);
+    expect(stateFor(withActiveSession(file, 'default', 'fresh'), 'default')).toEqual({
+      tabs: ['s1', 'fresh', 's3'],
+      activeIndex: 1,
+    });
+  });
+});
+
+describe('withProfileTabs', () => {
+  it('records tab order and the selected conversation', () => {
+    const next = withProfileTabs(EMPTY_STATE, 'default', ['s1', 's2'], 1);
+    expect(stateFor(next, 'default')).toEqual({ tabs: ['s1', 's2'], activeIndex: 1 });
   });
 });
 

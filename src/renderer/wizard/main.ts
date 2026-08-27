@@ -16,9 +16,10 @@ declare global {
       declineClaim(): void;
       personalizeFleet(): void;
       keepFleetNames(): void;
+      acceptFleetSelection(profileIds: string[]): void;
       submitFleetFandom(text: string): void;
       retryFleet(): void;
-      acceptFleetRenames(profileIds: string[]): void;
+      acceptFleetRenames(renameProfileIds: string[], tileProfileIds: string[]): void;
       chooseCoordinator(profileId: string | null): void;
       newCoordinator(): void;
       acceptNewCoordinator(): void;
@@ -237,6 +238,45 @@ function render(step: WizardStep): void {
       break;
     }
 
+    case 'fleet-selection': {
+      const node = el(`
+        <section class="screen fleet-adoption">
+          <h1>${COPY.fleetSelection.title}</h1>
+          <p class="lead">${COPY.fleetSelection.lead}</p>
+          <div class="fleet-list selectable-fleet" aria-label="Agents to show in Circe"></div>
+          <p class="status selection-status" hidden>${COPY.fleetSelection.required}</p>
+          <div class="actions">
+            <button class="primary" id="accept-fleet-selection">${COPY.fleetSelection.action}</button>
+          </div>
+        </section>
+      `);
+      const list = node.querySelector('.fleet-list')!;
+      for (const profile of step.profiles) {
+        const row = el(`
+          <label class="fleet-row fleet-choice">
+            <input type="checkbox" checked />
+            <strong></strong>
+            <span></span>
+          </label>
+        `);
+        const checkbox = row.querySelector<HTMLInputElement>('input')!;
+        checkbox.value = profile.id;
+        row.querySelector('strong')!.textContent = profile.displayName;
+        row.querySelector('span')!.textContent = profile.id;
+        list.append(row);
+      }
+      node.querySelector('#accept-fleet-selection')!.addEventListener('click', () => {
+        const ids = Array.from(
+          node.querySelectorAll<HTMLInputElement>('.fleet-choice input:checked'),
+        ).map((checkbox) => checkbox.value);
+        const status = node.querySelector<HTMLElement>('.selection-status')!;
+        status.hidden = ids.length > 0;
+        if (ids.length > 0) window.circe.acceptFleetSelection(ids);
+      });
+      screenEl.append(node);
+      break;
+    }
+
     case 'fleet-fandom': {
       const rename = step.intent === 'rename';
       const node = el(`
@@ -299,20 +339,29 @@ function render(step: WizardStep): void {
           <h1>${COPY.fleetPreview.title}</h1>
           <p class="lead">${COPY.fleetPreview.lead}</p>
           <div class="fleet-proposals"></div>
+          <p class="status selection-status" hidden>${COPY.fleetSelection.required}</p>
           <div class="actions"><button class="primary" id="apply-fleet">${COPY.fleetPreview.action}</button></div>
         </section>
       `);
       const proposals = node.querySelector('.fleet-proposals')!;
       for (const proposal of step.proposals) {
         const row = el(`
-          <label class="proposal-row">
-            <input type="checkbox" checked />
+          <div class="proposal-row">
+            <input class="tile-toggle" type="checkbox" checked />
             <span class="proposal-copy"><strong></strong><small></small></span>
             <span class="palette-preview"><i></i><i></i><i></i></span>
-          </label>
+            <label class="rename-option"><input class="rename-toggle" type="checkbox" checked /> Use suggested identity</label>
+          </div>
         `);
-        const checkbox = row.querySelector<HTMLInputElement>('input')!;
-        checkbox.value = proposal.profile.id;
+        const tileToggle = row.querySelector<HTMLInputElement>('.tile-toggle')!;
+        const renameToggle = row.querySelector<HTMLInputElement>('.rename-toggle')!;
+        tileToggle.value = proposal.profile.id;
+        renameToggle.value = proposal.profile.id;
+        tileToggle.setAttribute('aria-label', `Show ${proposal.profile.displayName} as a Circe tile`);
+        tileToggle.addEventListener('change', () => {
+          renameToggle.disabled = !tileToggle.checked;
+          row.classList.toggle('excluded', !tileToggle.checked);
+        });
         row.querySelector('strong')!.textContent = `${proposal.profile.displayName} → ${proposal.character.name}`;
         row.querySelector('small')!.textContent = proposal.character.tagline;
         const colours = [proposal.character.palette.bg, proposal.character.palette.border, proposal.character.palette.accent];
@@ -322,12 +371,15 @@ function render(step: WizardStep): void {
         proposals.append(row);
       }
       node.querySelector('#apply-fleet')!.addEventListener('click', () => {
-        const ids = Array.from(
-          node.querySelectorAll<HTMLInputElement>('.proposal-row input:checked'),
-        ).map(
-          (checkbox) => checkbox.value,
-        );
-        window.circe.acceptFleetRenames(ids);
+        const tileIds = Array.from(
+          node.querySelectorAll<HTMLInputElement>('.proposal-row .tile-toggle:checked'),
+        ).map((checkbox) => checkbox.value);
+        const renameIds = Array.from(
+          node.querySelectorAll<HTMLInputElement>('.proposal-row .rename-toggle:checked:not(:disabled)'),
+        ).map((checkbox) => checkbox.value);
+        const status = node.querySelector<HTMLElement>('.selection-status')!;
+        status.hidden = tileIds.length > 0;
+        if (tileIds.length > 0) window.circe.acceptFleetRenames(renameIds, tileIds);
       });
       screenEl.append(node);
       break;

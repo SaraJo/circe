@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { watch } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import type { HermesProfile } from '../../shared/types';
@@ -145,6 +145,13 @@ export class RealHermes implements HermesRuntime {
     const abs = join(this.p.home, relPath);
     await mkdir(dirname(abs), { recursive: true });
     await writeFile(abs, contents, 'utf8');
+  }
+
+  async moveHomeFile(fromRelPath: string, toRelPath: string): Promise<void> {
+    const from = join(this.p.home, fromRelPath);
+    const to = join(this.p.home, toRelPath);
+    await mkdir(dirname(to), { recursive: true });
+    await rename(from, to);
   }
 
   async readHomeFileBytes(relPath: string): Promise<Uint8Array | null> {

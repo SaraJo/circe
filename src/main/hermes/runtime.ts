@@ -68,6 +68,8 @@ export interface HermesRuntime {
   readHomeFile(relPath: string): Promise<string | null>;
   /** Write a file under the Hermes home, creating parent directories. */
   writeHomeFile(relPath: string, contents: string): Promise<void>;
+  /** Move a file within the Hermes home, creating the destination's parent directory. */
+  moveHomeFile(fromRelPath: string, toRelPath: string): Promise<void>;
   /**
    * Read a file under the Hermes home as bytes. Null means absent, matching
    * `readHomeFile`'s contract exactly: a file that exists but cannot be read

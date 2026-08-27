@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { displayNameFor, hasConfiguredDefault, isRealSoul } from '../src/main/profiles';
+import {
+  adoptableProfiles,
+  displayNameFor,
+  hasConfiguredDefault,
+  isRealSoul,
+} from '../src/main/profiles';
 import { SCAFFOLD_SOUL } from './fake/hermes';
 
 describe('isRealSoul', () => {
@@ -99,5 +104,32 @@ describe('hasConfiguredDefault', () => {
     expect(
       hasConfiguredDefault([{ id: 'ford', displayName: 'Ford', model: null, isReal: true }]),
     ).toBe(false);
+  });
+});
+
+describe('adoptableProfiles', () => {
+  const scaffoldDefault = {
+    id: 'default',
+    displayName: 'default',
+    model: null,
+    isReal: false,
+  };
+
+  it('keeps a lone scaffold default on the fresh onboarding path', () => {
+    expect(adoptableProfiles([scaffoldDefault])).toEqual([]);
+  });
+
+  it('includes default once a configured named profile proves this is an existing fleet', () => {
+    const home = { id: 'home', displayName: 'Home', model: null, isReal: true };
+    expect(adoptableProfiles([scaffoldDefault, home])).toEqual([scaffoldDefault, home]);
+  });
+
+  it('still excludes half-created named profiles', () => {
+    const incomplete = { id: 'draft', displayName: 'draft', model: null, isReal: false };
+    const home = { id: 'home', displayName: 'Home', model: null, isReal: true };
+    expect(adoptableProfiles([scaffoldDefault, incomplete, home])).toEqual([
+      scaffoldDefault,
+      home,
+    ]);
   });
 });

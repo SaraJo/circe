@@ -8,7 +8,7 @@ import type { HermesRuntime } from './hermes/runtime';
  * conversation itself.
  */
 export interface ProfileTileState {
-  /** Session ids, in tab-strip order. Phase 1 keeps at most one. */
+  /** Hermes session ids, in the same order as the visible tab strip. */
   tabs: string[];
   activeIndex: number;
   /**
@@ -83,6 +83,24 @@ export function withActiveSession(
   profileId: string,
   sessionId: string,
 ): TileStateFile {
+  const current = stateFor(file, profileId);
+  const tabs = [...current.tabs];
+  const activeIndex = tabs.length === 0 ? 0 : current.activeIndex;
+  if (tabs.length === 0) tabs.push(sessionId);
+  else tabs[activeIndex] = sessionId;
+  return withProfileTabs(file, profileId, tabs, activeIndex);
+}
+
+/** Replaces the tab strip while retaining fields owned by later Circe builds. */
+export function withProfileTabs(
+  file: TileStateFile,
+  profileId: string,
+  tabs: string[],
+  activeIndex: number,
+): TileStateFile {
+  const safeIndex = tabs.length > 0 && Number.isInteger(activeIndex) && activeIndex >= 0 && activeIndex < tabs.length
+    ? activeIndex
+    : 0;
   // Both spreads preserve fields this build doesn't know about: the profile's
   // own (a later `bounds`/`accessMode`) and the file's top-level ones. Only the
   // two fields this build owns are overwritten.
@@ -91,7 +109,7 @@ export function withActiveSession(
     version: RECORD_VERSION,
     profiles: {
       ...file.profiles,
-      [profileId]: { ...file.profiles[profileId], tabs: [sessionId], activeIndex: 0 },
+      [profileId]: { ...file.profiles[profileId], tabs: [...tabs], activeIndex: safeIndex },
     },
   };
 }

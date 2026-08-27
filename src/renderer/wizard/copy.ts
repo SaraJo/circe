@@ -70,6 +70,12 @@ export const COPY = {
     personalize: 'Give them Circe identities',
     keep: 'Keep their current names',
   },
+  fleetSelection: {
+    title: 'Choose your Circe tiles',
+    lead: 'Checked agents will open as Circe tiles. Unchecked agents stay safely in Hermes and are not deleted or changed.',
+    action: 'Continue with selected agents',
+    required: 'Choose at least one agent to use in Circe.',
+  },
   fleetFandom: {
     renameTitle: 'Choose a world for your fleet',
     renameLead: 'Circe will propose a distinct name and colour palette for each existing agent, matched to the role it already has. Their profile ids and instructions stay in place.',
@@ -84,9 +90,9 @@ export const COPY = {
     coordinatorLead: 'Looking through {{FANDOM}} for the one who keeps everyone else on track. This can take up to a minute.',
   },
   fleetPreview: {
-    title: 'Choose which agents to rename',
-    lead: 'Only checked agents will change. Circe replaces their visible name and tagline, saves the original SOUL.md first, and writes their colours. Their profile ids and remaining instructions stay unchanged.',
-    action: 'Apply selected changes',
+    title: 'Choose your tiles and identities',
+    lead: 'Choose which agents open in Circe, then decide whether each keeps its current name or uses the suggested fandom identity. Agents left out remain untouched in Hermes.',
+    action: 'Apply choices',
     savingTitle: 'Updating your fleet',
     savingLead: 'Saving backups, names, and colours before Circe opens any agents.',
   },

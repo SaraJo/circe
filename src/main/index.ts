@@ -1,11 +1,20 @@
-import { app, BrowserWindow, ipcMain, nativeImage, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeImage,
+  shell,
+  type MenuItemConstructorOptions,
+} from 'electron';
 import { RealHermes } from './hermes/real';
 import { Wizard } from './wizard';
 import { adaptTileWindow, createTileWindow, createWizardWindow } from './windows';
 import { AcpClient, isPermissionChoice } from './acp';
 import { FleetWatch, tileableProfiles } from './fleet';
 import { adoptionOpeningMessage, openingMessage } from './orchestrator/opening';
-import { characterFor, readStartup } from './startup';
+import { archiveLastLaunch, characterFor, readStartup } from './startup';
 import { TileRegistry } from './tiles';
 import { httpDeps } from './avatar';
 import type { HermesProfile } from '../shared/types';
@@ -33,6 +42,81 @@ let fleetWatch: (() => void) | null = null;
  * re-derived, so it can only ever agree with what actually booted.
  */
 let mainProfileId: string | null = null;
+let resettingOnboarding = false;
+
+function installApplicationMenu(): void {
+  const template: MenuItemConstructorOptions[] = [
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        {
+          label: 'Run Onboarding Again…',
+          click: () => void runOnboardingAgain(),
+        },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    },
+    { role: 'editMenu' },
+    { role: 'windowMenu' },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+async function runOnboardingAgain(): Promise<void> {
+  if (resettingOnboarding) return;
+
+  const { response } = await dialog.showMessageBox({
+    type: 'warning',
+    message: 'Run Circe onboarding again?',
+    detail:
+      'Circe will back up its setup record and reopen onboarding. Your Hermes agents, personas, conversations, and tab history will not be deleted. You will choose tile visibility, identities, and a coordinator again.',
+    buttons: ['Run Onboarding Again', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+  });
+  if (response !== 0) return;
+
+  resettingOnboarding = true;
+  try {
+    // A menu click can land during a cold boot. Let that boot finish before
+    // moving the record or replacing its registry, then perform one clean
+    // restart from the now-recordless state.
+    if (booting) await booting;
+    await archiveLastLaunch(hermes);
+
+    fleetWatch?.();
+    fleetWatch = null;
+    wizard = null;
+    wizardWin?.close();
+    wizardWin = null;
+    if (tiles) {
+      for (const profileId of tiles.openProfileIds()) tiles.close(profileId);
+    }
+    mainProfileId = null;
+    await boot();
+  } catch (err) {
+    console.error('Could not restart Circe onboarding.', err);
+    await dialog.showMessageBox({
+      type: 'error',
+      message: 'Circe could not restart onboarding.',
+      detail:
+        'Nothing was deleted. Quit Circe and try again. If the problem continues, check that the Hermes home is writable.',
+      buttons: ['OK'],
+    });
+  } finally {
+    resettingOnboarding = false;
+  }
+}
 
 /**
  * Only `https:` links may be handed to `shell.openExternal` — parsed, not
@@ -93,7 +177,7 @@ function openWizard(existingProfiles: HermesProfile[] = []): void {
       wizardWin?.close();
       wizardWin = null;
       mainProfileId = s.mainProfileId;
-      void openFleet(s.mainProfileId, s.openingProfileId);
+      void openFleet(s.mainProfileId, s.openingProfileId, s.ignoredProfileIds);
       return;
     }
     if (wizardWin && !wizardWin.isDestroyed()) {
@@ -123,7 +207,7 @@ function openWizard(existingProfiles: HermesProfile[] = []): void {
     // `profiles/<id>/SOUL.md`, reports success, and nothing appears: the
     // product's premise fails silently for the person least equipped to
     // notice why.
-    void openPreexistingFleetOnHandoff(s.profileId);
+    void openPreexistingFleetOnHandoff(s.profileId, s.ignoredProfileIds ?? []);
   });
 }
 
@@ -164,9 +248,15 @@ function openWizard(existingProfiles: HermesProfile[] = []): void {
  * profile that became tileable *during* the loop above — it cannot re-dump
  * anything already on screen.
  */
-async function openPreexistingFleetOnHandoff(orchestratorId: string): Promise<void> {
+async function openPreexistingFleetOnHandoff(
+  orchestratorId: string,
+  ignoredProfileIds: string[] = [],
+): Promise<void> {
+  const ignored = new Set(ignoredProfileIds);
   try {
-    const others = (await tileableProfiles(hermes)).filter((p) => p.id !== orchestratorId);
+    const others = (await tileableProfiles(hermes, ignored)).filter(
+      (p) => p.id !== orchestratorId,
+    );
     for (const profile of others) {
       await tiles.launch(await characterFor(hermes, profile), profile.id);
     }
@@ -174,7 +264,7 @@ async function openPreexistingFleetOnHandoff(orchestratorId: string): Promise<vo
     console.warn('Could not open every pre-existing agent’s tile on the wizard handoff.', err);
   } finally {
     tiles.raise(orchestratorId);
-    const watch = startFleetWatch(tiles.openProfileIds());
+    const watch = startFleetWatch(tiles.openProfileIds(), ignored);
     void watch.sweepNow();
   }
 }
@@ -202,11 +292,21 @@ function registerIpc(): void {
   ipcMain.on('wizard:decline-claim', () => wizard?.declineClaimDefault());
   ipcMain.on('wizard:personalize-fleet', () => wizard?.personalizeExistingFleet());
   ipcMain.on('wizard:keep-fleet-names', () => wizard?.keepExistingFleetNames());
+  ipcMain.on('wizard:accept-fleet-selection', (_e, profileIds: unknown) => {
+    if (!Array.isArray(profileIds) || !profileIds.every((id) => typeof id === 'string')) return;
+    wizard?.acceptFleetSelection(profileIds);
+  });
   ipcMain.on('wizard:fleet-fandom', (_e, text: string) => void wizard?.submitFleetFandom(text));
   ipcMain.on('wizard:retry-fleet', () => void wizard?.retryFleetDerivation());
-  ipcMain.on('wizard:accept-fleet-renames', (_e, profileIds: unknown) => {
-    if (!Array.isArray(profileIds) || !profileIds.every((id) => typeof id === 'string')) return;
-    void wizard?.acceptFleetRenames(profileIds);
+  ipcMain.on('wizard:accept-fleet-renames', (
+    _e,
+    choices: { renameProfileIds?: unknown; tileProfileIds?: unknown },
+  ) => {
+    if (!Array.isArray(choices?.renameProfileIds) ||
+      !choices.renameProfileIds.every((id) => typeof id === 'string') ||
+      !Array.isArray(choices?.tileProfileIds) ||
+      !choices.tileProfileIds.every((id) => typeof id === 'string')) return;
+    void wizard?.acceptFleetRenames(choices.renameProfileIds, choices.tileProfileIds);
   });
   ipcMain.on('wizard:choose-coordinator', (_e, profileId: unknown) => {
     if (profileId !== null && typeof profileId !== 'string') return;
@@ -230,6 +330,26 @@ function registerIpc(): void {
     const profileId = tiles.profileForSender(e.sender);
     if (profileId === null) return;
     tiles.close(profileId);
+  });
+  ipcMain.on('tile:new-tab', (e) => {
+    const profileId = tiles.profileForSender(e.sender);
+    if (profileId === null) return;
+    void tiles.newTab(profileId);
+  });
+  ipcMain.on('tile:switch-tab', (e, index: unknown) => {
+    const profileId = tiles.profileForSender(e.sender);
+    if (profileId === null || !Number.isInteger(index)) return;
+    void tiles.switchTab(profileId, index as number);
+  });
+  ipcMain.on('tile:clear-tab', (e) => {
+    const profileId = tiles.profileForSender(e.sender);
+    if (profileId === null) return;
+    void tiles.clearTab(profileId);
+  });
+  ipcMain.on('tile:close-tab', (e, index: unknown) => {
+    const profileId = tiles.profileForSender(e.sender);
+    if (profileId === null || !Number.isInteger(index)) return;
+    void tiles.closeTab(profileId, index as number);
   });
   ipcMain.on('tile:permission-answer', (e, answer: { id?: unknown; choice?: unknown }) => {
     const profileId = tiles.profileForSender(e.sender);
@@ -282,7 +402,7 @@ async function doBoot(): Promise<void> {
   // branch instead of being mistaken for a finished Circe setup.
   const startup = await readStartup(hermes);
   if (startup.kind === 'fleet') {
-    await openFleet(startup.mainProfileId);
+    await openFleet(startup.mainProfileId, null, startup.ignoredProfileIds);
   } else {
     openWizard(startup.profiles ?? []);
   }
@@ -314,8 +434,13 @@ async function doBoot(): Promise<void> {
  * a profile whose `SOUL.md` can't be read (falls back to `displayName`), so
  * this needs nothing else from it.
  */
-async function openFleet(mainId: string, openingProfileId: string | null = null): Promise<void> {
-  const profiles = await tileableProfiles(hermes);
+async function openFleet(
+  mainId: string,
+  openingProfileId: string | null = null,
+  ignoredProfileIds: string[] = [],
+): Promise<void> {
+  const ignored = new Set(ignoredProfileIds);
+  const profiles = await tileableProfiles(hermes, ignored);
   const main = profiles.find((p) => p.id === mainId) ??
     profiles.find((p) => p.id === 'default') ??
     { id: mainId, displayName: mainId, model: null, isReal: true };
@@ -338,7 +463,7 @@ async function openFleet(mainId: string, openingProfileId: string | null = null)
   // Exactly what this call just launched — not re-enumerated — so the
   // watch's seen-set agrees with the registry from its very first sweep and
   // never re-reports a profile whose tile is already open.
-  const watch = startFleetWatch(ordered.map((p) => p.id));
+  const watch = startFleetWatch(ordered.map((p) => p.id), ignored);
   // I2: each iteration of the loop above awaits a 30s handshake and a full
   // session restore (held messages included), so for a several-agent fleet
   // that loop alone can run for minutes. A profile that became tileable
@@ -364,7 +489,10 @@ async function openFleet(mainId: string, openingProfileId: string | null = null)
  * `openPreexistingFleetOnHandoff`, R3) can trigger one without this helper
  * doing it unconditionally on every caller's behalf.
  */
-function startFleetWatch(seed: Iterable<string>): FleetWatch {
+function startFleetWatch(
+  seed: Iterable<string>,
+  ignoredProfileIds: Iterable<string> = [],
+): FleetWatch {
   // Stopped before being replaced, not after: a second call (a re-boot via
   // `activate`, say) must never leave an earlier watch's `hermes.watchHome`
   // subscription running alongside the new one.
@@ -372,6 +500,7 @@ function startFleetWatch(seed: Iterable<string>): FleetWatch {
   const watch = new FleetWatch({
     hermes,
     alreadyTiled: seed,
+    ignoredProfileIds,
     isOpen: (id) => tiles.has(id),
     onProfile: async (profile) => {
       await tiles.launch(await characterFor(hermes, profile), profile.id);
@@ -390,6 +519,7 @@ function startFleetWatch(seed: Iterable<string>): FleetWatch {
 }
 
 app.whenReady().then(() => {
+  installApplicationMenu();
   void boot();
 });
 app.on('window-all-closed', () => {

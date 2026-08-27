@@ -1,8 +1,9 @@
-import type { Character } from '../shared/types';
+import type { Character, TileTabsView } from '../shared/types';
 import type { PermissionChoice, PermissionRequest } from './acp';
 import { readAvatarDataUrl } from './avatarStore';
 import type { HermesRuntime } from './hermes/runtime';
 import { restoreOrCreateSession, TileSession, type SessionClient } from './restore';
+import { readTileState, withProfileTabs, writeTileState } from './tileState';
 
 /**
  * The slice of `BrowserWindow` a tile actually needs, narrowed to an interface
@@ -77,12 +78,18 @@ interface Tile {
   queue: string[];
   ready: Promise<void>;
   pendingPermissions: Map<number, (choice: PermissionChoice, outcome?: string) => void>;
+  tabs: string[];
+  activeIndex: number;
+  tabBusy: boolean;
+  turnsInFlight: number;
 }
 
 export const PERMISSION_TIMEOUT_MS = 60_000;
 
 export class TileRegistry {
   private readonly tiles = new Map<string, Tile>();
+  /** Serializes read-modify-write updates shared by every profile's tab strip. */
+  private stateWrite: Promise<void> = Promise.resolve();
   /**
    * Only ever increases — never derived from `this.tiles.size`. Size drops
    * when a tile closes, so a caller opening four tiles (indices 0-3), closing
@@ -189,6 +196,10 @@ export class TileRegistry {
       queue: greeting === null ? [] : [greeting],
       ready: Promise.resolve(),
       pendingPermissions: new Map(),
+      tabs: [],
+      activeIndex: 0,
+      tabBusy: true,
+      turnsInFlight: 0,
     };
     tile = newTile;
     this.tiles.set(profileId, newTile);
@@ -203,6 +214,7 @@ export class TileRegistry {
         newTile.loaded = true;
         for (const text of newTile.queue.splice(0)) win.send('tile:opening', text);
         this.sendAvatar(win, profileId);
+        this.emitTabs(newTile);
         resolve();
       });
       win.onceFailedLoad(() => resolve());
@@ -222,7 +234,7 @@ export class TileRegistry {
 
     try {
       await client.start();
-      await restoreOrCreateSession({
+      const restored = await restoreOrCreateSession({
         hermes: this.deps.hermes,
         client,
         profileId,
@@ -232,6 +244,11 @@ export class TileRegistry {
         isCurrent,
         sendPrompt: (sessionId, text) => this.send(newTile, sessionId, text),
       });
+      if (!isCurrent() || restored === null) return;
+      newTile.tabs = restored.tabs;
+      newTile.activeIndex = restored.activeIndex;
+      newTile.tabBusy = false;
+      this.emitTabs(newTile);
     } catch (err) {
       client.stop();
       if (!isCurrent()) return;
@@ -247,6 +264,8 @@ export class TileRegistry {
       // the user acts on "close this tile and start over" below.
       const unsent = session.failLaunch();
       session.reset();
+      newTile.tabBusy = false;
+      this.emitTabs(newTile);
       const message = err instanceof Error ? err.message : String(err);
       this.say(newTile,
         "I couldn't reach the Hermes agent behind this tile, so I can't respond yet. " +
@@ -286,6 +305,143 @@ export class TileRegistry {
     await this.send(tile, route.sessionId, text);
   }
 
+  /** Starts a blank Hermes conversation and adds it to this tile's tab strip. */
+  async newTab(profileId: string): Promise<void> {
+    const tile = this.tiles.get(profileId);
+    if (!tile || !this.canChangeTabs(tile)) return;
+    const previousId = tile.session.activeSessionId;
+    tile.tabBusy = true;
+    tile.session.beginLaunch();
+    this.emitTabs(tile);
+    try {
+      const sessionId = await tile.client.newSession();
+      if (this.tiles.get(profileId) !== tile) return;
+      this.emit(tile.win, { sessionUpdate: 'circe/tab-reset' });
+      const held = tile.session.openSession(sessionId);
+      tile.tabs.push(sessionId);
+      tile.activeIndex = tile.tabs.length - 1;
+      await this.persistTabs(tile);
+      await this.deliverHeld(tile, sessionId, held);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.say(tile, `I couldn't start a new conversation. (${message})`);
+      if (previousId) {
+        const held = tile.session.openSession(previousId);
+        await this.deliverHeld(tile, previousId, held);
+      } else {
+        tile.session.failLaunch();
+      }
+    } finally {
+      if (this.tiles.get(profileId) === tile) {
+        tile.tabBusy = false;
+        this.emitTabs(tile);
+      }
+    }
+  }
+
+  /** Reopens one remembered Hermes conversation in this tile. */
+  async switchTab(profileId: string, index: number): Promise<void> {
+    const tile = this.tiles.get(profileId);
+    if (!tile || !this.canChangeTabs(tile) || index === tile.activeIndex) return;
+    if (!Number.isInteger(index) || index < 0 || index >= tile.tabs.length) return;
+    await this.changeActiveTab(tile, index);
+  }
+
+  /** Starts over inside the active tab without adding or removing a tab. */
+  async clearTab(profileId: string): Promise<void> {
+    const tile = this.tiles.get(profileId);
+    if (!tile || !this.canChangeTabs(tile)) return;
+    const previousId = tile.session.activeSessionId;
+    tile.tabBusy = true;
+    tile.session.beginLaunch();
+    this.emitTabs(tile);
+    try {
+      const sessionId = await tile.client.newSession();
+      if (this.tiles.get(profileId) !== tile) return;
+      this.emit(tile.win, { sessionUpdate: 'circe/tab-reset' });
+      const held = tile.session.openSession(sessionId);
+      if (tile.tabs.length === 0) {
+        tile.tabs = [sessionId];
+        tile.activeIndex = 0;
+      } else {
+        tile.tabs[tile.activeIndex] = sessionId;
+      }
+      await this.persistTabs(tile);
+      await this.deliverHeld(tile, sessionId, held);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.say(tile, `I couldn't clear this conversation. (${message})`);
+      if (previousId) {
+        const held = tile.session.openSession(previousId);
+        await this.deliverHeld(tile, previousId, held);
+      } else {
+        tile.session.failLaunch();
+      }
+    } finally {
+      if (this.tiles.get(profileId) === tile) {
+        tile.tabBusy = false;
+        this.emitTabs(tile);
+      }
+    }
+  }
+
+  /** Removes a tab from Circe. It deliberately does not delete the Hermes session. */
+  async closeTab(profileId: string, index: number): Promise<void> {
+    const tile = this.tiles.get(profileId);
+    if (!tile || !this.canChangeTabs(tile)) return;
+    if (!Number.isInteger(index) || index < 0 || index >= tile.tabs.length) return;
+
+    if (index !== tile.activeIndex) {
+      tile.tabs.splice(index, 1);
+      if (index < tile.activeIndex) tile.activeIndex--;
+      await this.persistTabs(tile);
+      this.emitTabs(tile);
+      return;
+    }
+
+    if (tile.tabs.length === 1) {
+      const previousId = tile.session.activeSessionId;
+      tile.tabBusy = true;
+      tile.session.beginLaunch();
+      this.emitTabs(tile);
+      try {
+        const sessionId = await tile.client.newSession();
+        if (this.tiles.get(profileId) !== tile) return;
+        this.emit(tile.win, { sessionUpdate: 'circe/tab-reset' });
+        const held = tile.session.openSession(sessionId);
+        tile.tabs = [sessionId];
+        tile.activeIndex = 0;
+        await this.persistTabs(tile);
+        await this.deliverHeld(tile, sessionId, held);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.say(tile, `I couldn't start a replacement conversation. (${message})`);
+        if (previousId) {
+          const held = tile.session.openSession(previousId);
+          await this.deliverHeld(tile, previousId, held);
+        } else {
+          tile.session.failLaunch();
+        }
+      } finally {
+        if (this.tiles.get(profileId) === tile) {
+          tile.tabBusy = false;
+          this.emitTabs(tile);
+        }
+      }
+      return;
+    }
+
+    const target = index === tile.tabs.length - 1 ? index - 1 : index + 1;
+    const nextTabs = tile.tabs.filter((_id, i) => i !== index);
+    const nextIndex = target > index ? target - 1 : target;
+    const changed = await this.changeActiveTab(tile, target, false);
+    if (!changed || this.tiles.get(profileId) !== tile) return;
+    tile.tabs = nextTabs;
+    tile.activeIndex = nextIndex;
+    await this.persistTabs(tile);
+    this.emitTabs(tile);
+  }
+
   private askPermission(
     profileId: string,
     request: PermissionRequest,
@@ -309,9 +465,11 @@ export class TileRegistry {
           outcome,
         });
         resolve(choice);
+        this.emitTabs(tile);
       };
       const timer = setTimeout(() => finish('deny', 'expired'), PERMISSION_TIMEOUT_MS);
       tile.pendingPermissions.set(request.id, finish);
+      this.emitTabs(tile);
       this.emit(tile.win, {
         sessionUpdate: 'circe/permission',
         id: request.id,
@@ -403,6 +561,104 @@ export class TileRegistry {
     tile.win.focus();
   }
 
+  private canChangeTabs(tile: Tile): boolean {
+    return (
+      tile.client.canLoadSession &&
+      !tile.tabBusy &&
+      tile.turnsInFlight === 0 &&
+      tile.pendingPermissions.size === 0
+    );
+  }
+
+  /** Loads and replays a tab, retaining the previous one if Hermes cannot. */
+  private async changeActiveTab(tile: Tile, index: number, persist = true): Promise<boolean> {
+    const target = tile.tabs[index];
+    const previousId = tile.tabs[tile.activeIndex];
+    const previousIndex = tile.activeIndex;
+    if (!target || !previousId) return false;
+
+    tile.tabBusy = true;
+    this.emitTabs(tile);
+    tile.session.beginLaunch();
+    tile.session.expectReplay(target);
+    this.emit(tile.win, { sessionUpdate: 'circe/tab-reset' });
+    this.emit(tile.win, { sessionUpdate: 'circe/replay-start' });
+    let loaded = false;
+    try {
+      loaded = await tile.client.loadSession(target);
+    } catch {
+      loaded = false;
+    }
+    if (this.tiles.get(tile.profileId) !== tile) return false;
+    this.emit(tile.win, { sessionUpdate: 'circe/replay-end' });
+
+    if (!loaded) {
+      // A failed load can still emit partial history. Clear it, then redraw the
+      // conversation that remains active instead of leaving mismatched prose.
+      tile.session.expectReplay(previousId);
+      this.emit(tile.win, { sessionUpdate: 'circe/tab-reset' });
+      this.emit(tile.win, { sessionUpdate: 'circe/replay-start' });
+      try {
+        await tile.client.loadSession(previousId);
+      } catch {
+        // The explicit session id still remains usable for a later prompt even
+        // if this agent could not replay its history right now.
+      } finally {
+        if (this.tiles.get(tile.profileId) === tile) {
+          this.emit(tile.win, { sessionUpdate: 'circe/replay-end' });
+          const held = tile.session.openSession(previousId);
+          tile.activeIndex = previousIndex;
+          tile.tabBusy = false;
+          this.emitTabs(tile);
+          this.say(tile, "I couldn't reopen that conversation, so I kept this one open.");
+          await this.deliverHeld(tile, previousId, held);
+        }
+      }
+      return false;
+    }
+
+    const held = tile.session.openSession(target);
+    tile.activeIndex = index;
+    if (persist) await this.persistTabs(tile);
+    tile.tabBusy = false;
+    this.emitTabs(tile);
+    await this.deliverHeld(tile, target, held);
+    return true;
+  }
+
+  private async persistTabs(tile: Tile): Promise<void> {
+    const tabs = [...tile.tabs];
+    const activeIndex = tile.activeIndex;
+    const write = this.stateWrite.then(async () => {
+      const file = await readTileState(this.deps.hermes);
+      await writeTileState(
+        this.deps.hermes,
+        withProfileTabs(file, tile.profileId, tabs, activeIndex),
+      );
+    });
+    // Keep the queue usable if a future runtime stops swallowing write errors.
+    this.stateWrite = write.catch(() => {});
+    await write;
+  }
+
+  private async deliverHeld(tile: Tile, sessionId: string, held: string[]): Promise<void> {
+    for (const text of held) {
+      if (this.tiles.get(tile.profileId) !== tile) return;
+      await this.send(tile, sessionId, text);
+    }
+  }
+
+  private emitTabs(tile: Tile): void {
+    if (!tile.loaded || tile.win.isDestroyed()) return;
+    const view: TileTabsView = {
+      count: tile.tabs.length,
+      activeIndex: tile.activeIndex,
+      busy: tile.tabBusy || tile.turnsInFlight > 0 || tile.pendingPermissions.size > 0,
+      supported: tile.client.canLoadSession,
+    };
+    tile.win.send('tile:tabs', view);
+  }
+
   /**
    * Sends one message and closes the turn behind it.
    *
@@ -413,17 +669,28 @@ export class TileRegistry {
    * time, and a rejection there is not a launch failure.
    */
   private send(tile: Tile, sessionId: string, text: string): Promise<void> {
+    tile.turnsInFlight++;
+    this.emitTabs(tile);
     return tile.client.prompt(sessionId, text).then(
-      () => this.emit(tile.win, { sessionUpdate: 'circe/turn-end' }),
+      () => {
+        if (tile.session.activeSessionId === sessionId) {
+          this.emit(tile.win, { sessionUpdate: 'circe/turn-end' });
+        }
+      },
       (err: unknown) => {
-        this.emit(tile.win, { sessionUpdate: 'circe/turn-end' });
+        if (tile.session.activeSessionId === sessionId) {
+          this.emit(tile.win, { sessionUpdate: 'circe/turn-end' });
+        }
         const message = err instanceof Error ? err.message : String(err);
         // Deliberately does not name a cause: this fires for a dead connection,
         // a stopped client and an agent-side error alike, and the attached
         // message is the only thing that actually knows which.
         this.say(tile, `Your message wasn't sent. (${message})`);
       },
-    );
+    ).finally(() => {
+      tile.turnsInFlight = Math.max(0, tile.turnsInFlight - 1);
+      this.emitTabs(tile);
+    });
   }
 
   /** Circe's own prose. Queued until the renderer has registered its listeners. */

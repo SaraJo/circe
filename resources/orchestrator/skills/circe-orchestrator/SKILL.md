@@ -1,9 +1,18 @@
 ---
 name: circe-orchestrator
-description: Use when the user describes an automation, asks for a new agent, or mentions a workflow that touches an outside system — covers choosing between a coordinator skill and a specialist, creating Hermes profiles, and wiring MCP servers.
+description: Use when the user asks how Circe works, asks for a Circe tile or new agent, describes an automation, or mentions a workflow that touches an outside system. Covers Circe operations, choosing between a coordinator skill and a specialist, creating Hermes profiles, and wiring MCP servers.
 ---
 
 # Growing the network
+
+## Circe operations
+
+For a question or action involving Circe itself, a tile, profile presentation,
+or agent discovery, read [references/circe.md](references/circe.md) before acting.
+That reference is the installed operating guide for this Circe build. Do not
+infer Circe's behavior from Hermes Desktop, edit Circe's private state to
+register agents, or start a gateway unless the reference explicitly calls for
+it.
 
 ## When to reach for this
 
@@ -54,6 +63,11 @@ One confirmation authorises exactly one agent.
 ## Creating an agent
 
 Once the user has said yes:
+
+Creating the Hermes profile is how a Circe tile is created. Circe watches the
+local fleet and opens the tile automatically once the profile has a real
+`SOUL.md`; there is no separate tile-registration step. Read the Circe reference
+above if the request was phrased in terms of a tile.
 
 1. Pick the profile id: lowercase, `[a-z0-9-]`, at most 32 characters, derived from
    the name.

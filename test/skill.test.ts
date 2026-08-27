@@ -1,6 +1,13 @@
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
-import { SKILL_NAME, SKILL_SOURCE_PATH, installOrchestratorSkill } from '../src/main/orchestrator/skill';
+import {
+  CIRCE_REFERENCE_SOURCE_PATH,
+  SKILL_NAME,
+  SKILL_SOURCE_PATH,
+  installOrchestratorSkill,
+  refreshInstalledOrchestratorSkills,
+} from '../src/main/orchestrator/skill';
 import { FakeHermes, INSTALLED_EMPTY } from './fake/hermes';
 
 describe('the circe-orchestrator skill file', () => {
@@ -32,6 +39,28 @@ describe('the circe-orchestrator skill file', () => {
 });
 
 describe('the orchestrator skill', () => {
+  it('routes Circe and tile requests to its installed operating guide', async () => {
+    const text = await readFile(SKILL_SOURCE_PATH, 'utf8');
+    expect(text).toMatch(/^description:.*Circe tile/m);
+    expect(text).toContain('[references/circe.md](references/circe.md)');
+  });
+
+  it('documents the automatic tile contract without borrowing Hermes Desktop gateways', async () => {
+    const text = await readFile(CIRCE_REFERENCE_SOURCE_PATH, 'utf8');
+    expect(text).toContain('Circe operating guide');
+    expect(text).toMatch(/profile is an agent.*tile/s);
+    expect(text).toMatch(/opens the tile automatically/i);
+    expect(text).toMatch(/Do not start `hermes serve`/i);
+    expect(text).toMatch(/Do not edit either file to add, rename, theme, or delete an agent/i);
+    expect(text).toContain('`<home>/SOUL.md`');
+    expect(text).toMatch(/Never invent a\s+`profiles\/default\/` directory/i);
+    expect(text).toMatch(/Closing a tile never deletes/i);
+    expect(text).toContain('avatar.png');
+    expect(text).toMatch(/troubleshooting hypothesis is not permission/i);
+    expect(text).toMatch(/Current product boundaries/i);
+    expect(text).toMatch(/restore the user-selected one only after approval/i);
+  });
+
   it('tells the orchestrator how to theme an agent it creates', async () => {
     const text = await readFile(SKILL_SOURCE_PATH, 'utf8');
 
@@ -160,11 +189,94 @@ describe('installOrchestratorSkill', () => {
     const written = await installOrchestratorSkill(h, 'default');
     expect(written).toBe('skills/circe-orchestrator/SKILL.md');
     expect(await h.readHomeFile(written)).toContain('# Growing the network');
+    expect(await h.readHomeFile('skills/circe-orchestrator/references/circe.md')).toContain(
+      '# Circe operating guide',
+    );
+    expect(await h.readHomeFile('skills/circe-orchestrator/circe-managed.json')).toContain(
+      'skillSha256',
+    );
   });
 
   it('writes into a named profile when given one', async () => {
     const h = new FakeHermes(INSTALLED_EMPTY);
     const written = await installOrchestratorSkill(h, 'trillian');
     expect(written).toBe('profiles/trillian/skills/circe-orchestrator/SKILL.md');
+    expect(
+      await h.readHomeFile('profiles/trillian/skills/circe-orchestrator/references/circe.md'),
+    ).toContain('# Circe operating guide');
+  });
+});
+
+describe('refreshInstalledOrchestratorSkills', () => {
+  const hash = (text: string) => createHash('sha256').update(text).digest('hex');
+
+  it('updates files whose hashes still match the last Circe-managed versions', async () => {
+    const h = new FakeHermes(INSTALLED_EMPTY);
+    const oldSkill = '---\nname: circe-orchestrator\ndescription: old\n---\nold\n';
+    const oldReference = '# Old Circe guide\n';
+    await h.writeHomeFile('skills/circe-orchestrator/SKILL.md', oldSkill);
+    await h.writeHomeFile('skills/circe-orchestrator/references/circe.md', oldReference);
+    await h.writeHomeFile(
+      'skills/circe-orchestrator/circe-managed.json',
+      JSON.stringify({
+        version: 1,
+        skillSha256: hash(oldSkill),
+        referenceSha256: hash(oldReference),
+      }),
+    );
+
+    const result = await refreshInstalledOrchestratorSkills(h, await h.listProfiles());
+
+    expect(result).toMatchObject({
+      installedProfileIds: ['default'],
+      refreshedProfileIds: ['default'],
+      preservedProfileIds: [],
+    });
+    expect(await h.readHomeFile('skills/circe-orchestrator/SKILL.md')).toBe(
+      await readFile(SKILL_SOURCE_PATH, 'utf8'),
+    );
+    expect(await h.readHomeFile('skills/circe-orchestrator/references/circe.md')).toBe(
+      await readFile(CIRCE_REFERENCE_SOURCE_PATH, 'utf8'),
+    );
+  });
+
+  it('preserves a user-customized skill while still refreshing an unchanged guide', async () => {
+    const h = new FakeHermes(INSTALLED_EMPTY);
+    await installOrchestratorSkill(h, 'default');
+    const custom = `${(await h.readHomeFile('skills/circe-orchestrator/SKILL.md'))!}\nMy rule.\n`;
+    await h.writeHomeFile('skills/circe-orchestrator/SKILL.md', custom);
+    const manifest = JSON.parse(
+      (await h.readHomeFile('skills/circe-orchestrator/circe-managed.json'))!,
+    );
+    const oldReference = 'old managed guide';
+    await h.writeHomeFile('skills/circe-orchestrator/references/circe.md', oldReference);
+    manifest.referenceSha256 = hash(oldReference);
+    await h.writeHomeFile(
+      'skills/circe-orchestrator/circe-managed.json',
+      JSON.stringify(manifest),
+    );
+
+    const result = await refreshInstalledOrchestratorSkills(h, await h.listProfiles());
+
+    expect(await h.readHomeFile('skills/circe-orchestrator/SKILL.md')).toBe(custom);
+    expect(await h.readHomeFile('skills/circe-orchestrator/references/circe.md')).toBe(
+      await readFile(CIRCE_REFERENCE_SOURCE_PATH, 'utf8'),
+    );
+    expect(result.preservedProfileIds).toEqual(['default']);
+    expect(result.refreshedProfileIds).toEqual(['default']);
+  });
+
+  it('does not claim or overwrite an unmanifested custom skill', async () => {
+    const h = new FakeHermes(INSTALLED_EMPTY);
+    await h.writeHomeFile(
+      'skills/circe-orchestrator/SKILL.md',
+      '---\nname: circe-orchestrator\ndescription: mine\n---\ncustom\n',
+    );
+
+    const result = await refreshInstalledOrchestratorSkills(h, await h.listProfiles());
+
+    expect(result.preservedProfileIds).toEqual(['default']);
+    expect(await h.readHomeFile('skills/circe-orchestrator/circe-managed.json')).toBeNull();
+    expect(await h.readHomeFile('skills/circe-orchestrator/references/circe.md')).toBeNull();
   });
 });

@@ -15,7 +15,13 @@ contextBridge.exposeInMainWorld('circe', {
   // `main/tiles.ts`).
   onAvatar: (cb: (dataUrl: string | null) => void) =>
     ipcRenderer.on('tile:avatar', (_e, url: string | null) => cb(url)),
+  onTabs: (cb: (tabs: Record<string, unknown>) => void) =>
+    ipcRenderer.on('tile:tabs', (_e, tabs) => cb(tabs)),
   send: (text: string) => ipcRenderer.send('tile:prompt', text),
+  newTab: () => ipcRenderer.send('tile:new-tab'),
+  switchTab: (index: number) => ipcRenderer.send('tile:switch-tab', index),
+  clearTab: () => ipcRenderer.send('tile:clear-tab'),
+  closeTab: (index: number) => ipcRenderer.send('tile:close-tab', index),
   close: () => ipcRenderer.send('tile:close'),
   answerPermission: (id: number, choice: string) =>
     ipcRenderer.send('tile:permission-answer', { id, choice }),

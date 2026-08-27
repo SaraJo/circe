@@ -100,6 +100,21 @@ describe('writeSoul', () => {
     expect(result.backedUpTo).toBeNull();
   });
 
+  it('can preserve headingless prose when adoption explicitly requests a backup', async () => {
+    const h = new FakeHermes(INSTALLED_EMPTY);
+    const result = await writeSoul({
+      hermes: h,
+      profileId: 'default',
+      contents: '# Athena — coordinator\n\nYou are Hermes.\n',
+      now: new Date('2026-08-14T09:30:00Z'),
+      backupExisting: true,
+    });
+    expect(result.backedUpTo).toBe('SOUL.md.bak-20260814-093000');
+    expect(await h.readHomeFile(result.backedUpTo!)).toBe(
+      'You are Hermes, a helpful AI assistant with tool-calling capabilities.\n',
+    );
+  });
+
   it('disambiguates when a backup for the same second already exists', async () => {
     const h = new FakeHermes(INSTALLED_WITH_AGENTS);
     const original = await h.readHomeFile('SOUL.md');

@@ -12,10 +12,12 @@ contextBridge.exposeInMainWorld('circe', {
   declineClaim: () => ipcRenderer.send('wizard:decline-claim'),
   personalizeFleet: () => ipcRenderer.send('wizard:personalize-fleet'),
   keepFleetNames: () => ipcRenderer.send('wizard:keep-fleet-names'),
+  acceptFleetSelection: (profileIds: string[]) =>
+    ipcRenderer.send('wizard:accept-fleet-selection', profileIds),
   submitFleetFandom: (text: string) => ipcRenderer.send('wizard:fleet-fandom', text),
   retryFleet: () => ipcRenderer.send('wizard:retry-fleet'),
-  acceptFleetRenames: (profileIds: string[]) =>
-    ipcRenderer.send('wizard:accept-fleet-renames', profileIds),
+  acceptFleetRenames: (renameProfileIds: string[], tileProfileIds: string[]) =>
+    ipcRenderer.send('wizard:accept-fleet-renames', { renameProfileIds, tileProfileIds }),
   chooseCoordinator: (profileId: string | null) =>
     ipcRenderer.send('wizard:choose-coordinator', profileId),
   newCoordinator: () => ipcRenderer.send('wizard:new-coordinator'),

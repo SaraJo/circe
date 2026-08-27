@@ -56,6 +56,8 @@ export interface WriteSoulOptions {
   profileId: string;
   contents: string;
   now?: Date;
+  /** Preserve any existing prose, even when it has no H1 heading. */
+  backupExisting?: boolean;
 }
 
 export interface WriteSoulResult {
@@ -93,7 +95,7 @@ async function freeBackupPath(hermes: HermesRuntime, base: string): Promise<stri
  * destroy it, and the wizard's `write-failed` screen carries the reason.
  */
 export async function writeSoul(opts: WriteSoulOptions): Promise<WriteSoulResult> {
-  const { hermes, profileId, contents, now = new Date() } = opts;
+  const { hermes, profileId, contents, now = new Date(), backupExisting = false } = opts;
   // soulPath with an empty home yields the home-relative path the runtime wants.
   const rel = soulPath('', profileId).replace(/^\//, '');
 
@@ -107,7 +109,7 @@ export async function writeSoul(opts: WriteSoulOptions): Promise<WriteSoulResult
     );
   }
   let backedUpTo: string | null = null;
-  if (isRealSoul(existing)) {
+  if (existing !== null && (backupExisting || isRealSoul(existing))) {
     const base = `${rel}.${backupSuffix(now)}`;
     backedUpTo = await freeBackupPath(hermes, base);
     await hermes.writeHomeFile(backedUpTo, existing!);

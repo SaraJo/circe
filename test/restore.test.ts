@@ -734,7 +734,10 @@ describe('restoreOrCreateSession', () => {
         if (text === 'first') throw new Error('hermes acp exited (1)');
       };
 
-      await expect(restoreOrCreateSession(h.deps)).resolves.toBeUndefined();
+      await expect(restoreOrCreateSession(h.deps)).resolves.toEqual({
+        tabs: ['sess-new'],
+        activeIndex: 0,
+      });
 
       expect(sent).toEqual(['first', 'second']);
       expect(await h.persisted()).toEqual({

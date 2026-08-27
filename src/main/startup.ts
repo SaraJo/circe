@@ -1,6 +1,8 @@
 import type { Character, HermesProfile } from '../shared/types';
 import { profileFilePath, soulPath, type HermesRuntime } from './hermes/runtime';
+import { refreshInstalledOrchestratorSkills } from './orchestrator/skill';
 import { DEFAULT_PALETTE } from './palette';
+import { adoptableProfiles } from './profiles';
 import { parseProfileTheme, readProfilePalette, THEME_FILE, writeProfileTheme } from './profileTheme';
 import { parseSoulHeading } from './soul';
 
@@ -8,29 +10,67 @@ export { DEFAULT_PALETTE };
 
 /**
  * What Circe remembers between launches about the fleet as a whole: which
- * profile is the main operator, i.e. whose tile foregrounds (spec §6.6).
+ * profile's tile foregrounds and which profile, if any, the user chose as the
+ * orchestrator.
  *
  * The `character` block a v1 record carried is gone. An agent's name, tagline
  * and colours are the profile's own (§3.1), so caching them here was constraint
  * 10's inversion — it meant a profile Circe had not created could not be shown.
- * Losing this record now costs nothing but which window ends up on top.
+ * Losing this record costs the explicit adoption choice and foregrounding, but
+ * never an agent identity or conversation.
  */
 export interface LastLaunch {
-  version: 2;
+  version: 3;
   mainProfileId: string;
+  /** Null means the user explicitly skipped orchestration. */
+  orchestratorProfileId: string | null;
+  /** Existing profiles the user chose not to open as Circe tiles. */
+  ignoredProfileIds: string[];
 }
 
-const RECORD_VERSION = 2;
+const RECORD_VERSION = 3;
+const LEGACY_RECORD_VERSION = 2;
 
 /** Where the record lives, relative to the Hermes home. */
 export const LAST_LAUNCH_PATH = 'circe/last-launch.json';
 
+/**
+ * Removes only Circe's completed-onboarding marker, keeping a timestamped copy
+ * beside it. The Hermes profiles, personas, conversations, and Circe tab state
+ * are deliberately outside this operation.
+ */
+export async function archiveLastLaunch(
+  hermes: HermesRuntime,
+  now: Date = new Date(),
+): Promise<string | null> {
+  if ((await hermes.readHomeFile(LAST_LAUNCH_PATH)) === null) return null;
+
+  const stamp = now.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+  const base = `${LAST_LAUNCH_PATH}.bak-${stamp}`;
+  let destination = base;
+  let collision = 1;
+  while ((await hermes.readHomeFile(destination)) !== null) {
+    destination = `${base}.${collision++}`;
+  }
+  await hermes.moveHomeFile(LAST_LAUNCH_PATH, destination);
+  return destination;
+}
+
 export type Startup =
   | { kind: 'wizard'; profiles?: HermesProfile[] }
-  | { kind: 'fleet'; mainProfileId: string };
+  | { kind: 'fleet'; mainProfileId: string; ignoredProfileIds: string[] };
 
-export function serializeLastLaunch(mainProfileId: string): string {
-  const record: LastLaunch = { version: RECORD_VERSION, mainProfileId };
+export function serializeLastLaunch(
+  mainProfileId: string,
+  orchestratorProfileId: string | null,
+  ignoredProfileIds: string[] = [],
+): string {
+  const record: LastLaunch = {
+    version: RECORD_VERSION,
+    mainProfileId,
+    orchestratorProfileId,
+    ignoredProfileIds: [...new Set(ignoredProfileIds)].filter((id) => id !== mainProfileId),
+  };
   return JSON.stringify(record, null, 2);
 }
 
@@ -43,10 +83,43 @@ export function parseLastLaunch(json: string | null): LastLaunch | null {
     return null;
   }
   if (typeof parsed !== 'object' || parsed === null) return null;
-  const r = parsed as Partial<LastLaunch>;
-  if (r.version !== RECORD_VERSION) return null;
+  const r = parsed as {
+    version?: unknown;
+    mainProfileId?: unknown;
+    orchestratorProfileId?: unknown;
+    ignoredProfileIds?: unknown;
+  };
   if (typeof r.mainProfileId !== 'string') return null;
-  return { version: RECORD_VERSION, mainProfileId: r.mainProfileId };
+  if (r.version === LEGACY_RECORD_VERSION) {
+    return {
+      version: RECORD_VERSION,
+      mainProfileId: r.mainProfileId,
+      orchestratorProfileId: null,
+      ignoredProfileIds: [],
+    };
+  }
+  if (r.version !== RECORD_VERSION) return null;
+  if (r.orchestratorProfileId !== null && typeof r.orchestratorProfileId !== 'string') return null;
+  const ignoredProfileIds = Array.isArray(r.ignoredProfileIds) &&
+    r.ignoredProfileIds.every((id) => typeof id === 'string')
+    ? [...new Set(r.ignoredProfileIds as string[])].filter((id) => id !== r.mainProfileId)
+    : [];
+  return {
+    version: RECORD_VERSION,
+    mainProfileId: r.mainProfileId,
+    orchestratorProfileId: r.orchestratorProfileId,
+    ignoredProfileIds,
+  };
+}
+
+function storedRecordVersion(json: string | null): number | null {
+  if (json === null) return null;
+  try {
+    const parsed = JSON.parse(json) as { version?: unknown };
+    return typeof parsed.version === 'number' ? parsed.version : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -156,11 +229,42 @@ export async function readStartup(hermes: HermesRuntime): Promise<Startup> {
   }
   await migrateV1Palette(hermes, recordJson);
   const startup = resolveStartup(recordJson);
-  if (startup.kind === 'fleet') return startup;
+  if (startup.kind === 'fleet') {
+    // Resource refresh is best effort: an unreadable skill must not prevent
+    // the user's existing fleet from opening. It happens before ACP starts so
+    // a successfully refreshed guide is available in the first session.
+    try {
+      const profiles = await hermes.listProfiles();
+      const record = parseLastLaunch(recordJson)!;
+      const isLegacy = storedRecordVersion(recordJson) === LEGACY_RECORD_VERSION;
+      // A v3 record gives this write a precise owner. Only the v2 migration
+      // scans the fleet, because that older record did not store the choice.
+      const candidates = isLegacy
+        ? profiles
+        : record.orchestratorProfileId === null
+          ? []
+          : profiles.filter((profile) => profile.id === record.orchestratorProfileId);
+      const refreshed = await refreshInstalledOrchestratorSkills(hermes, candidates);
+      if (isLegacy) {
+        const inferredOrchestrator = refreshed.installedProfileIds.includes(startup.mainProfileId)
+          ? startup.mainProfileId
+          : refreshed.installedProfileIds.length === 1
+            ? refreshed.installedProfileIds[0]!
+            : null;
+        await hermes.writeHomeFile(
+          LAST_LAUNCH_PATH,
+          serializeLastLaunch(startup.mainProfileId, inferredOrchestrator),
+        );
+      }
+    } catch (err) {
+      console.warn("Could not refresh Circe's installed orchestrator resources.", err);
+    }
+    return startup;
+  }
   try {
     return {
       kind: 'wizard',
-      profiles: (await hermes.listProfiles()).filter((profile) => profile.isReal),
+      profiles: adoptableProfiles(await hermes.listProfiles()),
     };
   } catch (err) {
     console.warn('Could not enumerate the existing fleet for onboarding.', err);
@@ -180,7 +284,13 @@ export async function readStartup(hermes: HermesRuntime): Promise<Startup> {
  */
 export function resolveStartup(recordJson: string | null): Startup {
   const record = parseLastLaunch(recordJson);
-  if (record !== null) return { kind: 'fleet', mainProfileId: record.mainProfileId };
+  if (record !== null) {
+    return {
+      kind: 'fleet',
+      mainProfileId: record.mainProfileId,
+      ignoredProfileIds: record.ignoredProfileIds,
+    };
+  }
   // With no Circe record, `readStartup` inventories any real profiles and the
   // wizard chooses between adoption and ordinary onboarding.
   return { kind: 'wizard' };

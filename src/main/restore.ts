@@ -148,6 +148,11 @@ export interface RestoreDeps {
   sendPrompt(sessionId: string, text: string): Promise<void>;
 }
 
+export interface RestoredTabs {
+  tabs: string[];
+  activeIndex: number;
+}
+
 /**
  * Resumes the conversation this profile's tile was last on, or begins a new one.
  *
@@ -170,21 +175,21 @@ export interface RestoreDeps {
  * be tested for real: the previous shape reached for module-level state and
  * could only be checked by a test that reimplemented it.
  */
-export async function restoreOrCreateSession(deps: RestoreDeps): Promise<void> {
+export async function restoreOrCreateSession(deps: RestoreDeps): Promise<RestoredTabs | null> {
   const { hermes, client, profileId, session, emit, isCurrent } = deps;
   const file = await readTileState(hermes);
   const saved = stateFor(file, profileId);
   const prior = saved.tabs[saved.activeIndex] ?? null;
 
-  if (!isCurrent()) return;
+  if (!isCurrent()) return null;
   // The staleness check runs before anything is drawn, so a saved id the agent
   // no longer has costs nothing on screen: no replay bracket, no abandoned
   // notice, just a fresh session and a healed `state.json`.
   if (prior && client.canLoadSession && !(await savedSessionIsGone(client, prior))) {
-    if (!isCurrent()) return;
+    if (!isCurrent()) return null;
     session.expectReplay(prior); // set first: the replay's updates carry this id
     await deps.tileReady;
-    if (!isCurrent()) return;
+    if (!isCurrent()) return null;
     emit({ sessionUpdate: REPLAY_START });
     let resumed: boolean;
     try {
@@ -199,18 +204,18 @@ export async function restoreOrCreateSession(deps: RestoreDeps): Promise<void> {
       }
       throw err;
     }
-    if (!isCurrent()) return;
+    if (!isCurrent()) return null;
     emit({ sessionUpdate: REPLAY_END });
     if (resumed) {
       await deliver(deps, prior, session.openSession(prior));
-      return;
+      return { tabs: [...saved.tabs], activeIndex: saved.activeIndex };
     }
     emit({ sessionUpdate: REPLAY_ABANDONED, held: [...session.heldMessages] });
   }
 
-  if (!isCurrent()) return;
+  if (!isCurrent()) return null;
   const sessionId = await client.newSession();
-  if (!isCurrent()) return;
+  if (!isCurrent()) return null;
   // Taken from the holding pen before the write, so the launch window closes
   // the instant a session exists — exactly as it did when this was one call.
   const held = session.openSession(sessionId);
@@ -218,8 +223,11 @@ export async function restoreOrCreateSession(deps: RestoreDeps): Promise<void> {
   // each turn to finish, and a turn can legitimately run for minutes. Leaving
   // the write behind it would mean a cold start that crashed or was quit
   // mid-answer forgot the session it had just created.
-  await writeTileState(hermes, withActiveSession(file, profileId, sessionId));
+  const next = withActiveSession(file, profileId, sessionId);
+  await writeTileState(hermes, next);
   await deliver(deps, sessionId, held);
+  const restored = stateFor(next, profileId);
+  return { tabs: [...restored.tabs], activeIndex: restored.activeIndex };
 }
 
 /**

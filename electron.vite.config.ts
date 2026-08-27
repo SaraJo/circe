@@ -14,10 +14,15 @@ export default defineConfig({
           const from = resolve(__dirname, 'resources/orchestrator');
           const to = resolve(__dirname, 'out/resources/orchestrator');
           mkdirSync(resolve(to, 'skills/circe-orchestrator'), { recursive: true });
+          mkdirSync(resolve(to, 'skills/circe-orchestrator/references'), { recursive: true });
           copyFileSync(resolve(from, 'SOUL.template.md'), resolve(to, 'SOUL.template.md'));
           copyFileSync(
             resolve(from, 'skills/circe-orchestrator/SKILL.md'),
             resolve(to, 'skills/circe-orchestrator/SKILL.md'),
+          );
+          copyFileSync(
+            resolve(from, 'skills/circe-orchestrator/references/circe.md'),
+            resolve(to, 'skills/circe-orchestrator/references/circe.md'),
           );
         },
       },

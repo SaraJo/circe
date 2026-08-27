@@ -25,10 +25,19 @@ For a small trusted test, use the guided [beta checklist](docs/BETA_TEST.md).
 6. Writes that character into your Hermes default profile's `SOUL.md`, along with
    a governance persona covering how to grow an agent network without it
    sprawling.
-7. Installs the `circe-orchestrator` skill into that profile.
+7. Installs the `circe-orchestrator` skill and its Circe operating guide into
+   that profile.
 8. Opens a tile, themed by the character, with an opening message.
 9. Opens tiles for existing profiles and notices new profiles created while it
    is running.
+
+Circe versions its own installed orchestrator resources. On launch it updates
+copies that still match what Circe previously installed and leaves customized
+copies untouched.
+
+To revisit fleet selection, fandom identities, or coordinator choice, choose
+**Circe → Run Onboarding Again…** from the macOS menu bar. Circe backs up its
+onboarding record and preserves agents, personas, conversations, and tab history.
 
 When Hermes requests approval for a tool action, Circe shows the command in the
 tile and offers allow-once, allow-for-session, or deny. Circe never chooses a
@@ -45,16 +54,39 @@ through the `hermes` binary.
 
 ## Running from source
 
+Prerequisites:
+
+- macOS on Apple Silicon
+- Node.js 20 or newer and npm
+- Hermes installed and a model provider configured
+
+Clone the repository, install the locked dependencies, and start Electron:
+
 ```bash
-npm install
+git clone git@github.com:SaraJo/circe.git
+cd circe
+npm ci
 npm run dev
 ```
 
-To try onboarding without touching your real Hermes setup:
+By default Circe uses `~/.local/bin/hermes` and `~/.hermes`. Override either
+location when needed:
 
 ```bash
-export HERMES_HOME="$(mktemp -d)/hermes" && mkdir -p "$HERMES_HOME" && npm run dev
+CIRCE_HERMES_BIN=/path/to/hermes HERMES_HOME=/path/to/hermes-home npm run dev
 ```
+
+Running against the default Hermes home can change profiles when onboarding is
+accepted. To exercise onboarding without touching the real Hermes home, point
+Circe at a temporary one while continuing to use the installed Hermes binary:
+
+```bash
+CIRCE_TEST_HOME="$(mktemp -d)/hermes"
+mkdir -p "$CIRCE_TEST_HOME"
+HERMES_HOME="$CIRCE_TEST_HOME" npm run dev
+```
+
+Stop the development app with Control-C in the terminal that launched it.
 
 ## Tests
 

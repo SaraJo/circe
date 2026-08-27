@@ -16,6 +16,10 @@
            close/minimise/zoom at the top left (`titleBarStyle: 'hiddenInset'`),
            and the card's top padding is the room they sit in. -->
       <header id="bar"><span id="face" class="avatar"></span><span id="who"></span></header>
+      <nav id="tabs" aria-label="Conversations" hidden>
+        <div id="tab-list" role="tablist"></div>
+        <button id="new-tab" type="button" aria-label="New conversation" title="New conversation">+</button>
+      </nav>
       <div id="log"></div>
       <footer>
         <textarea id="input" rows="1" placeholder="Message…"></textarea>

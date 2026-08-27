@@ -109,3 +109,17 @@ export function displayNameFor(id: string, soul: string | null): string {
 export function hasConfiguredDefault(profiles: HermesProfile[]): boolean {
   return profiles.find((p) => p.id === 'default')?.isReal ?? false;
 }
+
+/**
+ * Profiles shown when Circe adopts an existing Hermes installation.
+ *
+ * A named configured profile proves this is an existing fleet. Once that is
+ * true, include Hermes's default profile too even when its SOUL.md has no H1:
+ * default is a usable agent and older/user-written personas do not all follow
+ * Circe's heading convention. On a genuinely fresh install the lone scaffold
+ * default still yields an empty list and takes the ordinary onboarding path.
+ */
+export function adoptableProfiles(profiles: HermesProfile[]): HermesProfile[] {
+  if (!profiles.some((profile) => profile.isReal)) return [];
+  return profiles.filter((profile) => profile.isReal || profile.id === 'default');
+}

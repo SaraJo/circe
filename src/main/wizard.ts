@@ -7,7 +7,7 @@ import type {
 } from '../shared/types';
 import type { HermesRuntime } from './hermes/runtime';
 import { deriveCharacter, deriveFleetCharacters, type FleetIdentityInput } from './derive';
-import { hasConfiguredDefault } from './profiles';
+import { adoptableProfiles, hasConfiguredDefault } from './profiles';
 import { parseSoulHeading, withSoulHeading, writeSoul } from './soul';
 import { loadTemplate, renderOrchestratorSoul } from './orchestrator/soulTemplate';
 import { installOrchestratorSkill } from './orchestrator/skill';
@@ -139,16 +139,34 @@ export class Wizard {
 
   keepExistingFleetNames(): void {
     if (this.state.kind !== 'existing-fleet') return;
-    this.set({ kind: 'coordinator-choice', profiles: this.state.profiles, fandom: null });
+    this.set({ kind: 'fleet-selection', profiles: this.state.profiles });
+  }
+
+  /** Keeps existing identities and chooses only which agents Circe should tile. */
+  acceptFleetSelection(profileIds: string[]): void {
+    if (this.state.kind !== 'fleet-selection') return;
+    const profiles = this.state.profiles;
+    const allowed = new Set(profiles.map((profile) => profile.id));
+    const selectedIds = [...new Set(profileIds)].filter((id) => allowed.has(id));
+    if (selectedIds.length === 0) return;
+    this.set({
+      kind: 'coordinator-choice',
+      profiles: profiles.filter((profile) => selectedIds.includes(profile.id)),
+      fandom: null,
+      ignoredProfileIds: profiles
+        .map((profile) => profile.id)
+        .filter((id) => !selectedIds.includes(id)),
+    });
   }
 
   beginNewCoordinator(): void {
     if (this.state.kind !== 'coordinator-choice') return;
-    const { profiles, fandom } = this.state;
+    const { profiles, fandom, ignoredProfileIds } = this.state;
     this.set({
       kind: 'fleet-fandom',
       profiles,
       intent: 'new-coordinator',
+      ignoredProfileIds,
     });
     if (fandom) void this.submitFleetFandom(fandom);
   }
@@ -159,8 +177,8 @@ export class Wizard {
     const trimmed = fandom.trim();
     if (!trimmed) return;
     const gen = ++this.generation;
-    const { profiles, intent } = state;
-    this.set({ kind: 'fleet-deriving', profiles, intent, fandom: trimmed });
+    const { profiles, intent, ignoredProfileIds } = state;
+    this.set({ kind: 'fleet-deriving', profiles, intent, fandom: trimmed, ignoredProfileIds });
     try {
       if (intent === 'rename') {
         const inputs = await this.fleetIdentityInputs(profiles);
@@ -177,7 +195,12 @@ export class Wizard {
 
       const character = await deriveCharacter(this.hermes, trimmed);
       if (gen !== this.generation) return;
-      this.set({ kind: 'new-coordinator-preview', profiles, character });
+      this.set({
+        kind: 'new-coordinator-preview',
+        profiles,
+        character,
+        ignoredProfileIds: ignoredProfileIds ?? [],
+      });
     } catch (err) {
       if (gen !== this.generation) return;
       this.set({
@@ -186,6 +209,7 @@ export class Wizard {
         intent,
         fandom: trimmed,
         message: err instanceof Error ? err.message : String(err),
+        ignoredProfileIds,
       });
     }
   }
@@ -195,11 +219,15 @@ export class Wizard {
     await this.submitFleetFandom(this.state.fandom);
   }
 
-  async acceptFleetRenames(profileIds: string[]): Promise<void> {
+  async acceptFleetRenames(renameProfileIds: string[], tileProfileIds: string[]): Promise<void> {
     if (this.state.kind !== 'fleet-preview') return;
     const proposals = this.state.proposals;
     const allowed = new Set(proposals.map((proposal) => proposal.profile.id));
-    const selected = [...new Set(profileIds)].filter((id) => allowed.has(id));
+    const tiled = [...new Set(tileProfileIds)].filter((id) => allowed.has(id));
+    if (tiled.length === 0) return;
+    const selected = [...new Set(renameProfileIds)].filter(
+      (id) => allowed.has(id) && tiled.includes(id),
+    );
     this.set({ kind: 'fleet-saving', proposals, selectedProfileIds: selected });
     try {
       for (const proposal of proposals) {
@@ -217,14 +245,20 @@ export class Wizard {
           hermes: this.hermes,
           profileId: proposal.profile.id,
           contents: renamed,
+          // Adoption can encounter a real default persona without Circe's H1
+          // convention. Preserve it just as carefully as a recognised one.
+          backupExisting: true,
         });
         await writeProfileTheme(this.hermes, proposal.profile.id, proposal.character.palette);
       }
-      const profiles = (await this.hermes.listProfiles()).filter((profile) => profile.isReal);
+      const profiles = adoptableProfiles(await this.hermes.listProfiles());
       this.set({
         kind: 'coordinator-choice',
-        profiles,
+        profiles: profiles.filter((profile) => tiled.includes(profile.id)),
         fandom: proposals[0]?.character.fandom ?? null,
+        ignoredProfileIds: proposals
+          .map((proposal) => proposal.profile.id)
+          .filter((id) => !tiled.includes(id)),
       });
     } catch (err) {
       this.set({
@@ -240,6 +274,7 @@ export class Wizard {
   async chooseExistingCoordinator(profileId: string | null): Promise<void> {
     if (this.state.kind !== 'coordinator-choice') return;
     const profiles = this.state.profiles;
+    const ignoredProfileIds = this.state.ignoredProfileIds;
     const selected = profileId === null ? null : profiles.find((profile) => profile.id === profileId);
     if (profileId !== null && !selected) return;
     const mainProfileId =
@@ -249,11 +284,15 @@ export class Wizard {
     if (!mainProfileId) return;
     try {
       if (selected) await installOrchestratorSkill(this.hermes, selected.id);
-      await this.hermes.writeHomeFile(LAST_LAUNCH_PATH, serializeLastLaunch(mainProfileId));
+      await this.hermes.writeHomeFile(
+        LAST_LAUNCH_PATH,
+        serializeLastLaunch(mainProfileId, selected?.id ?? null, ignoredProfileIds),
+      );
       this.set({
         kind: 'fleet-launching',
         mainProfileId,
         openingProfileId: selected?.id ?? null,
+        ignoredProfileIds,
       });
     } catch (err) {
       this.set({
@@ -266,6 +305,7 @@ export class Wizard {
   async acceptNewCoordinator(): Promise<void> {
     if (this.state.kind !== 'new-coordinator-preview') return;
     const proposed = this.state.character;
+    const ignoredProfileIds = this.state.ignoredProfileIds;
     const used = new Set(this.state.profiles.map((profile) => profile.id));
     let profileId = proposed.profileId || 'coordinator';
     for (let suffix = 2; used.has(profileId); suffix += 1) {
@@ -285,8 +325,11 @@ export class Wizard {
       });
       await writeProfileTheme(this.hermes, profileId, character.palette);
       await installOrchestratorSkill(this.hermes, profileId);
-      await this.hermes.writeHomeFile(LAST_LAUNCH_PATH, serializeLastLaunch(profileId));
-      this.set({ kind: 'launching', character, profileId });
+      await this.hermes.writeHomeFile(
+        LAST_LAUNCH_PATH,
+        serializeLastLaunch(profileId, profileId, ignoredProfileIds),
+      );
+      this.set({ kind: 'launching', character, profileId, ignoredProfileIds });
     } catch (err) {
       this.set({
         kind: 'adoption-write-failed',
@@ -305,12 +348,13 @@ export class Wizard {
       kind: 'fleet-fandom',
       profiles: this.state.profiles,
       intent: 'new-coordinator',
+      ignoredProfileIds: this.state.ignoredProfileIds,
     });
   }
 
   async resumeAdoption(): Promise<void> {
     if (this.state.kind !== 'adoption-write-failed') return;
-    const profiles = (await this.hermes.listProfiles()).filter((profile) => profile.isReal);
+    const profiles = adoptableProfiles(await this.hermes.listProfiles());
     this.set({ kind: 'existing-fleet', profiles });
   }
 
@@ -324,6 +368,7 @@ export class Wizard {
           profileId: profile.id,
           name: heading?.name ?? profile.displayName,
           tagline: heading?.tagline ?? '',
+          instructions: (soul ?? '').trim().slice(0, 1200),
         };
       }),
     );
@@ -590,13 +635,14 @@ export class Wizard {
       console.warn("Could not write the profile's colours (circe.json):", err);
     }
     // Deliberately outside the block above, and deliberately swallowed. This
-    // record now holds only which profile is the main operator, so its tile
-    // foregrounds on the next cold start (`LastLaunch`, startup.ts) — the way
-    // back to the agent itself is `SOUL.md`, which is already written by now.
+    // This record foregrounds the coordinator on the next cold start and lets
+    // later Circe builds refresh the Circe-owned guide in the profile the user
+    // actually chose (`LastLaunch`, startup.ts). The way back to the agent
+    // itself is still `SOUL.md`, which is already written by now.
     // Failing the launch over this record would trade a working agent for
     // nothing.
     try {
-      await this.hermes.writeHomeFile(LAST_LAUNCH_PATH, serializeLastLaunch('default'));
+      await this.hermes.writeHomeFile(LAST_LAUNCH_PATH, serializeLastLaunch('default', 'default'));
     } catch (err) {
       console.warn(`Could not record the launch (${LAST_LAUNCH_PATH}):`, err);
     }

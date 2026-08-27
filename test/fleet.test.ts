@@ -31,6 +31,21 @@ describe('tileableProfiles', () => {
 
     expect((await tileableProfiles(hermes)).map((p) => p.id)).toEqual(['default']);
   });
+
+  it('keeps the root default agent tileable even when its persona has no H1', async () => {
+    expect((await tileableProfiles(new FakeHermes(INSTALLED_EMPTY))).map((p) => p.id)).toEqual([
+      'default',
+    ]);
+  });
+
+  it('omits profiles the user excluded during adoption', async () => {
+    const ids = (
+      await tileableProfiles(new FakeHermes(INSTALLED_WITH_AGENTS), ['ford'])
+    ).map((profile) => profile.id);
+
+    expect(ids).toContain('default');
+    expect(ids).not.toContain('ford');
+  });
 });
 
 // The spec's own required test (§6, "Constraint 10"): build a profile
@@ -89,6 +104,7 @@ describe('FleetWatch', () => {
     hermes: FakeHermes,
     isOpen: (id: string) => boolean = () => false,
     alreadyTiled: Iterable<string> = ['default'],
+    ignoredProfileIds: Iterable<string> = [],
   ) {
     const opened: string[] = [];
     const known: string[] = [];
@@ -96,6 +112,7 @@ describe('FleetWatch', () => {
       hermes,
       isOpen,
       alreadyTiled,
+      ignoredProfileIds,
       onProfile: (profile) => {
         opened.push(profile.id);
       },
@@ -117,6 +134,20 @@ describe('FleetWatch', () => {
     hermes.fireHomeChange('profiles/ford/SOUL.md');
     await vi.waitFor(() => expect(opened).toEqual(['ford']));
 
+    stop();
+  });
+
+  it('does not open an excluded profile when its files change', async () => {
+    const hermes = new FakeHermes(configured());
+    const { watch, opened } = watcher(hermes, () => false, ['default'], ['ford']);
+    const stop = watch.start();
+
+    hermes.scenarioModels.ford = 'claude-opus-5';
+    await hermes.writeHomeFile('profiles/ford/SOUL.md', '# Ford — the one who finds the exit\n');
+    hermes.fireHomeChange('profiles/ford/SOUL.md');
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    expect(opened).toEqual([]);
     stop();
   });
 

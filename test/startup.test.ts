@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  archiveLastLaunch,
   characterFor,
   DEFAULT_PALETTE,
   LAST_LAUNCH_PATH,
@@ -10,6 +11,7 @@ import {
   serializeLastLaunch,
 } from '../src/main/startup';
 import { serializeProfileTheme } from '../src/main/profileTheme';
+import { installOrchestratorSkill } from '../src/main/orchestrator/skill';
 import { FakeHermes, INSTALLED_EMPTY } from './fake/hermes';
 import type { HermesProfile, Palette } from '../src/shared/types';
 
@@ -26,8 +28,12 @@ describe('resolveStartup', () => {
   });
 
   it('foregrounds the profile the record names', () => {
-    const record = serializeLastLaunch('ford');
-    expect(resolveStartup(record)).toEqual({ kind: 'fleet', mainProfileId: 'ford' });
+    const record = serializeLastLaunch('ford', 'ford');
+    expect(resolveStartup(record)).toEqual({
+      kind: 'fleet',
+      mainProfileId: 'ford',
+      ignoredProfileIds: [],
+    });
   });
 
   it('opens adoption for a corrupt record rather than guessing setup completed', () => {
@@ -42,9 +48,61 @@ describe('resolveStartup', () => {
 });
 
 describe('serializeLastLaunch', () => {
-  it('records the main operator and nothing about who they are', () => {
-    const record = JSON.parse(serializeLastLaunch('ford'));
-    expect(record).toEqual({ version: 2, mainProfileId: 'ford' });
+  it('records the foreground profile and the chosen orchestrator explicitly', () => {
+    const record = JSON.parse(serializeLastLaunch('ford', 'trillian'));
+    expect(record).toEqual({
+      version: 3,
+      mainProfileId: 'ford',
+      orchestratorProfileId: 'trillian',
+      ignoredProfileIds: [],
+    });
+  });
+
+  it('records profiles the user excluded from Circe without hiding the main profile', () => {
+    expect(JSON.parse(serializeLastLaunch('ford', null, ['writer', 'ford', 'writer']))).toMatchObject({
+      ignoredProfileIds: ['writer'],
+    });
+  });
+
+  it('records an explicit decision to skip orchestration', () => {
+    expect(JSON.parse(serializeLastLaunch('ford', null))).toMatchObject({
+      version: 3,
+      orchestratorProfileId: null,
+    });
+  });
+});
+
+describe('archiveLastLaunch', () => {
+  it('moves only the onboarding marker to a timestamped backup', async () => {
+    const hermes = new FakeHermes(INSTALLED_EMPTY);
+    const record = serializeLastLaunch('default', 'default');
+    await hermes.writeHomeFile(LAST_LAUNCH_PATH, record);
+    await hermes.writeHomeFile('circe/state.json', '{"tabs":"preserved"}');
+
+    const backup = await archiveLastLaunch(hermes, new Date('2026-08-27T13:54:00.000Z'));
+
+    expect(backup).toBe('circe/last-launch.json.bak-20260827T135400Z');
+    expect(await hermes.readHomeFile(LAST_LAUNCH_PATH)).toBeNull();
+    expect(await hermes.readHomeFile(backup!)).toBe(record);
+    expect(await hermes.readHomeFile('SOUL.md')).toBe(INSTALLED_EMPTY.files['SOUL.md']);
+    expect(await hermes.readHomeFile('circe/state.json')).toBe('{"tabs":"preserved"}');
+  });
+
+  it('does nothing when onboarding has not completed', async () => {
+    const hermes = new FakeHermes(INSTALLED_EMPTY);
+    await expect(archiveLastLaunch(hermes)).resolves.toBeNull();
+  });
+
+  it('does not overwrite an existing backup with the same timestamp', async () => {
+    const hermes = new FakeHermes(INSTALLED_EMPTY);
+    await hermes.writeHomeFile(LAST_LAUNCH_PATH, 'current');
+    await hermes.writeHomeFile('circe/last-launch.json.bak-20260827T135400Z', 'older');
+
+    const backup = await archiveLastLaunch(hermes, new Date('2026-08-27T13:54:00.000Z'));
+
+    expect(backup).toBe('circe/last-launch.json.bak-20260827T135400Z.1');
+    expect(await hermes.readHomeFile('circe/last-launch.json.bak-20260827T135400Z')).toBe('older');
+    expect(await hermes.readHomeFile(backup!)).toBe('current');
   });
 });
 
@@ -121,7 +179,7 @@ describe('migrateV1Palette', () => {
 
   it('does nothing for a v2 record', async () => {
     const hermes = new FakeHermes(INSTALLED_EMPTY);
-    await migrateV1Palette(hermes, serializeLastLaunch('default'));
+    await migrateV1Palette(hermes, serializeLastLaunch('default', 'default'));
     expect(await hermes.readHomeFile('circe.json')).toBeNull();
   });
 
@@ -164,22 +222,29 @@ describe('readStartup', () => {
     });
     expect(await readStartup(hermes)).toEqual({
       kind: 'wizard',
-      profiles: [expect.objectContaining({ id: 'writer', displayName: 'Writer' })],
+      profiles: [
+        expect.objectContaining({ id: 'default', displayName: 'default', isReal: false }),
+        expect.objectContaining({ id: 'writer', displayName: 'Writer', isReal: true }),
+      ],
     });
   });
 
   it('honours completed adoption when the default profile remains a scaffold', async () => {
     const hermes = new FakeHermes(INSTALLED_EMPTY);
-    await hermes.writeHomeFile(LAST_LAUNCH_PATH, serializeLastLaunch('writer'));
-    expect(await readStartup(hermes)).toEqual({ kind: 'fleet', mainProfileId: 'writer' });
+    await hermes.writeHomeFile(LAST_LAUNCH_PATH, serializeLastLaunch('writer', null));
+    expect(await readStartup(hermes)).toEqual({
+      kind: 'fleet', mainProfileId: 'writer', ignoredProfileIds: [],
+    });
   });
 
   it("honours the record's main operator", async () => {
     const hermes = new FakeHermes(INSTALLED_EMPTY);
     await hermes.writeHomeFile('SOUL.md', REAL_SOUL);
-    await hermes.writeHomeFile(LAST_LAUNCH_PATH, serializeLastLaunch('ford'));
+    await hermes.writeHomeFile(LAST_LAUNCH_PATH, serializeLastLaunch('ford', 'default'));
 
-    expect(await readStartup(hermes)).toEqual({ kind: 'fleet', mainProfileId: 'ford' });
+    expect(await readStartup(hermes)).toEqual({
+      kind: 'fleet', mainProfileId: 'ford', ignoredProfileIds: [],
+    });
   });
 
   // Pins the wiring itself: migrateV1Palette runs, and runs before the result
@@ -202,6 +267,26 @@ describe('readStartup', () => {
     });
   });
 
+  it('migrates a v2 beta record and infers the installed orchestrator', async () => {
+    const hermes = new FakeHermes(INSTALLED_EMPTY);
+    await hermes.writeHomeFile('SOUL.md', REAL_SOUL);
+    await installOrchestratorSkill(hermes, 'default');
+    await hermes.writeHomeFile(
+      LAST_LAUNCH_PATH,
+      JSON.stringify({ version: 2, mainProfileId: 'default' }),
+    );
+
+    expect(await readStartup(hermes)).toEqual({
+      kind: 'fleet', mainProfileId: 'default', ignoredProfileIds: [],
+    });
+    expect(JSON.parse((await hermes.readHomeFile(LAST_LAUNCH_PATH))!)).toEqual({
+      version: 3,
+      mainProfileId: 'default',
+      orchestratorProfileId: 'default',
+      ignoredProfileIds: [],
+    });
+  });
+
   // The wizard is the safe landing: its own write path refuses to overwrite a
   // persona it could not read first, so an unreadable SOUL.md still can't be
   // destroyed.
@@ -216,10 +301,21 @@ describe('readStartup', () => {
 });
 
 describe('parseLastLaunch', () => {
-  it('reads a v2 record', () => {
-    expect(parseLastLaunch(serializeLastLaunch('ford'))).toEqual({
-      version: 2,
+  it('reads a v3 record', () => {
+    expect(parseLastLaunch(serializeLastLaunch('ford', 'trillian'))).toEqual({
+      version: 3,
       mainProfileId: 'ford',
+      orchestratorProfileId: 'trillian',
+      ignoredProfileIds: [],
+    });
+  });
+
+  it('keeps a v2 beta record launchable until readStartup can infer its orchestrator', () => {
+    expect(parseLastLaunch(JSON.stringify({ version: 2, mainProfileId: 'ford' }))).toEqual({
+      version: 3,
+      mainProfileId: 'ford',
+      orchestratorProfileId: null,
+      ignoredProfileIds: [],
     });
   });
 

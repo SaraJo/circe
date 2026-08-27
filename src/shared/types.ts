@@ -70,6 +70,17 @@ export interface HermesProfile {
   isReal: boolean;
 }
 
+/** Renderer-facing conversation tabs for one agent tile. */
+export interface TileTabsView {
+  /** Hermes session ids never cross the preload boundary; only their count does. */
+  count: number;
+  activeIndex: number;
+  /** True while a turn, replay, or permission decision makes switching unsafe. */
+  busy: boolean;
+  /** Older ACP agents without session/load keep the existing one-conversation UI. */
+  supported: boolean;
+}
+
 export interface FleetIdentityProposal {
   profile: HermesProfile;
   character: Character;
@@ -83,12 +94,19 @@ export type WizardStep =
   | { kind: 'runtime-missing' }
   | { kind: 'provider-missing' }
   | { kind: 'existing-fleet'; profiles: HermesProfile[] }
-  | { kind: 'fleet-fandom'; profiles: HermesProfile[]; intent: FleetFandomIntent }
+  | { kind: 'fleet-selection'; profiles: HermesProfile[] }
+  | {
+      kind: 'fleet-fandom';
+      profiles: HermesProfile[];
+      intent: FleetFandomIntent;
+      ignoredProfileIds?: string[];
+    }
   | {
       kind: 'fleet-deriving';
       profiles: HermesProfile[];
       intent: FleetFandomIntent;
       fandom: string;
+      ignoredProfileIds?: string[];
     }
   | {
       kind: 'fleet-derive-failed';
@@ -96,13 +114,33 @@ export type WizardStep =
       intent: FleetFandomIntent;
       fandom: string;
       message: string;
+      ignoredProfileIds?: string[];
     }
   | { kind: 'fleet-preview'; proposals: FleetIdentityProposal[]; fandom: string }
-  | { kind: 'fleet-saving'; proposals: FleetIdentityProposal[]; selectedProfileIds: string[] }
-  | { kind: 'coordinator-choice'; profiles: HermesProfile[]; fandom: string | null }
-  | { kind: 'new-coordinator-preview'; profiles: HermesProfile[]; character: Character }
+  | {
+      kind: 'fleet-saving';
+      proposals: FleetIdentityProposal[];
+      selectedProfileIds: string[];
+    }
+  | {
+      kind: 'coordinator-choice';
+      profiles: HermesProfile[];
+      fandom: string | null;
+      ignoredProfileIds: string[];
+    }
+  | {
+      kind: 'new-coordinator-preview';
+      profiles: HermesProfile[];
+      character: Character;
+      ignoredProfileIds: string[];
+    }
   | { kind: 'adoption-write-failed'; message: string }
-  | { kind: 'fleet-launching'; mainProfileId: string; openingProfileId: string | null }
+  | {
+      kind: 'fleet-launching';
+      mainProfileId: string;
+      openingProfileId: string | null;
+      ignoredProfileIds: string[];
+    }
   | { kind: 'fandom' }
   | { kind: 'deriving'; fandom: string }
   | { kind: 'derive-failed'; fandom: string; message: string }
@@ -130,4 +168,4 @@ export type WizardStep =
       message: string;
       personaReplaced: { path: string; backedUpTo: string | null } | null;
     }
-  | { kind: 'launching'; character: Character; profileId: string };
+  | { kind: 'launching'; character: Character; profileId: string; ignoredProfileIds?: string[] };
