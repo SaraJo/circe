@@ -1,17 +1,17 @@
 > **Historical design:** This does not define the current product boundary. See
 > [../../CURRENT_BUILD.md](../../CURRENT_BUILD.md) for the authoritative scope.
 
-# Avatar Sourcing — Design
+# Avatar Sourcing - Design
 
 **Status:** approved 2026-08-19, ready for an implementation plan.
-**Spec:** `~/Code/circe-oss-spec.md` — constraint 4, constraint 6 (§4.6), constraint 9, constraint 10,
+**Spec:** `~/Code/circe-oss-spec.md` - constraint 4, constraint 6 (§4.6), constraint 9, constraint 10,
 §6.2 Step 5, §6.3, §8.4, §9 Phase 2, §10.7.
 
 ## Goal
 
 A character derived from a fandom gets that character's face, fetched from Wikipedia on the user's
-behalf and written into the profile it belongs to. When Wikipedia has nothing usable — or has the
-wrong thing — the user gets today's initials avatar and never learns a lookup happened.
+behalf and written into the profile it belongs to. When Wikipedia has nothing usable - or has the
+wrong thing - the user gets today's initials avatar and never learns a lookup happened.
 
 ## Scope
 
@@ -20,7 +20,7 @@ the profile, delivery to the renderer, and display on the meet screen and in the
 
 **Out, deliberately.** Upload, the file picker, circular crop, and force-initials. The spec only ever
 sites those controls inside Step 5's **Adjust** affordance (§6.2) and §6.6's re-skin editor, and
-Adjust is deferred until this work lands — its Face item is meaningless while initials are the only
+Adjust is deferred until this work lands - its Face item is meaningless while initials are the only
 possible face. Building the upload control now would mean designing a control we have already agreed
 to redesign. They ship together, later.
 
@@ -58,7 +58,7 @@ A fourth kind is the one that matters most and does not appear in that table, be
 lucky: **a name that resolves cleanly to the wrong subject.** "Trillian" happened to land on a
 disambiguation page, but had Wikipedia sent it to the instant-messaging client of the same name, the
 lookup would have written that logo to disk and presented it as the user's agent. Redirects are not
-inherently suspect — "Captain Picard" → "Jean-Luc Picard" is one we want — so "the resolved title
+inherently suspect - "Captain Picard" → "Jean-Luc Picard" is one we want - so "the resolved title
 must match the query" is the wrong rule.
 
 **A wrong face is worse than no face.** Initials are honest; a stranger's photograph presented as
@@ -68,8 +68,8 @@ your coordinator is not. Every rule below is tuned to that asymmetry.
 
 A summary is accepted only when **all** of these hold. Any failure yields initials, silently.
 
-1. `type === 'standard'` — rejects disambiguation pages and stubs.
-2. The resolved title does not begin with `List of` — rejects the character-list redirect.
+1. `type === 'standard'` - rejects disambiguation pages and stubs.
+2. The resolved title does not begin with `List of` - rejects the character-list redirect.
 3. A `thumbnail.source` exists, and its host is `upload.wikimedia.org`.
 4. **The extract mentions the fandom.** This is what catches the wrong-subject case: Long John
    Silver's extract says "Treasure Island"; an instant-messaging client's would never say
@@ -96,7 +96,7 @@ findAvatar(name, fandom, deps) -> { bytes, articleUrl, title, license: 'commons'
 ```
 
 Main process only. Two requests: the summary, then the thumbnail. Applies the four rules above.
-**Never throws** — a network error, a timeout, a non-JSON body, a non-image body, an oversized image
+**Never throws** - a network error, a timeout, a non-JSON body, a non-image body, an oversized image
 and a rejected match are all the same outcome, `null`, because §10.7 requires that failure be silent
 and indistinguishable from "Wikipedia had nothing".
 
@@ -110,26 +110,26 @@ the whole operation, since nothing downstream may wait on it.
 
 ### Storage
 
-`profileFilePath(profileId, 'avatar.png')` — the helper exists already and already encodes the rule
+`profileFilePath(profileId, 'avatar.png')` - the helper exists already and already encodes the rule
 that the default profile keeps its files at the home root rather than under `profiles/`, exactly as
 `SOUL.md` and `circe.json` do. The coordinator is the `default` profile, so its face is
 `~/.hermes/avatar.png`; a specialist's is `~/.hermes/profiles/<id>/avatar.png`.
 
-`HermesRuntime` currently reads and writes strings only. It gains binary siblings —
-`readHomeFileBytes` / `writeHomeFileBytes` — on the interface, the real implementation and the fake.
+`HermesRuntime` currently reads and writes strings only. It gains binary siblings -
+`readHomeFileBytes` / `writeHomeFileBytes` - on the interface, the real implementation and the fake.
 JPEG-to-PNG conversion uses Electron's `nativeImage`, so this adds no dependency.
 
 ### Timing: the lookup and the write are different moments
 
 **The lookup fires when derivation resolves.** That is the earliest instant the character's name
 exists, and it resolves a contradiction in the spec: constraint 4 says the lookup is "triggered by
-the user reaching Step 4", while §10.7 says Step 5. Step 4 is impossible — there is no name yet — so
+the user reaching Step 4", while §10.7 says Step 5. Step 4 is impossible - there is no name yet - so
 Step 5 is the accurate reading, and §6.2's "the lookup has already run by the time this screen opens"
 is the intent.
 
 It is **non-blocking**. Derivation already takes 20–60 seconds and the meet screen must not wait on a
 second network call. The screen renders initials immediately and swaps in the face if and when it
-arrives — the same "arrives late, applied live" pattern D1 established for palettes, and the same
+arrives - the same "arrives late, applied live" pattern D1 established for palettes, and the same
 rule: a malformed or absent update leaves what is showing alone.
 
 **The write happens on accept, not before.** Constraint 9 forbids modifying a profile the user has
@@ -139,7 +139,7 @@ someone else" discards them and leaves nothing behind.
 
 ### Display and the CSP
 
-Two sites: the meet screen's preview and the tile header (§6.3 — "the avatar shown in the tile header
+Two sites: the meet screen's preview and the tile header (§6.3 - "the avatar shown in the tile header
 comes from the profile's avatar file... if none, the tile shows the character's first initial in a
 colored circle").
 
@@ -150,7 +150,7 @@ URL query, which already carries the character as JSON and where a base64 PNG wo
 hold rather than a thing to add.** Both renderers currently declare
 `default-src 'self'; style-src 'self' 'unsafe-inline'` with no `img-src` at all, so images inherit
 `default-src 'self'` and a `data:` URL is refused today. The policy gains exactly `img-src 'self'
-data:` — the string §10.7 says a test should pin — and nothing else. Remote image loads stay refused.
+data:` - the string §10.7 says a test should pin - and nothing else. Remote image loads stay refused.
 
 Initials remain the fallback element rather than a special case, so a lookup that fails renders
 precisely today's screen.
@@ -195,12 +195,12 @@ Plus constraint 9: no avatar byte reaches disk before accept, including after a 
 ## Open, and deliberately not solved here
 
 **Licensing and attribution.** Constraint 6 says likenesses land carrying "whatever license Wikipedia
-holds them under — mostly CC BY-SA, occasionally fair-use-only", and that "attribution and
+holds them under - mostly CC BY-SA, occasionally fair-use-only", and that "attribution and
 redistribution are unresolved and must be settled before v1 ships publicly."
 
 **Measured 2026-08-19, that assumption is inverted.** Of the nine characters whose lookup returned a
-usable thumbnail, **seven were fair-use-only and two were freely licensed.** The two free ones —
-Long John Silver and Sherlock Holmes — are public-domain-era illustrations. Every modern character
+usable thumbnail, **seven were fair-use-only and two were freely licensed.** The two free ones -
+Long John Silver and Sherlock Holmes - are public-domain-era illustrations. Every modern character
 in the sample (Hermione Granger, Tyrion Lannister, Leslie Knope, Ellen Ripley, Jean-Luc Picard,
 Hercule Poirot, Granny Weatherwax) resolved to a non-free film still, poster or publicity photograph.
 So the normal case is fair use, not the exception.
@@ -209,8 +209,8 @@ So the normal case is fair use, not the exception.
 there was; there is not. What exists is better, because it costs nothing: the licensing is legible in
 the thumbnail's own URL path.
 
-- `upload.wikimedia.org/wikipedia/commons/…` — hosted on Wikimedia Commons, freely licensed.
-- `upload.wikimedia.org/wikipedia/en/…` — uploaded locally under English Wikipedia's **non-free
+- `upload.wikimedia.org/wikipedia/commons/…` - hosted on Wikimedia Commons, freely licensed.
+- `upload.wikimedia.org/wikipedia/en/…` - uploaded locally under English Wikipedia's **non-free
   content criteria**, which permit use *on Wikipedia* and say nothing about redistribution.
 
 So provenance is a single substring test on a URL we already hold. `findAvatar` returns it as
@@ -221,8 +221,8 @@ So provenance is a single substring test on a URL we already hold. `findAvatar` 
 > policy has the data", and the licensing decision below leaned on that: position 2 or 3 "stays a
 > small change, because the provenance is captured either way". **As shipped, they are not written
 > anywhere.** `findAvatar` computes them, the wizard holds them in memory, and `saveAvatar` writes
-> only `avatar.png`. The plan deferred the write deliberately — it needs a schema decision about
-> `circe.json` that nothing yet reads — but understated the cost: the article URL and the
+> only `avatar.png`. The plan deferred the write deliberately - it needs a schema decision about
+> `circe.json` that nothing yet reads - but understated the cost: the article URL and the
 > commons/non-free segment **cannot be reconstructed from the PNG**, so every avatar written before
 > a provenance write lands is permanently un-attributable.
 >
@@ -233,18 +233,18 @@ So provenance is a single substring test on a URL we already hold. `findAvatar` 
 **What this design does not decide** is whether a non-free image may be written at all. Three
 positions are available and the choice belongs to the product owner:
 
-1. **Record and ship** — accept both, store the provenance, settle the policy before public v1. Keeps
+1. **Record and ship** - accept both, store the provenance, settle the policy before public v1. Keeps
    the feature's hit rate at roughly seven in ten, which is what makes it worth building.
-2. **Commons only** — accept `/wikipedia/commons/` and nothing else. Unimpeachable, and on this
+2. **Commons only** - accept `/wikipedia/commons/` and nothing else. Unimpeachable, and on this
    sample it reduces the feature to two characters in nine; almost every modern fandom gets initials.
-3. **Record and ship, with a switch** — position 1, plus a setting that restricts to Commons, so the
+3. **Record and ship, with a switch** - position 1, plus a setting that restricts to Commons, so the
    conservative behaviour exists without being the default.
 
 **Decided 2026-08-19 by the product owner: position 1.** Accept both, record the provenance, settle
 the redistribution policy before Circe ships publicly. The reasoning that makes it defensible is
 worth writing down, since whoever revisits this will need it: Circe's repo ships zero images, each
 file is fetched per-user on that user's own machine at their own request, and nothing is
-redistributed by the project. What is unresolved is not the fetching but the shipping — whether a
+redistributed by the project. What is unresolved is not the fetching but the shipping - whether a
 public v1 can present fair-use likenesses as agent identities without an attribution surface or a
 policy. Position 2 or 3 stays a small change, because the provenance is captured either way.
 

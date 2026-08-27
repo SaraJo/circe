@@ -1,10 +1,10 @@
 > **Historical design:** Circe now uses a smaller fail-closed inline gate. See
 > [../../CURRENT_BUILD.md](../../CURRENT_BUILD.md) for the authoritative scope.
 
-# The Permission Gate — Design
+# The Permission Gate - Design
 
 **Status:** approved 2026-08-24, ready for an implementation plan.
-**Spec:** `~/Code/circe-oss-spec.md` — §6.3.1 (the header), §6.4 (the gate), §10.4 (liveness),
+**Spec:** `~/Code/circe-oss-spec.md` - §6.3.1 (the header), §6.4 (the gate), §10.4 (liveness),
 §10.5 (state survival), constraint 10.
 **Amends:** §6.4 and §10.4 of the spec, and the 2026-08-16 ruling in
 `docs/build-decision-record-2026-08-14.md` that Circe must never write `config.yaml`. Both changes
@@ -65,7 +65,7 @@ approach rather than a bare refusal.
 Deny is the default everywhere: the CLI prompt reads `Choice [o/s/a/D]`, Esc denies in the TUI, an
 unrecognised keystroke denies, a timeout denies, and a failed notify denies.
 
-The four are not equivalent in cost. `once` and `session` are in-memory only — `approve_session`
+The four are not equivalent in cost. `once` and `session` are in-memory only - `approve_session`
 keyed by session key, gone when the agent stops. **`always` writes to `command_allowlist` in
 `config.yaml`.** That distinction is what decides which three Circe offers.
 
@@ -86,7 +86,7 @@ separate `raw_input` fields are what Circe renders from; the title is a convenie
 ### The ACP timeout is 60 seconds and is not configurable
 
 `make_approval_callback` takes `timeout: float = 60.0`. `acp_adapter/server.py:1368` calls it as
-`make_approval_callback(conn.request_permission, loop, session_id)` — with no timeout argument. So
+`make_approval_callback(conn.request_permission, loop, session_id)` - with no timeout argument. So
 the ACP path **ignores `approvals.timeout`**, which the CLI path does read, and it does not use
 `approvals.gateway_timeout` (300s) either, despite Circe resembling the gateway far more than the
 CLI. On expiry the callback returns `deny`.
@@ -126,13 +126,13 @@ the TUI, and in Slack. A Circe-local mode would have been a fourth vocabulary fo
 already named three times. The boundary that survives is narrower and still real: **Circe writes one
 key, through Hermes' own writer, and never parses or rewrites the file.**
 
-**§6.4 of the spec is amended.** Locked, Ask, Unlocked become `off`, `manual`, `smart` — and Locked
+**§6.4 of the spec is amended.** Locked, Ask, Unlocked become `off`, `manual`, `smart` - and Locked
 disappears, because Hermes has no deny-everything state to mirror. The spec's "locked still renders a
 card showing what was denied, so the user can see the agent tried" goes with it.
 
 **§10.4 of the spec is amended.** "Set a tile to Locked mid-response, assert the next tool call is
 auto-denied" becomes "change a tile's mode mid-response, assert the next dangerous command is treated
-under the new mode". The property being tested — no session or turn boundary required — is unchanged.
+under the new mode". The property being tested - no session or turn boundary required - is unchanged.
 
 ## Architecture
 
@@ -185,8 +185,8 @@ two would drift.
 
 **Circe only ever sends `allow_once`, `allow_session`, or `deny`.** Never `allow_always`, because
 that writes `command_allowlist`; never `deny_always`, for the same reason in the other direction. If
-Hermes did not offer the id the user picked — `allow_permanent: false` suppresses `allow_always` when
-tirith findings are present, and could suppress others later — Circe falls back to the nearest option
+Hermes did not offer the id the user picked - `allow_permanent: false` suppresses `allow_always` when
+tirith findings are present, and could suppress others later - Circe falls back to the nearest option
 Hermes did send, and to `deny` if there is none.
 
 A request whose tile has closed, or whose window is gone, is answered `deny` immediately rather than
@@ -206,7 +206,7 @@ The mode is header state rather than transcript content, so it gets its own chan
 | Message | Direction | Payload |
 |---|---|---|
 | `circe/permission` | main → renderer, via `tile:update` | `{ id, description, command }` |
-| `circe/permission-resolved` | main → renderer, via `tile:update` | `{ id, outcome }` — answered, expired, or cancelled |
+| `circe/permission-resolved` | main → renderer, via `tile:update` | `{ id, outcome }` - answered, expired, or cancelled |
 | `tile:permission-answer` | renderer → main | `{ id, choice }` |
 | `tile:mode` | main → renderer | the current `ApprovalMode` |
 | `tile:cycle-mode` | renderer → main | no payload; main writes, re-reads, and echoes `tile:mode` |
@@ -222,7 +222,7 @@ rather than identity.
 
 **The icon** joins `#bar`, which since 2026-08-20 is `justify-content: flex-start` with a 34px avatar
 and the name. The icon sits at the trailing edge. Its exact placement, size, and glyph are decided by
-rendering real options in the running tile and picking by eye, the way the 34px avatar was — not
+rendering real options in the running tile and picking by eye, the way the 34px avatar was - not
 specified here. What is fixed: it names the current mode, one click cycles, and it is legible against
 every profile palette rather than only the ones tested.
 
@@ -259,8 +259,8 @@ that a user in the permissive mode should still be able to see what was waved th
 Circe is never contacted, receives no command text, and has no event to draw a card about. The same
 is true of the low-risk commands `smart` approves on its own: Circe sees only escalations.
 
-Keeping the card would have meant not passing `off` down to Hermes at all — leaving Hermes in
-`manual` and having Circe answer yes silently — which makes the icon describe a Circe behaviour in
+Keeping the card would have meant not passing `off` down to Hermes at all - leaving Hermes in
+`manual` and having Circe answer yes silently - which makes the icon describe a Circe behaviour in
 one position and a Hermes setting in the other two. The product owner's call is that the transcript
 stays quiet and the modes mean what Hermes means.
 

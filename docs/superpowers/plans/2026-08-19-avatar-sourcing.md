@@ -9,7 +9,7 @@
 
 **Architecture:** A main-process-only module fetches a Wikipedia summary by character name and applies four guardrails before trusting it. The bytes are held in memory through the meet screen and written to `avatar.png` inside the profile only when the user accepts, because constraint 9 forbids touching a profile the user has not committed to. Both renderers receive the image as a `data:` URL over IPC, never a remote load. Initials stay the fallback element, so every failure path renders exactly today's screen.
 
-**Tech Stack:** TypeScript, Electron 32, electron-vite, Vitest. No new dependencies — JPEG-to-PNG conversion uses Electron's built-in `nativeImage`, injected so tests never load Electron.
+**Tech Stack:** TypeScript, Electron 32, electron-vite, Vitest. No new dependencies - JPEG-to-PNG conversion uses Electron's built-in `nativeImage`, injected so tests never load Electron.
 
 **Spec:** `docs/superpowers/specs/2026-08-19-avatar-sourcing-design.md`, which implements `~/Code/circe-oss-spec.md` constraint 4, constraint 6 (§4.6), constraint 9, constraint 10, §6.2 Step 5, §6.3, §8.4, §9 Phase 2, §10.7.
 
@@ -86,7 +86,7 @@ const toPng = (bytes: Uint8Array, contentType: string): Uint8Array | null =>
 
 describe('avatarPath', () => {
   // The coordinator IS the default profile, and the default profile keeps its
-  // files at the home root — the same rule `soulPath` and `circe.json` follow.
+  // files at the home root - the same rule `soulPath` and `circe.json` follow.
   // Getting this wrong writes the face to `profiles/default/`, a directory
   // Hermes does not use, and the tile would show initials forever.
   it('puts the default profile face at the home root', () => {
@@ -151,7 +151,7 @@ describe('dataUrl', () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npm test -- test/avatarStore.test.ts`
-Expected: FAIL — `Failed to load url ../src/main/avatarStore`.
+Expected: FAIL - `Failed to load url ../src/main/avatarStore`.
 
 - [ ] **Step 3: Add binary I/O to the runtime interface**
 
@@ -237,7 +237,7 @@ import { avatarPath, type HermesRuntime } from './hermes/runtime';
 /**
  * Converts fetched image bytes to PNG. Injected rather than imported because
  * the only implementation is Electron's `nativeImage`, and importing `electron`
- * here would make this module unloadable under the `node` test environment —
+ * here would make this module unloadable under the `node` test environment -
  * the same reason `tiles.ts` takes `createWindow` as a dependency.
  *
  * Returns null when the bytes are not an image it can read, which is a silent
@@ -506,7 +506,7 @@ describe('findAvatar', () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npm test -- test/avatar.test.ts`
-Expected: FAIL — `Failed to load url ../src/main/avatar`.
+Expected: FAIL - `Failed to load url ../src/main/avatar`.
 
 - [ ] **Step 3: Implement the lookup**
 
@@ -524,7 +524,7 @@ Create `src/main/avatar.ts`:
  * lookups returned a thumbnail, and the misses fell into three kinds with clean
  * signals: a redirect to a "List of ... characters" article, a disambiguation
  * page, and an article with no free image. A fourth kind did not appear in the
- * sample and is the dangerous one — a name that resolves cleanly to an entirely
+ * sample and is the dangerous one - a name that resolves cleanly to an entirely
  * different subject, like "Trillian" the instant-messaging client. That is the
  * case rule 4 exists for.
  *
@@ -749,7 +749,7 @@ describe('the character gets a face', () => {
     let release: (v: typeof found) => void = () => {};
     // Only the FIRST lookup is deferred. An earlier draft gave every call the
     // same deferred promise, so the retry's own lookup reassigned `release` and
-    // resolving it fed a face to the *current* generation — the test would have
+    // resolving it fed a face to the *current* generation - the test would have
     // failed for a reason unrelated to staleness.
     let calls = 0;
     const w = new Wizard(h, {
@@ -804,7 +804,7 @@ describe('the character gets a face', () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npm test -- test/wizard.test.ts`
-Expected: FAIL — `Wizard` takes one constructor argument, `avatarDataUrl` is not a function.
+Expected: FAIL - `Wizard` takes one constructor argument, `avatarDataUrl` is not a function.
 
 - [ ] **Step 3: Implement in the wizard**
 
@@ -1139,7 +1139,7 @@ In `src/main/tiles.ts`, after a tile's window finishes loading in `launch`, and 
 
 - [ ] **Step 4: Give the header an avatar circle**
 
-The tile header is `<header id="bar"><span id="who"></span></header>` — there is no avatar element
+The tile header is `<header id="bar"><span id="who"></span></header>` - there is no avatar element
 today, so this creates one. §6.3 asks for "an avatar circle" in the header showing the profile's face,
 "or the character's first initial in a colored circle" when it has none.
 
@@ -1263,7 +1263,7 @@ describe('avatar provenance (spec §10.7)', () => {
 - [ ] **Step 2: Run them**
 
 Run: `npm test -- test/provenance.test.ts`
-Expected: PASS once Tasks 2, 4 and 5 are in. If the image scan flags something legitimate, add it to the allowlist beside `icon.png` with a comment saying why — do not loosen the pattern.
+Expected: PASS once Tasks 2, 4 and 5 are in. If the image scan flags something legitimate, add it to the allowlist beside `icon.png` with a comment saying why - do not loosen the pattern.
 
 - [ ] **Step 3: Commit**
 

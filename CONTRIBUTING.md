@@ -35,7 +35,7 @@ configured. See https://hermes-agent.nousresearch.com/docs.
 
 Larger changes get a spec in `docs/superpowers/specs/` and a plan in
 `docs/superpowers/plans/`, dated. Read a couple of the existing ones before
-writing a new one — the format is load-bearing.
+writing a new one - the format is load-bearing.
 
 ## Reporting issues
 

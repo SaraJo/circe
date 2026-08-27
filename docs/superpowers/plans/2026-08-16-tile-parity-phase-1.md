@@ -1,13 +1,13 @@
 > **Historical plan:** Do not execute unchecked tasks from this document. See
 > [../../CURRENT_BUILD.md](../../CURRENT_BUILD.md) for the current scope.
 
-# Tile Parity Phase 1 — Session Restore Implementation Plan
+# Tile Parity Phase 1 - Session Restore Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A cold start reopens the orchestrator's tile onto the conversation it already had, instead of an empty transcript.
 
-**Architecture:** `AcpClient` stops owning exactly one implicit session and becomes a multiplexer with an explicit session lifecycle (`newSession`, `loadSession`, `prompt(sessionId, …)`), routing every `session/update` by the notification's outer `sessionId`. Circe remembers which session a profile's tile was last on in `HERMES_HOME/circe/state.json`, and on launch asks Hermes to resume it. The transcript is rebuilt from Hermes' own replay — Circe stores no message text.
+**Architecture:** `AcpClient` stops owning exactly one implicit session and becomes a multiplexer with an explicit session lifecycle (`newSession`, `loadSession`, `prompt(sessionId, …)`), routing every `session/update` by the notification's outer `sessionId`. Circe remembers which session a profile's tile was last on in `HERMES_HOME/circe/state.json`, and on launch asks Hermes to resume it. The transcript is rebuilt from Hermes' own replay - Circe stores no message text.
 
 **Tech Stack:** TypeScript, Electron 32, electron-vite, Vitest. No new dependencies.
 
@@ -17,13 +17,13 @@
 
 Copied from `~/Code/circe-oss-spec.md`; every task's requirements implicitly include these.
 
-- **Constraint 3 — ACP JSON-RPC over stdio is the only transport to a profile.** Do not invent a second transport.
-- **Constraint 7 — Circe reimplements nothing Hermes ships.** Conversations, titles, and context accounting are Hermes'.
-- **Constraint 10 — a profile describes itself; Circe stores no agent facts.** Circe's state file holds window facts only. This plan's state file therefore holds session ids and nothing about who the agent is.
-- **Constraint 4 — no telemetry.** Circe's own process makes zero network calls.
-- **Constraint 1 — macOS only.** Do not add platform abstractions for later.
+- **Constraint 3 - ACP JSON-RPC over stdio is the only transport to a profile.** Do not invent a second transport.
+- **Constraint 7 - Circe reimplements nothing Hermes ships.** Conversations, titles, and context accounting are Hermes'.
+- **Constraint 10 - a profile describes itself; Circe stores no agent facts.** Circe's state file holds window facts only. This plan's state file therefore holds session ids and nothing about who the agent is.
+- **Constraint 4 - no telemetry.** Circe's own process makes zero network calls.
+- **Constraint 1 - macOS only.** Do not add platform abstractions for later.
 - **Copy rule (§1.4):** UI text is plain and honest; it never claims something happened that did not.
-- **Verified protocol facts** (spec §2, captured from Hermes 0.14.0 — do not re-derive from assumption): `initialize` returns `agentCapabilities.loadSession: true`; `session/load` takes `{cwd, sessionId, mcpServers}` and replays history outbound as `session/update` notifications; notification params are `{sessionId, update:{sessionUpdate, …}}` with the discriminator on the **inner** object.
+- **Verified protocol facts** (spec §2, captured from Hermes 0.14.0 - do not re-derive from assumption): `initialize` returns `agentCapabilities.loadSession: true`; `session/load` takes `{cwd, sessionId, mcpServers}` and replays history outbound as `session/update` notifications; notification params are `{sessionId, update:{sessionUpdate, …}}` with the discriminator on the **inner** object.
 
 ---
 
@@ -176,7 +176,7 @@ Update the three existing `session/update forwarding` tests in this file to the 
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run test/acp.test.ts`
-Expected: FAIL — `handshake is not a function`, `canLoadSession` undefined, `loadSession is not a function`.
+Expected: FAIL - `handshake is not a function`, `canLoadSession` undefined, `loadSession is not a function`.
 
 - [ ] **Step 3: Implement**
 
@@ -190,7 +190,7 @@ export interface AcpOptions {
    * `sessionId` is the *outer* `params.sessionId` of the notification; `update`
    * is the inner object carrying `sessionUpdate`. One client serves several
    * sessions, so the id is the only thing that says which tab an update belongs
-   * to — forwarding the update alone would land a replayed history in whatever
+   * to - forwarding the update alone would land a replayed history in whatever
    * tab happened to be active.
    */
   onUpdate(sessionId: string, update: AcpUpdate): void;
@@ -248,7 +248,7 @@ Split the handshake out of `doStart` so startup no longer implies a session:
 
   /**
    * Resumes a prior conversation. Hermes rehydrates it from its own store and
-   * replays the history outbound as `session/update` notifications — Circe
+   * replays the history outbound as `session/update` notifications - Circe
    * uploads nothing.
    *
    * Returns false rather than throwing on every failure path, because every
@@ -298,7 +298,7 @@ In the `session/update` branch (`:170`), route by id:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npx vitest run test/acp.test.ts && npm run typecheck`
-Expected: acp tests PASS. Typecheck FAILS in `src/main/index.ts` (its `onUpdate` and `prompt` calls no longer match) — that is Task 4's job and is expected here.
+Expected: acp tests PASS. Typecheck FAILS in `src/main/index.ts` (its `onUpdate` and `prompt` calls no longer match) - that is Task 4's job and is expected here.
 
 - [ ] **Step 5: Commit**
 
@@ -401,7 +401,7 @@ describe('withActiveSession', () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run test/tileState.test.ts`
-Expected: FAIL — cannot find module `../src/main/tileState`.
+Expected: FAIL - cannot find module `../src/main/tileState`.
 
 - [ ] **Step 3: Implement**
 
@@ -412,7 +412,7 @@ import type { HermesRuntime } from './hermes/runtime';
 
 /**
  * What Circe remembers about how a profile's tile was arranged. Window facts
- * only, per constraint 10: nothing here says anything about who the agent is —
+ * only, per constraint 10: nothing here says anything about who the agent is -
  * that lives in the profile, and the conversation lives in Hermes. The worst a
  * lost or unreadable record can cost is which conversation reopens, never the
  * conversation itself.
@@ -605,7 +605,7 @@ let tileQueue: string[] = [];
 /**
  * Resolves when the tile's renderer has registered its listeners. A replay is a
  * burst of `session/update` notifications arriving the moment `session/load`
- * is answered, and `sendTileUpdate` has no queue — so the load must not be
+ * is answered, and `sendTileUpdate` has no queue - so the load must not be
  * issued until there is something on the other end to draw it.
  */
 let tileReady: Promise<void> = Promise.resolve();
@@ -659,7 +659,7 @@ Add above `launchTile`:
  *
  * Hermes owns the conversation: `session/load` asks it to rehydrate from its own
  * store, and it replays the history back as updates. Circe uploads nothing and
- * keeps no copy — the id in `circe/state.json` is the whole of what it remembers.
+ * keeps no copy - the id in `circe/state.json` is the whole of what it remembers.
  *
  * Every failure lands on the same answer, a fresh session, because a tile that
  * refuses to open because last week's conversation went missing is worse than
@@ -733,7 +733,7 @@ git commit -m "feat: reopen a tile onto the conversation it was having"
 
 ---
 
-### Task 5: Boundary test — load to rendered transcript
+### Task 5: Boundary test - load to rendered transcript
 
 **Files:**
 - Create: `test/restore.test.ts`
@@ -796,7 +796,7 @@ function render(updates: Array<Record<string, unknown>>): Bubble[] {
   return out;
 }
 
-/** The exact wire shape captured from Hermes 0.14.0 — see spec §2. */
+/** The exact wire shape captured from Hermes 0.14.0 - see spec §2. */
 function notification(sessionId: string, update: Record<string, unknown>) {
   return { jsonrpc: '2.0', method: 'session/update', params: { sessionId, update } };
 }
@@ -901,7 +901,7 @@ describe('resuming a conversation', () => {
 - [ ] **Step 2: Run it**
 
 Run: `npx vitest run test/restore.test.ts`
-Expected: PASS. If any case fails, the defect is real — fix the source, not the test.
+Expected: PASS. If any case fails, the defect is real - fix the source, not the test.
 
 - [ ] **Step 3: Full suite**
 
@@ -919,7 +919,7 @@ git commit -m "test: cross the transport-to-renderer boundary on resume"
 
 ### Task 6: Walk it through on the real runtime
 
-**Files:** none — this task produces evidence, not code.
+**Files:** none - this task produces evidence, not code.
 
 Automated tests cannot see what the last build shipped broken. Follow `.claude/skills/run-circe/SKILL.md`, which sandboxes `HERMES_HOME` so the operator's real `~/.hermes/SOUL.md` and profiles are untouched.
 
@@ -937,7 +937,7 @@ Send a message, wait for the reply to render.
 
 - [ ] **Step 3: Quit and cold-start**
 
-`quit`, then relaunch. **Expected:** the tile opens directly on the agent, and the previous exchange is drawn — user message and agent reply in separate bubbles, Markdown formatted, no repeated onboarding greeting.
+`quit`, then relaunch. **Expected:** the tile opens directly on the agent, and the previous exchange is drawn - user message and agent reply in separate bubbles, Markdown formatted, no repeated onboarding greeting.
 
 - [ ] **Step 4: Confirm the record and the real home**
 

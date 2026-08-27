@@ -7,7 +7,7 @@
 
 **Goal:** A tile shows its agent's Hermes approval mode in the header, lets the user cycle it, and asks dangerous-command approvals inside that agent's own window.
 
-**Architecture:** `gate.ts` owns the mode — reading it from the profile's own `config.yaml` and writing it through `hermes config set`, never editing YAML. `acp.ts` forwards every `session/request_permission` it receives to the renderer and holds the JSON-RPC id until an answer comes back; it never checks the mode, because a request only reaches Circe when Hermes has already decided to ask. `TileRegistry` owns the pending map, the 60-second timer, and the deny-on-close rule. The card is a synthetic `circe/permission` session update so it lands in transcript order like every other `circe/` lifecycle event.
+**Architecture:** `gate.ts` owns the mode - reading it from the profile's own `config.yaml` and writing it through `hermes config set`, never editing YAML. `acp.ts` forwards every `session/request_permission` it receives to the renderer and holds the JSON-RPC id until an answer comes back; it never checks the mode, because a request only reaches Circe when Hermes has already decided to ask. `TileRegistry` owns the pending map, the 60-second timer, and the deny-on-close rule. The card is a synthetic `circe/permission` session update so it lands in transcript order like every other `circe/` lifecycle event.
 
 **Tech Stack:** TypeScript, Electron 32, Vitest. No new dependencies.
 
@@ -17,7 +17,7 @@
 
 - **Circe never parses or rewrites `config.yaml`.** Reads extract one value; writes go through `hermes -p <id> config set approvals.mode <value>`. The file is ~500 lines of user-owned settings with comments.
 - **Only `HermesRuntime` shells out.** `runtime.ts` says "Everything Circe is allowed to ask of Hermes. Nothing else may shell out." A new capability means a new method on the interface, implemented in `real.ts` and in `test/fake/hermes.ts`.
-- **Circe answers only `allow_once`, `allow_session`, `deny`.** Never `allow_always` or `deny_always` — both write `command_allowlist` into `config.yaml`.
+- **Circe answers only `allow_once`, `allow_session`, `deny`.** Never `allow_always` or `deny_always` - both write `command_allowlist` into `config.yaml`.
 - **IPC from a renderer is routed by `profileForSender`,** never by a profile id the renderer supplies (§4.3.1, `index.ts:200`).
 - **No em dashes in copy Circe writes** (2026-08-19 ruling). Applies to every user-facing string added here.
 - **Deny is the default on every failure path:** expiry, a closed tile, a destroyed window, a malformed request, an unknown option id.
@@ -118,7 +118,7 @@ describe('MODE_LABEL', () => {
 
   // The 2026-08-19 copy rule, held by a test rather than by anyone remembering.
   it('uses no em dashes', () => {
-    for (const label of Object.values(MODE_LABEL)) expect(label).not.toContain('—');
+    for (const label of Object.values(MODE_LABEL)) expect(label).not.toContain('-');
   });
 });
 ```
@@ -137,7 +137,7 @@ Expected: FAIL, "Failed to resolve import ... src/main/gate".
  * the control in a tile header means exactly what the same setting means at a
  * terminal, in the TUI, and in Slack.
  *
- * There is deliberately no deny-everything mode. Hermes has none to mirror —
+ * There is deliberately no deny-everything mode. Hermes has none to mirror -
  * its nearest equivalent, `approvals.cron_mode: deny`, covers the
  * no-user-present case rather than a user choosing to refuse in advance.
  */
@@ -158,7 +158,7 @@ const MODES = new Set<string>(['manual', 'smart', 'off']);
  * Scoped to the block on purpose: the real file is ~500 lines and several
  * other top-level blocks carry their own `mode:` key, so a bare search finds
  * the wrong one. Circe reads this file and never writes it (see `setMode`),
- * so a regex over the text is the whole job — pulling in a YAML parser to
+ * so a regex over the text is the whole job - pulling in a YAML parser to
  * read one string would be a dependency taken on for nothing.
  *
  * Anything unreadable, absent, or unrecognised answers `manual`, which is
@@ -268,7 +268,7 @@ describe('setMode', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run test/gate.test.ts`
-Expected: FAIL — `readMode` is not exported, and `hermes.configSets` / `hermes.failRead` do not exist.
+Expected: FAIL - `readMode` is not exported, and `hermes.configSets` / `hermes.failRead` do not exist.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -282,7 +282,7 @@ In `src/main/hermes/runtime.ts`, add to the `HermesRuntime` interface, after `wr
    * Circe reads that file directly but must never write it: it is ~500 lines
    * of user-owned settings with comments and ordering that a parse-and-dump
    * would destroy, and Hermes owns its format. This is the one key Circe sets
-   * (`approvals.mode`), and the method is narrow on purpose — a general
+   * (`approvals.mode`), and the method is narrow on purpose - a general
    * "write config" capability is a bigger door than this feature needs.
    */
   setConfig(profileId: string, key: string, value: string): Promise<void>;
@@ -414,7 +414,7 @@ describe('optionIdFor', () => {
 
   // `allow_always` writes command_allowlist into config.yaml and `deny_always`
   // does the same in the other direction. Circe offers neither, so nothing
-  // should be able to select them — this holds that line at the mapping layer
+  // should be able to select them - this holds that line at the mapping layer
   // as well as in the UI.
   it('never returns a permanent option', () => {
     for (const choice of ['allow_once', 'allow_session', 'deny'] as const) {
@@ -549,7 +549,7 @@ async function flush(): Promise<void> {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run test/acp.test.ts`
-Expected: FAIL — `optionIdFor` is not exported, and `AcpOptions` has no `onPermission`.
+Expected: FAIL - `optionIdFor` is not exported, and `AcpOptions` has no `onPermission`.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -590,7 +590,7 @@ interface PermissionOption {
  * present, and `deny_always` is only offered when the installed ACP SDK
  * accepts `reject_always`. So the choice has to be matched against what this
  * request actually offered, with a fallback to another option of the same
- * intent, and `null` — meaning cancel — when there is none.
+ * intent, and `null` - meaning cancel - when there is none.
  *
  * The old code here took "the first option whose kind starts with allow",
  * which returned `allow_once` only because of where it happens to sit in
@@ -616,7 +616,7 @@ Add to `AcpOptions`:
 ```ts
   /**
    * A dangerous command needs an answer. Called only when Hermes asks, which
-   * is `approvals.mode: manual` or a `smart` escalation — in `off` Hermes
+   * is `approvals.mode: manual` or a `smart` escalation - in `off` Hermes
    * approves internally and this never fires. So there is deliberately no
    * mode check on this path: the mode is Hermes' decision, already made by
    * the time the request arrives, and a second copy of it here would drift.
@@ -676,7 +676,7 @@ Replace the branch at `acp.ts:333`:
 - [ ] **Step 4: Run the suite**
 
 Run: `npx vitest run && npm run typecheck`
-Expected: FAIL in `typecheck` and in `test/tiles.test.ts` — `AcpOptions` now requires `onPermission`, and `TileClientOptions` in `tiles.ts` does not supply it. That is Task 4's job. To keep this task independently green, add `onPermission` to `TileClientOptions` and have `tiles.ts` pass `async () => 'deny'` with a `TODO(Task 4)` comment, then re-run.
+Expected: FAIL in `typecheck` and in `test/tiles.test.ts` - `AcpOptions` now requires `onPermission`, and `TileClientOptions` in `tiles.ts` does not supply it. That is Task 4's job. To keep this task independently green, add `onPermission` to `TileClientOptions` and have `tiles.ts` pass `async () => 'deny'` with a `TODO(Task 4)` comment, then re-run.
 
 - [ ] **Step 5: Commit**
 
@@ -829,7 +829,7 @@ Reuse the file's existing `fakeWindow` and `fakeClient` builders; if they are in
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run test/tiles.test.ts`
-Expected: FAIL — `deps.bounce` is not part of `TileDeps`, and `registry.answerPermission` does not exist.
+Expected: FAIL - `deps.bounce` is not part of `TileDeps`, and `registry.answerPermission` does not exist.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -1009,7 +1009,7 @@ describe('outcomeLabel', () => {
 
   it('uses no em dashes', () => {
     for (const o of ['allow_once', 'allow_session', 'deny', 'expired', 'x']) {
-      expect(outcomeLabel(o)).not.toContain('—');
+      expect(outcomeLabel(o)).not.toContain('-');
     }
   });
 });
@@ -1027,7 +1027,7 @@ Expected: FAIL, "Failed to resolve import ... permission".
 ```ts
 /**
  * The parts of the permission card that are decisions rather than DOM, kept
- * here so a test can reach them — the move `toolLabel.ts` already made for the
+ * here so a test can reach them - the move `toolLabel.ts` already made for the
  * same reason, on a renderer that otherwise has no coverage.
  */
 
@@ -1257,7 +1257,7 @@ async function openTileWith(profileId: string, files: Record<string, string>) {
 }
 ```
 
-`openTile` gains a `files` parameter it passes to `new FakeHermes({ ...INSTALLED_WITH_AGENTS, files: { ...INSTALLED_WITH_AGENTS.files, ...files } })`, exposes the seeded `hermes`, and returns `raw(id)` alongside `sent(id)` — the unfiltered list of `{ channel, payload }` the fake window recorded. `sent(id)` stays as Task 4 defined it, in terms of `raw`.
+`openTile` gains a `files` parameter it passes to `new FakeHermes({ ...INSTALLED_WITH_AGENTS, files: { ...INSTALLED_WITH_AGENTS.files, ...files } })`, exposes the seeded `hermes`, and returns `raw(id)` alongside `sent(id)` - the unfiltered list of `{ channel, payload }` the fake window recorded. `sent(id)` stays as Task 4 defined it, in terms of `raw`.
 
 Add `failConfigSet` to `FakeHermes`:
 
@@ -1278,7 +1278,7 @@ and guard the method added in Task 2:
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run test/tiles.test.ts`
-Expected: FAIL — `registry.cycleMode` does not exist.
+Expected: FAIL - `registry.cycleMode` does not exist.
 
 - [ ] **Step 3: Write minimal implementation**
 

@@ -1,13 +1,13 @@
 > **Historical plan:** Do not execute unchecked tasks from this document. See
 > [../../CURRENT_BUILD.md](../../CURRENT_BUILD.md) for the current scope.
 
-# Tile Parity Phase 2 — The Core Loop Implementation Plan
+# Tile Parity Phase 2 - The Core Loop Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** An agent created outside Circe — at a terminal, or by the orchestrator mid-conversation — gets its own correctly-themed tile on the display the user is looking at, without a restart.
+**Goal:** An agent created outside Circe - at a terminal, or by the orchestrator mid-conversation - gets its own correctly-themed tile on the display the user is looking at, without a restart.
 
-**Architecture:** The palette moves out of Circe's private record and into `<profile>/circe.json`, which is what makes a profile Circe never created displayable at all. The per-profile tile state moves out of `index.ts`'s module-level singletons into `src/main/tiles.ts`, a registry that imports no Electron and takes its window and client factories as parameters — the same treatment `restore.ts` got in the Phase 1 fix wave, applied to what stayed behind. `src/main/fleet.ts` then decides which profiles deserve a tile and watches the home for new ones. `index.ts` keeps the wizard IPC, `boot`, and the app lifecycle.
+**Architecture:** The palette moves out of Circe's private record and into `<profile>/circe.json`, which is what makes a profile Circe never created displayable at all. The per-profile tile state moves out of `index.ts`'s module-level singletons into `src/main/tiles.ts`, a registry that imports no Electron and takes its window and client factories as parameters - the same treatment `restore.ts` got in the Phase 1 fix wave, applied to what stayed behind. `src/main/fleet.ts` then decides which profiles deserve a tile and watches the home for new ones. `index.ts` keeps the wizard IPC, `boot`, and the app lifecycle.
 
 **Tech Stack:** TypeScript, Electron 32, electron-vite, Vitest. No new dependencies.
 
@@ -17,15 +17,15 @@
 
 Copied from `~/Code/circe-oss-spec.md` and the design's own rulings; every task's requirements implicitly include these.
 
-- **Constraint 1 — macOS only.** Do not add platform abstractions for later. Recursive `fs.watch` is available and is used deliberately.
-- **Constraint 3 — ACP JSON-RPC over stdio is the only transport to a profile.** Do not invent a second transport. In particular, do not give the orchestrator a Circe-side tool or control channel for creating peers.
-- **Constraint 4 — no telemetry.** Circe's own process makes zero network calls.
-- **Constraint 7 — Circe reimplements nothing Hermes ships.** Conversations, titles, and context accounting are Hermes'.
-- **Constraint 10 — a profile describes itself; Circe stores no agent facts.** After this phase, Circe's state holds window facts only: open sessions, geometry, access mode, and which profile is the main operator. Colours, name, tagline and avatar live in the profile.
+- **Constraint 1 - macOS only.** Do not add platform abstractions for later. Recursive `fs.watch` is available and is used deliberately.
+- **Constraint 3 - ACP JSON-RPC over stdio is the only transport to a profile.** Do not invent a second transport. In particular, do not give the orchestrator a Circe-side tool or control channel for creating peers.
+- **Constraint 4 - no telemetry.** Circe's own process makes zero network calls.
+- **Constraint 7 - Circe reimplements nothing Hermes ships.** Conversations, titles, and context accounting are Hermes'.
+- **Constraint 10 - a profile describes itself; Circe stores no agent facts.** After this phase, Circe's state holds window facts only: open sessions, geometry, access mode, and which profile is the main operator. Colours, name, tagline and avatar live in the profile.
 - **Copy rule (§1.4):** UI text is plain and honest; it never claims something happened that did not.
 - **Degradation rule:** a missing, corrupt, or future-versioned Circe record costs presentation, never an agent and never a conversation. Every parse in this plan is version-gated and falls back rather than throwing.
 - **Nothing shells out except `RealHermes`.** `HermesRuntime` is the whole surface Circe is allowed to ask of Hermes; new capabilities go on that interface and are faked in `test/fake/hermes.ts`.
-- **Verified protocol facts** (spec §2, captured from Hermes 0.14.0 — do not re-derive): `hermes profile create <id>` plus writing `SOUL.md` is all it takes to make a profile real; `hermes profile update` preserves non-distribution-owned files, so `circe.json` survives a persona replacement.
+- **Verified protocol facts** (spec §2, captured from Hermes 0.14.0 - do not re-derive): `hermes profile create <id>` plus writing `SOUL.md` is all it takes to make a profile real; `hermes profile update` preserves non-distribution-owned files, so `circe.json` survives a persona replacement.
 
 ---
 
@@ -48,7 +48,7 @@ Copied from `~/Code/circe-oss-spec.md` and the design's own rulings; every task'
 | `test/tiles.test.ts` (create) | Everything in `index.ts` that has never had a test. |
 | `test/fleet.test.ts` (create) | Enumeration, readiness, debounce, dedup. |
 | `src/main/tileLayout.ts` (create) | Tile size constants and cascade placement maths. Imports nothing, so it is testable. |
-| `test/tileLayout.test.ts` (create) | Placement maths — anchoring, cascade, wrap, clamping. |
+| `test/tileLayout.test.ts` (create) | Placement maths - anchoring, cascade, wrap, clamping. |
 | `test/fake/hermes.ts` (modify) | Gains `watchHome` and a manual trigger. |
 
 ---
@@ -66,7 +66,7 @@ Copied from `~/Code/circe-oss-spec.md` and the design's own rulings; every task'
 
 **Why two constants is a defect, not a detail:** `startup.ts` defines `DEFAULT_PALETTE` as `#1c1c1e/#8a8a8e/#c9c9ce` and `src/renderer/tile/main.ts:26` defines a *different* one as `#1e1e2a/#4b5563/#9ca3af`. A tile falling back in the main process and a tile falling back in the renderer are two different colours today. This phase makes the fallback path common, so they have to agree first.
 
-**Why hex is validated:** `paletteVars` feeds `hexToRgb`, which is `parseInt(hex.slice(1,3), 16)`. A malformed value yields `NaN`, so the CSS variable becomes `rgba(NaN, NaN, NaN, 0.85)` — invalid, silently dropped by the browser, and the tile renders unstyled. A corrupt `circe.json` must cost the default palette, not a broken window.
+**Why hex is validated:** `paletteVars` feeds `hexToRgb`, which is `parseInt(hex.slice(1,3), 16)`. A malformed value yields `NaN`, so the CSS variable becomes `rgba(NaN, NaN, NaN, 0.85)` - invalid, silently dropped by the browser, and the tile renders unstyled. A corrupt `circe.json` must cost the default palette, not a broken window.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -124,7 +124,7 @@ describe('parseProfileTheme', () => {
   });
 
   // A NaN channel reaches the stylesheet as `rgba(NaN, ...)`, which the browser
-  // drops — an unstyled tile rather than a default-coloured one.
+  // drops - an unstyled tile rather than a default-coloured one.
   it('answers null when a channel is not a six-digit hex colour', () => {
     for (const bad of ['red', '#fff', '#12345g', '', '#1234567']) {
       expect(parseProfileTheme(JSON.stringify({ version: 1, palette: { ...PALETTE, bg: bad } })))
@@ -159,7 +159,7 @@ describe('readProfilePalette', () => {
   });
 
   // `readHomeFile` rejects for a file that exists but cannot be read. Colours
-  // are not worth failing a tile over — §3.1: "it costs colours, never a tile".
+  // are not worth failing a tile over - §3.1: "it costs colours, never a tile".
   it('falls back to the default palette when the file cannot be read', async () => {
     const hermes = new FakeHermes(INSTALLED_EMPTY);
     hermes.readHomeFile = async () => {
@@ -174,7 +174,7 @@ describe('readProfilePalette', () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run test/profileTheme.test.ts`
-Expected: FAIL — `Failed to resolve import "../src/main/profileTheme"`.
+Expected: FAIL - `Failed to resolve import "../src/main/profileTheme"`.
 
 - [ ] **Step 3: Move `DEFAULT_PALETTE` into `palette.ts`**
 
@@ -182,7 +182,7 @@ Add to the top of `src/main/palette.ts`, under the existing import:
 
 ```ts
 /**
- * Used for any profile whose colours Circe cannot read — someone else's
+ * Used for any profile whose colours Circe cannot read - someone else's
  * coordinator, a specialist created at a terminal before it was themed, or a
  * `circe.json` that failed to parse. Deliberately neutral: it should read as
  * "not themed yet", not as a character choice.
@@ -248,7 +248,7 @@ const RECORD_VERSION = 1;
 /**
  * Six-digit hex only. `hexToRgb` is `parseInt(hex.slice(1, 3), 16)`, so any
  * other shape yields `NaN` channels and an `rgba(NaN, …)` custom property,
- * which the browser drops — leaving an unstyled tile rather than a
+ * which the browser drops - leaving an unstyled tile rather than a
  * default-coloured one. Rejecting here is what keeps the fallback visible.
  */
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -288,7 +288,7 @@ export function parseProfileTheme(json: string | null): Palette | null {
  * A profile's own colours, or the neutral default.
  *
  * Never throws. `readHomeFile` rejects for a file that exists but cannot be
- * read — an unreadable `circe.json` costs colours, never a tile (§3.1), and a
+ * read - an unreadable `circe.json` costs colours, never a tile (§3.1), and a
  * profile whose theme cannot be read still has an agent behind it.
  */
 export async function readProfilePalette(
@@ -357,9 +357,9 @@ path common, so they have to."
 - Consumes: `writeProfileTheme(hermes, profileId, palette)` from Task 1.
 - Produces: nothing new; `commitAccept`'s observable effect gains one file.
 
-**Why it is written where it is:** `commitAccept`'s ordering is load-bearing and documented in the existing comment — both writes complete *before* `launching` is announced, because `index.ts` reacts to `launching` by spawning an agent that reads `SOUL.md`. `circe.json` is not read by the agent, so it does not share that constraint, but it must be on disk before a tile is themed from it, and the tile is launched from `launching`. So it goes in the same block, after the skill install.
+**Why it is written where it is:** `commitAccept`'s ordering is load-bearing and documented in the existing comment - both writes complete *before* `launching` is announced, because `index.ts` reacts to `launching` by spawning an agent that reads `SOUL.md`. `circe.json` is not read by the agent, so it does not share that constraint, but it must be on disk before a tile is themed from it, and the tile is launched from `launching`. So it goes in the same block, after the skill install.
 
-**Why a failure is not fatal:** §4.7 — "A failure to write `circe.json` is not fatal — it costs colours, not an agent — and must not roll back a persona that succeeded, consistent with ruling F-1's honesty about partial writes." It therefore goes in its own `try`, swallowed and warned, exactly like the launch record below it.
+**Why a failure is not fatal:** §4.7 - "A failure to write `circe.json` is not fatal - it costs colours, not an agent - and must not roll back a persona that succeeded, consistent with ruling F-1's honesty about partial writes." It therefore goes in its own `try`, swallowed and warned, exactly like the launch record below it.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -401,7 +401,7 @@ Add to `test/wizard.test.ts`, inside `describe('a fresh Hermes install', …)`:
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run test/wizard.test.ts -t 'colours'`
-Expected: FAIL — the first with `Cannot read properties of null (reading 'version')` (no `circe.json` was written); the second passes vacuously today and must stay green.
+Expected: FAIL - the first with `Cannot read properties of null (reading 'version')` (no `circe.json` was written); the second passes vacuously today and must stay green.
 
 - [ ] **Step 3: Implement**
 
@@ -447,7 +447,7 @@ failure costs colours and must not roll back an agent that was written."
 
 **Files:**
 - Modify: `resources/orchestrator/skills/circe-orchestrator/SKILL.md` ("Creating an agent" section)
-- Test: `test/skill.test.ts` (create) — or append to an existing skill test if one exists; check with `ls test/`
+- Test: `test/skill.test.ts` (create) - or append to an existing skill test if one exists; check with `ls test/`
 
 **Interfaces:**
 - Consumes: the `circe.json` shape from Task 1.
@@ -455,17 +455,17 @@ failure costs colours and must not roll back an agent that was written."
 
 **Why this is a task and not a docs afterthought:** §4.3's "why a watch and not a tool" argument is that the orchestrator needs *knowledge of a convention*, not a Circe-provided capability. This file is that knowledge. Without it the orchestrator creates profiles that tile in the neutral fallback palette, and the core loop half-works in a way no test would catch.
 
-**Why the palette is not asked for:** §6.2 Step 4's rule — colours are applied silently, chosen for the character. The skill must say so, or an orchestrator will helpfully offer the user a colour picker.
+**Why the palette is not asked for:** §6.2 Step 4's rule - colours are applied silently, chosen for the character. The skill must say so, or an orchestrator will helpfully offer the user a colour picker.
 
 - [ ] **Step 1: Edit the skill**
 
 In `resources/orchestrator/skills/circe-orchestrator/SKILL.md`, replace step 3 of "Creating an agent" with steps 3 and 4, renumbering the two that follow:
 
 ```markdown
-3. Write `~/.hermes/profiles/<id>/SOUL.md`, starting with `# <Name> — <domain>`.
+3. Write `~/.hermes/profiles/<id>/SOUL.md`, starting with `# <Name> - <domain>`.
    The heading matters: it is how the profile is recognised as configured rather
    than as an untouched scaffold.
-4. Write `~/.hermes/profiles/<id>/circe.json` — the agent's colours:
+4. Write `~/.hermes/profiles/<id>/circe.json` - the agent's colours:
 
    ```json
    {
@@ -476,7 +476,7 @@ In `resources/orchestrator/skills/circe-orchestrator/SKILL.md`, replace step 3 o
 
    Three six-digit hex colours: a dark background, a light border, and a bright
    accent readable against the background. Choose them for the character, from
-   the same world their name came from. **Do not ask the user to pick colours** —
+   the same world their name came from. **Do not ask the user to pick colours** -
    this is part of giving the agent a face, like the name is. A profile without
    this file still works; it just appears in a neutral grey.
 5. Prune its loadout: `hermes skills config` then `hermes tools`, in that order.
@@ -512,7 +512,7 @@ describe('the orchestrator skill', () => {
 
   it('still tells it to write a heading, which is what makes a profile real', async () => {
     const text = await readFile(SKILL_SOURCE_PATH, 'utf8');
-    expect(text).toContain('# <Name> — <domain>');
+    expect(text).toContain('# <Name> - <domain>');
   });
 });
 ```
@@ -553,9 +553,9 @@ that knowledge; without it the fleet grows in the neutral fallback palette."
   - `characterFor(hermes: HermesRuntime, profile: HermesProfile): Promise<Character>`
   - `migrateV1Palette(hermes: HermesRuntime, recordJson: string | null): Promise<void>`
 
-**What changes and why:** §3 — "`circe/last-launch.json` shrinks to what it is actually for: which profile is the main operator... Its `character` block goes away — that data now lives in the profile." The record no longer carries a palette, so `resolveStartup` no longer reads one from it. And because there is now more than one tile, `Startup` stops describing a single character and says only *whether* onboarding is needed and which tile foregrounds.
+**What changes and why:** §3 - "`circe/last-launch.json` shrinks to what it is actually for: which profile is the main operator... Its `character` block goes away - that data now lives in the profile." The record no longer carries a palette, so `resolveStartup` no longer reads one from it. And because there is now more than one tile, `Startup` stops describing a single character and says only *whether* onboarding is needed and which tile foregrounds.
 
-**The migration is not optional.** An existing install — including the operator's own — has a v1 record holding the only copy of its palette and no `circe.json`. Version-gating alone would silently grey out an agent the user has been using. `migrateV1Palette` reads a v1 record and writes its palette into the profile if the profile has none, once, at boot. It is best-effort: a failure costs colours.
+**The migration is not optional.** An existing install - including the operator's own - has a v1 record holding the only copy of its palette and no `circe.json`. Version-gating alone would silently grey out an agent the user has been using. `migrateV1Palette` reads a v1 record and writes its palette into the profile if the profile has none, once, at boot. It is best-effort: a failure costs colours.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -577,7 +577,7 @@ import { FakeHermes, INSTALLED_EMPTY, SCAFFOLD_SOUL } from './fake/hermes';
 import type { HermesProfile, Palette } from '../src/shared/types';
 
 const PALETTE: Palette = { bg: '#1e2952', border: '#c7d2fe', accent: '#a5b4fc' };
-const REAL_SOUL = '# Trillian — the one who keeps the plot\n\nYou are **Trillian**.\n';
+const REAL_SOUL = '# Trillian - the one who keeps the plot\n\nYou are **Trillian**.\n';
 
 function profile(over: Partial<HermesProfile> = {}): HermesProfile {
   return { id: 'default', displayName: 'Trillian', model: 'claude-opus-5', isReal: true, ...over };
@@ -642,7 +642,7 @@ describe('characterFor', () => {
 
   it('falls back to the neutral palette for a profile with no colours', async () => {
     const hermes = new FakeHermes(INSTALLED_EMPTY);
-    await hermes.writeHomeFile('profiles/ford/SOUL.md', '# Ford — the one who finds the exit\n');
+    await hermes.writeHomeFile('profiles/ford/SOUL.md', '# Ford - the one who finds the exit\n');
 
     const c = await characterFor(hermes, profile({ id: 'ford', displayName: 'Ford' }));
     expect(c).toMatchObject({ name: 'Ford', profileId: 'ford', palette: DEFAULT_PALETTE });
@@ -736,7 +736,7 @@ describe('LAST_LAUNCH_PATH', () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run test/startup.test.ts`
-Expected: FAIL — `characterFor`, `migrateV1Palette` and `parseLastLaunch` are not exported, and `resolveStartup` returns `kind: 'tile'`.
+Expected: FAIL - `characterFor`, `migrateV1Palette` and `parseLastLaunch` are not exported, and `resolveStartup` returns `kind: 'tile'`.
 
 - [ ] **Step 3: Rewrite `startup.ts`**
 
@@ -758,7 +758,7 @@ export { DEFAULT_PALETTE };
  *
  * The `character` block a v1 record carried is gone. An agent's name, tagline
  * and colours are the profile's own (§3.1), so caching them here was constraint
- * 10's inversion — it meant a profile Circe had not created could not be shown.
+ * 10's inversion - it meant a profile Circe had not created could not be shown.
  * Losing this record now costs nothing but which window ends up on top.
  */
 export interface LastLaunch {
@@ -839,7 +839,7 @@ export async function migrateV1Palette(
  * for a profile Circe did not create they do not exist, so they are empty.
  *
  * Never throws. A profile whose files cannot be read still has an agent behind
- * it and still gets a tile — the display name Hermes already computed is the
+ * it and still gets a tile - the display name Hermes already computed is the
  * fallback for the heading.
  */
 export async function characterFor(
@@ -867,7 +867,7 @@ export async function characterFor(
  * Reads what `resolveStartup` needs out of the Hermes home. Any read failure
  * resolves to the wizard: `readHomeFile` rejects (rather than returning null)
  * for a file that exists but can't be read, and the wizard is the safe landing
- * for that — its own write path refuses to overwrite a persona it couldn't
+ * for that - its own write path refuses to overwrite a persona it couldn't
  * read first, so an unreadable SOUL.md still can't be destroyed.
  */
 export async function readStartup(hermes: HermesRuntime): Promise<Startup> {
@@ -889,7 +889,7 @@ export async function readStartup(hermes: HermesRuntime): Promise<Startup> {
  * Decides whether Circe onboards or opens the fleet, and which tile foregrounds.
  *
  * SOUL.md is the authority. If the root profile holds a real persona then an
- * orchestrator exists and Circe opens onto the fleet, whoever wrote it — a user
+ * orchestrator exists and Circe opens onto the fleet, whoever wrote it - a user
  * who hand-edits their own identity file must not be sent back through
  * onboarding, because onboarding's next move is to overwrite the very file they
  * just edited.
@@ -910,7 +910,7 @@ In `src/main/wizard.ts`'s `commitAccept`, the launch-record write currently pass
       await this.hermes.writeHomeFile(LAST_LAUNCH_PATH, serializeLastLaunch('default'));
 ```
 
-Adjust the `serializeLastLaunch` import if the old signature was imported by name (it was). Then fix `test/wizard.test.ts`'s existing record assertion — the one titled *"records the launch so the next cold start can reopen the tile"* — to:
+Adjust the `serializeLastLaunch` import if the old signature was imported by name (it was). Then fix `test/wizard.test.ts`'s existing record assertion - the one titled *"records the launch so the next cold start can reopen the tile"* - to:
 
 ```ts
     const record = JSON.parse((await hermes.readHomeFile(LAST_LAUNCH_PATH))!);
@@ -925,7 +925,7 @@ Expected: PASS.
 - [ ] **Step 6: Typecheck**
 
 Run: `npm run typecheck`
-Expected: FAIL, in `src/main/index.ts` only — `boot` still destructures `startup.character`. That is Task 6's job; leave it. Record the error text in the commit body so the next task's implementer knows it is expected.
+Expected: FAIL, in `src/main/index.ts` only - `boot` still destructures `startup.character`. That is Task 6's job; leave it. Record the error text in the commit body so the next task's implementer knows it is expected.
 
 - [ ] **Step 7: Commit**
 
@@ -942,7 +942,7 @@ Adds a one-shot migration for the palette a v1 record holds, because such an
 install has no circe.json and version-gating alone would silently grey out an
 agent the user has been using.
 
-index.ts does not typecheck after this commit — it still reads startup.character.
+index.ts does not typecheck after this commit - it still reads startup.character.
 The next task rewires it."
 ```
 
@@ -957,12 +957,12 @@ The next task rewires it."
 **Interfaces:**
 - Consumes: `restoreOrCreateSession`, `TileSession`, `SessionClient` (`./restore`); `HermesRuntime`; `Character`.
 - Produces:
-  - `interface TileWindow` — the narrow slice of `BrowserWindow` a tile needs
-  - `interface TileClient extends SessionClient` — adds `start`, `stop`, `prompt`
-  - `interface TileDeps` — the registry's collaborators
+  - `interface TileWindow` - the narrow slice of `BrowserWindow` a tile needs
+  - `interface TileClient extends SessionClient` - adds `start`, `stop`, `prompt`
+  - `interface TileDeps` - the registry's collaborators
   - `class TileRegistry` with `launch(character, profileId)`, `has(profileId)`, `profileForSender(sender)`, `prompt(profileId, text)`, `close(profileId)`, `raise(profileId)`, `openProfileIds()`
 
-**Why this task exists:** §4.3.1. Every one of the behaviours tested below currently lives in `src/main/index.ts` and has never had a test, because `index.ts` imports `electron` at module scope and calls `app.setName` there — the import throws under Vitest before any test body runs. Fleet tiles turn each of its singletons into a per-profile map, so this file is being rewritten either way.
+**Why this task exists:** §4.3.1. Every one of the behaviours tested below currently lives in `src/main/index.ts` and has never had a test, because `index.ts` imports `electron` at module scope and calls `app.setName` there - the import throws under Vitest before any test body runs. Fleet tiles turn each of its singletons into a per-profile map, so this file is being rewritten either way.
 
 **The supersession discipline must survive the move.** Phase 1 established that a launch writes shared state only while it is still current (`acp === client` at the old `index.ts:191`). Per profile this becomes `this.tiles.get(profileId)?.client === client`. It is timing-dependent, has never been exercised by hand, and is exactly the cross-module contract per-task review misses. It is tested here for the first time against a real registry rather than a reimplementation.
 
@@ -1193,7 +1193,7 @@ describe('launching a tile', () => {
 
 // The old `if (tileWin) return` was a silent no-op. A directory watch fires
 // again on a profile whose files are touched, and `activate` needs to raise a
-// specific tile — §4.3.1.
+// specific tile - §4.3.1.
 describe('launching a profile that already has a tile', () => {
   it('shows and focuses the existing tile instead of opening a second', async () => {
     const h = harness();
@@ -1421,7 +1421,7 @@ describe('routing an IPC message to the tile that sent it', () => {
     expect(h.registry.profileForSender(h.windows[1]!.sender)).toBe('ford');
   });
 
-  // A window may only ever speak for itself — §4.3.1.
+  // A window may only ever speak for itself - §4.3.1.
   it('answers null for a sender it does not recognise', async () => {
     const h = harness();
     await launched(h);
@@ -1434,7 +1434,7 @@ describe('routing an IPC message to the tile that sent it', () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run test/tiles.test.ts`
-Expected: FAIL — `Failed to resolve import "../src/main/tiles"`.
+Expected: FAIL - `Failed to resolve import "../src/main/tiles"`.
 
 - [ ] **Step 3: Implement `tiles.ts`**
 
@@ -1530,7 +1530,7 @@ export class TileRegistry {
   /**
    * Opens this profile's tile, or raises it if it already has one.
    *
-   * The old single-tile guard was `if (tileWin) return` — a silent no-op,
+   * The old single-tile guard was `if (tileWin) return` - a silent no-op,
    * adequate when the only second caller was macOS's `activate`. Under a
    * directory watch a profile whose files are touched again must produce no
    * second tile, and `activate` has to be able to raise a *specific* one, so
@@ -1586,7 +1586,7 @@ export class TileRegistry {
 
     // `did-finish-load` is the happy path: it flushes the queue and marks the
     // tile ready to draw. A window can also fail to load, or be destroyed
-    // before it ever loads — without an escape on those, `await ready`
+    // before it ever loads - without an escape on those, `await ready`
     // downstream would hang forever and "every failure path lands on a fresh
     // session" would be a lie. Resolving twice is harmless.
     tile.ready = new Promise<void>((resolve) => {
@@ -1600,7 +1600,7 @@ export class TileRegistry {
     });
 
     // `close(profileId)` stops the client, but the native close button, Cmd+W
-    // and `app.quit()` all bypass it and go straight to the window — the far
+    // and `app.quit()` all bypass it and go straight to the window - the far
     // more instinctive way to dismiss a floating window, and nothing on that
     // path stopping the client leaks a `hermes acp` process per close.
     // `stop()` tolerates a second call, so no dedup is needed.
@@ -1663,7 +1663,7 @@ export class TileRegistry {
     if (route.kind === 'held') return;
     if (route.kind === 'no-session') {
       this.emit(tile.win, { sessionUpdate: 'circe/turn-end' });
-      this.say(tile, "Your message wasn't sent — this tile has no agent session right now.");
+      this.say(tile, "Your message wasn't sent - this tile has no agent session right now.");
       return;
     }
     await this.send(tile, route.sessionId, text);
@@ -1696,7 +1696,7 @@ export class TileRegistry {
   /**
    * Sends one message and closes the turn behind it.
    *
-   * A turn ends when `prompt` resolves — that is ACP's completion signal, and
+   * A turn ends when `prompt` resolves - that is ACP's completion signal, and
    * the renderer has no other way to know a reply is finished. Both outcomes
    * end it, so a failed prompt doesn't leave the previous bubble open forever.
    * Never rejects: `restore.ts` awaits this to deliver held messages one at a
@@ -1745,7 +1745,7 @@ Expected: PASS, all 24 tests.
 - [ ] **Step 5: Typecheck**
 
 Run: `npm run typecheck`
-Expected: still failing in `src/main/index.ts` only (Task 4's known breakage). `tiles.ts` itself must be clean — confirm no error mentions `src/main/tiles.ts`.
+Expected: still failing in `src/main/index.ts` only (Task 4's known breakage). `tiles.ts` itself must be clean - confirm no error mentions `src/main/tiles.ts`.
 
 - [ ] **Step 6: Commit**
 
@@ -1769,7 +1769,7 @@ reimplementation of one."
 
 **Files:**
 - Modify: `src/main/index.ts` (whole file), `src/main/windows.ts` (add the `TileWindow` adapter)
-- Test: none new — `test/tiles.test.ts` covers the behaviour; this task is the wiring that was extracted from.
+- Test: none new - `test/tiles.test.ts` covers the behaviour; this task is the wiring that was extracted from.
 
 **Interfaces:**
 - Consumes: `TileRegistry`, `TileWindow`, `TileDeps` (Task 5); `characterFor`, `readStartup`, `serializeLastLaunch` (Task 4).
@@ -1791,7 +1791,7 @@ import type { TileWindow } from './tiles';
  * registry imports no Electron; this is the one place the two meet.
  *
  * `ownsSender` compares against `webContents` because that is what an
- * `IpcMainEvent.sender` is — it is how a message is attributed to the window
+ * `IpcMainEvent.sender` is - it is how a message is attributed to the window
  * that actually sent it, rather than to a profile id the renderer names.
  */
 export function adaptTileWindow(win: BrowserWindow): TileWindow {
@@ -1912,7 +1912,7 @@ async function openFleet(mainProfileId: string): Promise<void> {
 }
 ```
 
-`activate` re-runs `boot` when nothing is open, which is what "reopen Circe" has to mean once the wizard is gone and the tiles have been closed: `readStartup` decides again from disk. It is idempotent — `registerIpc` uses `ipcMain.on`, and re-registering would double every handler, so guard it:
+`activate` re-runs `boot` when nothing is open, which is what "reopen Circe" has to mean once the wizard is gone and the tiles have been closed: `readStartup` decides again from disk. It is idempotent - `registerIpc` uses `ipcMain.on`, and re-registering would double every handler, so guard it:
 
 ```ts
 let ipcRegistered = false;
@@ -1926,7 +1926,7 @@ function registerIpc(): void {
 - [ ] **Step 3: Typecheck**
 
 Run: `npm run typecheck`
-Expected: PASS — clean for the first time since Task 4.
+Expected: PASS - clean for the first time since Task 4.
 
 - [ ] **Step 4: Full suite**
 
@@ -1944,8 +1944,8 @@ Expected: succeeds. This is the only automated check that `index.ts` is even loa
 git add src/main/index.ts src/main/windows.ts
 git commit -m "refactor: index.ts drives the tile registry
 
-index.ts keeps what needs Electron — the wizard, the IPC channels, the app
-lifecycle — and nothing else. tile:prompt and tile:close now resolve their tile
+index.ts keeps what needs Electron - the wizard, the IPC channels, the app
+lifecycle - and nothing else. tile:prompt and tile:close now resolve their tile
 from event.sender, so a window can only ever speak for itself.
 
 Still opens exactly one tile; the fleet comes next. Split that way so this
@@ -1963,9 +1963,9 @@ commit is reviewable as the same behaviour rewired, not as new behaviour."
 
 **Interfaces:**
 - Consumes: `TileDeps` (Task 5).
-- Produces: `interface Rect`; `TILE_W`, `TILE_H`; `tilePosition(workArea: Rect, index: number): { x: number; y: number }` — all from `./tileLayout`, re-exported by `windows.ts` for existing importers; `createTileWindow(character, profileId, index?)`.
+- Produces: `interface Rect`; `TILE_W`, `TILE_H`; `tilePosition(workArea: Rect, index: number): { x: number; y: number }` - all from `./tileLayout`, re-exported by `windows.ts` for existing importers; `createTileWindow(character, profileId, index?)`.
 
-**Why a separate module and not just an exported function:** `src/main/windows.ts` imports `electron` at module scope, and `vitest.config.ts` runs `environment: 'node'` — so a test importing `windows.ts` throws before any test body runs, exactly as `index.ts` does. The maths has to live somewhere with no Electron import to be testable at all. `windows.ts` re-exports `TILE_W`/`TILE_H` so nothing that imports them today has to change.
+**Why a separate module and not just an exported function:** `src/main/windows.ts` imports `electron` at module scope, and `vitest.config.ts` runs `environment: 'node'` - so a test importing `windows.ts` throws before any test body runs, exactly as `index.ts` does. The maths has to live somewhere with no Electron import to be testable at all. `windows.ts` re-exports `TILE_W`/`TILE_H` so nothing that imports them today has to change.
 
 **The two defects, both observed live on 2026-08-16 and both invisible to the suite (§4.6):**
 
@@ -1984,7 +1984,7 @@ import { tilePosition, TILE_H, TILE_W } from '../src/main/tileLayout';
 
 /** A 1920×1080 display whose work area starts below a menu bar. */
 const WORK_AREA = { x: 0, y: 25, width: 1920, height: 1055 };
-/** An external display to the right of the primary one — negative and offset origins are real. */
+/** An external display to the right of the primary one - negative and offset origins are real. */
 const RIGHT_OF = { x: 1920, y: 0, width: 3840, height: 2160 };
 
 describe('tilePosition', () => {
@@ -1993,7 +1993,7 @@ describe('tilePosition', () => {
   });
 
   // The anchor is relative to the display, not to the desktop origin, or a
-  // tile lands on the wrong monitor — the x=3370 defect.
+  // tile lands on the wrong monitor - the x=3370 defect.
   it('anchors to the display it was given, not to the desktop origin', () => {
     expect(tilePosition(RIGHT_OF, 0)).toEqual({ x: 1920 + 3840 - TILE_W - 40, y: 40 });
   });
@@ -2029,11 +2029,11 @@ describe('tilePosition', () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run test/tileLayout.test.ts`
-Expected: FAIL — `Failed to resolve import "../src/main/tileLayout"`.
+Expected: FAIL - `Failed to resolve import "../src/main/tileLayout"`.
 
 - [ ] **Step 3: Implement the layout module**
 
-Create `src/main/tileLayout.ts`. It must import nothing — no Electron, no Node — so a test can load it.
+Create `src/main/tileLayout.ts`. It must import nothing - no Electron, no Node - so a test can load it.
 
 ```ts
 export const TILE_W = 430;
@@ -2054,13 +2054,13 @@ const CASCADE_STEP = 32;
 /**
  * Where the nth tile of a fleet goes, inside one display's work area.
  *
- * Anchored to the top right of *that display* — the co-ordinates are desktop
+ * Anchored to the top right of *that display* - the co-ordinates are desktop
  * co-ordinates, so `workArea.x` is not zero on anything but the primary
  * monitor, and treating it as zero is exactly how a tile ended up at x=3370
  * on the wrong screen.
  *
  * Cascades down-and-left so each tile's header stays visible, and wraps back
- * to the top when the next step would push a tile off the bottom — a laptop
+ * to the top when the next step would push a tile off the bottom - a laptop
  * screen with a seven-agent fleet runs out of vertical room fast. The wrap
  * shifts the column left so a wrapped tile never lands exactly on top of an
  * earlier one.
@@ -2182,9 +2182,9 @@ wrap-around is actually tested."
   - `tileableProfiles(hermes: HermesRuntime): Promise<HermesProfile[]>`
   - `class FleetWatch` with `constructor(deps: FleetWatchDeps)`, `start(): () => void`
 
-**Why a watch and not a tool (§4.3):** a Circe-provided capability for creating peers would mean an agent needs Circe to bring a peer into existence — a gentler form of the exact inversion constraint 10 exists to prevent — and it would fail the constraint's own test, since a profile created at a terminal would never get a tile.
+**Why a watch and not a tool (§4.3):** a Circe-provided capability for creating peers would mean an agent needs Circe to bring a peer into existence - a gentler form of the exact inversion constraint 10 exists to prevent - and it would fail the constraint's own test, since a profile created at a terminal would never get a tile.
 
-**Why the readiness rule is `isRealSoul`:** `fs.watch` fires when a profile directory is created, before `SOUL.md` is written. Tiling then spawns an agent against a persona that does not exist yet — the same class of defect as commit `8733673`. §4.3: "tile a profile once it describes itself."
+**Why the readiness rule is `isRealSoul`:** `fs.watch` fires when a profile directory is created, before `SOUL.md` is written. Tiling then spawns an agent against a persona that does not exist yet - the same class of defect as commit `8733673`. §4.3: "tile a profile once it describes itself."
 
 **Why the watch is recursive on the home:** `profiles/` does not exist on a fresh install with only `default`, so watching it directly fails with `ENOENT` and would need its own creation watched first. macOS is the only platform (constraint 1) and supports recursive `fs.watch` through FSEvents, so one watcher on the home covers both. Events are filtered to paths under `profiles/` because the home also carries `state.db`, logs and session files, which change constantly.
 
@@ -2220,7 +2220,7 @@ describe('tileableProfiles', () => {
     const hermes = new FakeHermes({
       ...INSTALLED_EMPTY,
       models: { default: 'claude-opus-5', ford: 'claude-opus-5' },
-      files: { 'SOUL.md': '# Trillian — the one who keeps the plot\n' },
+      files: { 'SOUL.md': '# Trillian - the one who keeps the plot\n' },
     });
 
     expect((await tileableProfiles(hermes)).map((p) => p.id)).toEqual(['default']);
@@ -2230,7 +2230,7 @@ describe('tileableProfiles', () => {
 describe('FleetWatch', () => {
   /**
    * A function, not a shared const: these tests add a profile mid-run by
-   * mutating `scenarioModels`, and a spread copies `models` by reference — so a
+   * mutating `scenarioModels`, and a spread copies `models` by reference - so a
    * shared fixture would leak `ford` into `INSTALLED_EMPTY` itself and into
    * every other test file that imports it.
    */
@@ -2238,7 +2238,7 @@ describe('FleetWatch', () => {
     return {
       ...INSTALLED_EMPTY,
       models: { ...INSTALLED_EMPTY.models },
-      files: { 'SOUL.md': '# Trillian — the one who keeps the plot\n' },
+      files: { 'SOUL.md': '# Trillian - the one who keeps the plot\n' },
     };
   }
 
@@ -2261,7 +2261,7 @@ describe('FleetWatch', () => {
     const stop = watch.start();
 
     hermes.scenarioModels.ford = 'claude-opus-5';
-    await hermes.writeHomeFile('profiles/ford/SOUL.md', '# Ford — the one who finds the exit\n');
+    await hermes.writeHomeFile('profiles/ford/SOUL.md', '# Ford - the one who finds the exit\n');
     hermes.fireHomeChange('profiles/ford/SOUL.md');
     await vi.waitFor(() => expect(opened).toEqual(['ford']));
 
@@ -2291,7 +2291,7 @@ describe('FleetWatch', () => {
     hermes.scenarioModels.ford = 'claude-opus-5';
     hermes.fireHomeChange('profiles/ford');
     await new Promise((r) => setTimeout(r, 40));
-    await hermes.writeHomeFile('profiles/ford/SOUL.md', '# Ford — the one who finds the exit\n');
+    await hermes.writeHomeFile('profiles/ford/SOUL.md', '# Ford - the one who finds the exit\n');
     hermes.fireHomeChange('profiles/ford/SOUL.md');
 
     await vi.waitFor(() => expect(opened).toEqual(['ford']));
@@ -2305,7 +2305,7 @@ describe('FleetWatch', () => {
     const stop = watch.start();
 
     hermes.scenarioModels.ford = 'claude-opus-5';
-    await hermes.writeHomeFile('profiles/ford/SOUL.md', '# Ford — the one who finds the exit\n');
+    await hermes.writeHomeFile('profiles/ford/SOUL.md', '# Ford - the one who finds the exit\n');
     hermes.fireHomeChange('profiles/ford/SOUL.md');
     await vi.waitFor(() => expect(opened).toEqual(['ford']));
     open.add('ford');
@@ -2322,7 +2322,7 @@ describe('FleetWatch', () => {
     const { watch, opened } = watcher(hermes);
     const stop = watch.start();
     hermes.scenarioModels.ford = 'claude-opus-5';
-    await hermes.writeHomeFile('profiles/ford/SOUL.md', '# Ford — the one who finds the exit\n');
+    await hermes.writeHomeFile('profiles/ford/SOUL.md', '# Ford - the one who finds the exit\n');
 
     for (let i = 0; i < 20; i++) hermes.fireHomeChange('profiles/ford/SOUL.md');
     await vi.waitFor(() => expect(opened).toEqual(['ford']));
@@ -2353,7 +2353,7 @@ describe('FleetWatch', () => {
     stop();
 
     hermes.scenarioModels.ford = 'claude-opus-5';
-    await hermes.writeHomeFile('profiles/ford/SOUL.md', '# Ford — the one who finds the exit\n');
+    await hermes.writeHomeFile('profiles/ford/SOUL.md', '# Ford - the one who finds the exit\n');
     hermes.fireHomeChange('profiles/ford/SOUL.md');
     await new Promise((r) => setTimeout(r, 40));
 
@@ -2375,7 +2375,7 @@ describe('FleetWatch', () => {
     await new Promise((r) => setTimeout(r, 40));
 
     hermes.scenarioModels.ford = 'claude-opus-5';
-    await hermes.writeHomeFile('profiles/ford/SOUL.md', '# Ford — the one who finds the exit\n');
+    await hermes.writeHomeFile('profiles/ford/SOUL.md', '# Ford - the one who finds the exit\n');
     hermes.fireHomeChange('profiles/ford/SOUL.md');
     await vi.waitFor(() => expect(opened).toEqual(['ford']));
 
@@ -2387,7 +2387,7 @@ describe('FleetWatch', () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run test/fleet.test.ts`
-Expected: FAIL — `Failed to resolve import "../src/main/fleet"`.
+Expected: FAIL - `Failed to resolve import "../src/main/fleet"`.
 
 - [ ] **Step 3: Add `watchHome` to the runtime interface**
 
@@ -2464,7 +2464,7 @@ import type { HermesRuntime } from './hermes/runtime';
 /**
  * The profiles that deserve a tile: the ones that describe themselves.
  *
- * `isReal` is Hermes-derived and is exactly "the SOUL.md has an H1" — spec
+ * `isReal` is Hermes-derived and is exactly "the SOUL.md has an H1" - spec
  * §5.4's realness rule. A profile that is still Hermes's stock scaffold has no
  * character to show and no persona for an agent to load, so tiling it would put
  * an unnamed grey window in front of the user.
@@ -2489,12 +2489,12 @@ export interface FleetWatchDeps {
  * This is the visible half of the product's core loop: the orchestrator creates
  * a specialist through conversation and it materialises on the desktop. It is a
  * watch rather than a tool Circe exposes because an agent must not need a
- * Circe-provided capability to bring a peer into existence — that is constraint
+ * Circe-provided capability to bring a peer into existence - that is constraint
  * 10's inversion in a gentler form, and it would leave a profile created at a
  * terminal with no tile (§4.3).
  *
- * Debounced because a profile's creation is several filesystem events — the
- * directory, then `SOUL.md`, then whatever else the creator writes — and
+ * Debounced because a profile's creation is several filesystem events - the
+ * directory, then `SOUL.md`, then whatever else the creator writes - and
  * because the readiness condition is only met partway through. Every fire
  * re-enumerates from Hermes rather than trusting the event's path, so a burst
  * costs one enumeration and a half-written profile is simply not yet tileable.
@@ -2568,8 +2568,8 @@ git commit -m "feat: notice an agent that appears on disk
 
 A watch, not a tool Circe exposes: an agent must not need a Circe capability to
 bring a peer into existence, and a profile created at a terminal has to get a
-tile too. Readiness is the constraint itself — tile a profile once it describes
-itself — because fs.watch fires on directory creation, before SOUL.md exists,
+tile too. Readiness is the constraint itself - tile a profile once it describes
+itself - because fs.watch fires on directory creation, before SOUL.md exists,
 and tiling then spawns an agent against a persona that is not there (cf. 8733673).
 
 Recursive on the home rather than on profiles/, which does not exist on a fresh
@@ -2583,7 +2583,7 @@ state.db and logs."
 
 **Files:**
 - Modify: `src/main/index.ts` (`boot`, `openFleet`)
-- Test: none new — `test/fleet.test.ts` and `test/tiles.test.ts` cover the parts that can be tested; the walkthrough covers this wiring.
+- Test: none new - `test/fleet.test.ts` and `test/tiles.test.ts` cover the parts that can be tested; the walkthrough covers this wiring.
 
 **Interfaces:**
 - Consumes: `tileableProfiles`, `FleetWatch` (Task 8); `characterFor` (Task 4); `TileRegistry` (Task 5).
@@ -2602,7 +2602,7 @@ let fleetWatch: (() => void) | null = null;
  * Opens a tile for every agent on disk, and keeps watching for more.
  *
  * The main operator is opened last because `createTileWindow` raises each
- * window as it appears, so the last one lands in front — and that is the tile
+ * window as it appears, so the last one lands in front - and that is the tile
  * the user expects to be looking at.
  *
  * Tiles open in sequence rather than in parallel: each one spawns a `hermes
@@ -2689,15 +2689,15 @@ cat "$HERMES_HOME/circe.json"
 cat "$HERMES_HOME/circe/last-launch.json"
 ```
 
-Expected: a `# Name — tagline` heading; a `circe.json` holding `{"version":1,"palette":{…}}` matching the tile's colours; and a last-launch record of exactly `{"version": 2, "mainProfileId": "default"}` — no `character` block.
+Expected: a `# Name - tagline` heading; a `circe.json` holding `{"version":1,"palette":{…}}` matching the tile's colours; and a last-launch record of exactly `{"version": 2, "mainProfileId": "default"}` - no `character` block.
 
-- [ ] **Step 4: Create an agent at a terminal — constraint 10's own test**
+- [ ] **Step 4: Create an agent at a terminal - constraint 10's own test**
 
 With Circe still running, in a terminal with the same `HERMES_HOME`:
 
 ```bash
 hermes profile create ford --description "finds the exit"
-printf '# Ford — the one who finds the exit\n\nYou are **Ford**.\n' > "$HERMES_HOME/profiles/ford/SOUL.md"
+printf '# Ford - the one who finds the exit\n\nYou are **Ford**.\n' > "$HERMES_HOME/profiles/ford/SOUL.md"
 printf '{\n  "version": 1,\n  "palette": { "bg": "#123524", "border": "#a7f3d0", "accent": "#34d399" }\n}\n' > "$HERMES_HOME/profiles/ford/circe.json"
 ```
 
@@ -2709,11 +2709,11 @@ Expected: within about a second of the `SOUL.md` write, **a second tile appears*
 hermes profile create zaphod --description "two heads"
 ```
 
-Expected: **no tile appears** — the directory exists but has no persona. Then write its `SOUL.md` and confirm the tile appears only now.
+Expected: **no tile appears** - the directory exists but has no persona. Then write its `SOUL.md` and confirm the tile appears only now.
 
 - [ ] **Step 6: Confirm each tile speaks only for itself**
 
-Type a message into the Ford tile. Expected: Ford answers, in Ford's tile. The orchestrator's tile is unchanged — no bubble, no streaming, no turn-end.
+Type a message into the Ford tile. Expected: Ford answers, in Ford's tile. The orchestrator's tile is unchanged - no bubble, no streaming, no turn-end.
 
 - [ ] **Step 7: Have the orchestrator create a specialist**
 
@@ -2725,7 +2725,7 @@ Expected: every tile reopens, each on its own conversation (Phase 1's restore, n
 
 - [ ] **Step 9: Exercise the two Phase 1 paths no one has watched**
 
-- **`circe/replay-abandoned`:** edit `circe/state.json` to hold a session id the agent does not have, and cold-start. Expected: the tile opens on a fresh session with the notice "Couldn't reopen the previous conversation — starting a new one." and no orphaned transcript above it. Note that Phase 1's `session/list` check means a *nonexistent* id is caught before any replay is drawn; to see the notice itself, use an id belonging to a different profile's real session.
+- **`circe/replay-abandoned`:** edit `circe/state.json` to hold a session id the agent does not have, and cold-start. Expected: the tile opens on a fresh session with the notice "Couldn't reopen the previous conversation - starting a new one." and no orphaned transcript above it. Note that Phase 1's `session/list` check means a *nonexistent* id is caught before any replay is drawn; to see the notice itself, use an id belonging to a different profile's real session.
 - **Held messages:** type into a tile the instant it opens, before the agent answers. Expected: the message is drawn once, answered once, and not duplicated.
 
 - [ ] **Step 10: Confirm the real home is untouched**
@@ -2734,7 +2734,7 @@ Re-run the `shasum` and `ls` from Step 1. Expected: identical. No `circe/` direc
 
 - [ ] **Step 11: Record what you saw**
 
-Append a "Phase 2 walkthrough" section to `docs/build-decision-record-2026-08-14.md`, in the shape Phase 1's uses: what was **observed by eye**, and — separately and plainly — **what this walkthrough did not verify.** The suite still does not cover `index.ts`'s wiring or the shipped renderer's update switch; say so.
+Append a "Phase 2 walkthrough" section to `docs/build-decision-record-2026-08-14.md`, in the shape Phase 1's uses: what was **observed by eye**, and - separately and plainly - **what this walkthrough did not verify.** The suite still does not cover `index.ts`'s wiring or the shipped renderer's update switch; say so.
 
 - [ ] **Step 12: Commit**
 
@@ -2751,7 +2751,7 @@ git commit -m "docs: record the phase 2 walkthrough"
 
 | Spec | Task |
 |---|---|
-| §3 ownership model — record shrinks, no palette, no character | 4 |
+| §3 ownership model - record shrinks, no palette, no character | 4 |
 | §3.1 how a profile describes itself | 1, 2 |
 | §4.3 fleet tiles, watch, readiness, quit behaviour | 8, 9 |
 | §4.3.1 registry seam, supersession, focus-don't-reopen, sender routing | 5, 6 |
@@ -2769,4 +2769,4 @@ Not covered, deliberately and per §9: §4.2 tabs, §4.4 permissions, §4.5 chro
 - `registerIpc` is now reachable twice, because `activate` re-runs `boot` when nothing is open. `ipcMain.on` would double every handler; guarded in Task 6.
 - Sequential rather than parallel tile launch at boot (Task 9): seven concurrent `hermes acp` handshakes is a stall, and nothing in the spec said which.
 
-**Open risk to state plainly:** `src/main/index.ts` remains untested after this plan. Tasks 5–9 move the *behaviour* out of it, so what stays is wiring — factory construction, IPC registration, `boot`'s sequence — but "the wiring is right" is still verified only by Task 10 and by reading it. That is the same shape of gap Phase 1 closed for `restore.ts` and could not close for its caller.
+**Open risk to state plainly:** `src/main/index.ts` remains untested after this plan. Tasks 5–9 move the *behaviour* out of it, so what stays is wiring - factory construction, IPC registration, `boot`'s sequence - but "the wiring is right" is still verified only by Task 10 and by reading it. That is the same shape of gap Phase 1 closed for `restore.ts` and could not close for its caller.

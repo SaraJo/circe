@@ -1,7 +1,7 @@
 > **Historical design:** This does not define the current product boundary. See
 > [../../CURRENT_BUILD.md](../../CURRENT_BUILD.md) for the authoritative scope.
 
-# Tile parity — design
+# Tile parity - design
 
 **Date:** 2026-08-16
 **Status:** approved in brainstorming; implementation plan to follow
@@ -12,7 +12,7 @@
 Circe Desktop currently opens exactly one tile, for the `default` profile, with no
 persistence of any kind. A cold start reopens the agent onto an empty transcript: the
 name is right, the colours are right, and the conversation is gone. Worse, the product's
-core loop — the orchestrator proposes a specialist, the user agrees, a profile is created —
+core loop - the orchestrator proposes a specialist, the user agrees, a profile is created -
 produces no visible result, because no tile ever appears for the new profile.
 
 The `~/Code/circe` prototype already solves the shape of this. This design brings
@@ -39,7 +39,7 @@ contradicted the reference implementation.
 runtime logged `Restored ACP session 9a72aa86… from DB (2 messages)`, then emitted
 `session/update` notifications carrying `user_message_chunk` and `agent_message_chunk` with
 the real text, followed by `available_commands_update` and `usage_update`
-(`{size: 1000000, used: 11166}`). The client sends only `{cwd, sessionId, mcpServers}` — it
+(`{size: 1000000, used: 11166}`). The client sends only `{cwd, sessionId, mcpServers}` - it
 never uploads history, on restart or ever.
 
 **`session/list` returns Hermes-titled sessions:**
@@ -73,7 +73,7 @@ Three consequences:
    relative to the session `cwd`, in a tool-specific shape.
 3. **Shell commands are not gated at all.** Prompting the agent to run
    `echo hi > shelltest.txt` produced `tool_call` of `kind: execute`, status `completed`, and
-   the file was written — with **no** `session/request_permission`. The gate sees `write_file`
+   the file was written - with **no** `session/request_permission`. The gate sees `write_file`
    and not `terminal`.
 
 **Hermes owns approval policy.** `config.yaml` carries `approvals: {mode: manual, timeout: 60,
@@ -84,7 +84,7 @@ cron_mode: deny, mcp_reload_confirm: true, destructive_slash_confirm: true}`, a
 **Persona replacement semantics come from Hermes.** `hermes profile update` overwrites
 "distribution-owned files (SOUL.md, skills/, cron/, mcp.json)" while "user data (memories,
 sessions, auth, .env) is never touched." Circe's wizard writes exactly `SOUL.md` plus the
-orchestrator skill — the distribution-owned set. Therefore **replacing a persona preserves the
+orchestrator skill - the distribution-owned set. Therefore **replacing a persona preserves the
 conversation**, and only `hermes profile delete` destroys it. No Circe-side archiving or
 clearing is required or wanted.
 
@@ -93,21 +93,21 @@ clearing is required or wanted.
 | Owner | Owns |
 |---|---|
 | **Hermes** | conversations (`state.db`), session titles, the session list, context usage, memories, skills, `SOUL.md`, approval policy (`config.yaml`) |
-| **The profile** | everything the agent *is* — name and tagline (`SOUL.md` heading), face (`avatar.png`), colours (`circe.json`) |
-| **Circe** | window facts only — which sessions are open and active, window geometry, per-profile access mode |
+| **The profile** | everything the agent *is* - name and tagline (`SOUL.md` heading), face (`avatar.png`), colours (`circe.json`) |
+| **Circe** | window facts only - which sessions are open and active, window geometry, per-profile access mode |
 
 This three-way split is **constraint 10**, and circe-desktop currently violates it: the palette
 lives in Circe's `circe/last-launch.json`. The spec was amended on 2026-08-12 to unwind exactly
-that inversion — *"Circe held `palette` and `avatarPath` in its own `state.json`, which meant an
+that inversion - *"Circe held `palette` and `avatarPath` in its own `state.json`, which meant an
 agent could not be fully created outside the wizard."* This design unwinds it, because themed
 fleet tiles are impossible without it: a profile Circe did not create would have no colours.
 
 Constraint 10 permits Circe's state to hold the transcript. This design stores less than it is
-allowed to — Hermes owns conversations outright (§4.2) — which satisfies the constraint a
+allowed to - Hermes owns conversations outright (§4.2) - which satisfies the constraint a
 fortiori.
 
 Circe stores its state at `HERMES_HOME/circe/state.json`. This is a deliberate divergence from
-the prototype's `~/.hermes-tiles/`, which does not follow `HERMES_HOME` — meaning a sandboxed
+the prototype's `~/.hermes-tiles/`, which does not follow `HERMES_HOME` - meaning a sandboxed
 run still writes to the operator's real machine. Placing it inside the Hermes home makes the
 `HERMES_HOME` redirect cover all Circe state, which is what makes the `run-circe` skill's
 safety guarantee actually total.
@@ -128,24 +128,24 @@ safety guarantee actually total.
 
 Note what is *absent*: no `messages`, no `defaultLabel`, no `firstUserText` (Hermes supplies all
 three), and no `palette` (the profile supplies it). A corrupt or future-versioned record costs
-window placement and mode, never a conversation and never an identity — the same version-gated
+window placement and mode, never a conversation and never an identity - the same version-gated
 degradation rule `startup.ts` already establishes.
 
 `circe/last-launch.json` shrinks to what it is actually for: which profile is the main operator,
 i.e. whose tile foregrounds on launch (§6.6's "main operator" picker). Its `character` block goes
-away — that data now lives in the profile.
+away - that data now lives in the profile.
 
 ### 3.1 How a profile describes itself
 
 ```
-~/.hermes/profiles/<id>/SOUL.md      # "# Name — tagline"  (identity)
+~/.hermes/profiles/<id>/SOUL.md      # "# Name - tagline"  (identity)
 ~/.hermes/profiles/<id>/circe.json   # {"version":1,"palette":{"bg","border","accent"}}
 ~/.hermes/profiles/<id>/avatar.png   # optional; constraint 6's convention
 ```
 
 For the `default` profile the root is `HERMES_HOME` itself, matching `soulPath()`.
 
-`circe.json` is not distribution-owned, so `hermes profile update` preserves it — a persona can
+`circe.json` is not distribution-owned, so `hermes profile update` preserves it - a persona can
 be replaced without losing the agent's colours. A missing or unreadable `circe.json` falls back
 to `DEFAULT_PALETTE`; it costs colours, never a tile.
 
@@ -173,11 +173,11 @@ One tab = one Hermes session.
 - **Open:** restore the saved `tabs` list; label each from `session/list`'s `title`
   (fallback `New workstream`); activate `activeIndex`.
 - **Activate:** `session/load(sessionId)`; render the replayed updates as ordinary messages.
-  Unlike the prototype there is **no `replaying` guard** — the replay is the transcript.
+  Unlike the prototype there is **no `replaying` guard** - the replay is the transcript.
   Non-chat replay kinds (`usage_update`, `available_commands_update`) are consumed, not
   rendered as chat.
 - **New:** `session/new`, appended to the strip.
-- **Close:** cancel and forget the tab. **The Hermes session is not deleted** — it remains in
+- **Close:** cancel and forget the tab. **The Hermes session is not deleted** - it remains in
   `session/list`, so closing a tab never destroys a conversation.
 - **Busy/unread** indicators as in the prototype.
 
@@ -185,7 +185,7 @@ If `session/load` fails for a saved id, that tab falls back to a fresh session r
 erroring the tile.
 
 **The onboarding greeting is not part of any conversation.** Circe paints the opening handoff
-into the tile without sending it to the agent — verified in §2, where Hermes counted the
+into the tile without sending it to the agent - verified in §2, where Hermes counted the
 session as 2 messages and the greeting was not among them. It therefore does not appear in a
 restored transcript, and must not be replayed on any path except the handoff out of
 onboarding. The existing `launchTile(character, profileId, greeting)` signature already
@@ -200,18 +200,18 @@ One tile window per Hermes profile, as spec §6.3 describes: there is no central
   tile when a new profile appears. This is what makes the product's core loop visible: the
   orchestrator creates a specialist through conversation and it materialises on the desktop.
 - Each tile owns its own ACP client, its own state entry, its own theming.
-- Identity and theme per tile come from the profile (§3.1) — disk wins over any cached record,
+- Identity and theme per tile come from the profile (§3.1) - disk wins over any cached record,
   consistent with the existing startup rule.
 
 **Why a watch and not a tool Circe exposes to the orchestrator.** A tool would mean an agent
-needs a Circe-provided capability to bring a peer into existence — a gentler form of the exact
+needs a Circe-provided capability to bring a peer into existence - a gentler form of the exact
 inversion constraint 10 exists to prevent, and one that fails the constraint's own test, since a
 profile created at a terminal or via `hermes profile import` would never get a tile. Constraint 3
 also forbids inventing a second transport, which a control channel into Circe would be. What the
 orchestrator needs is not an API but knowledge of the convention in §3.1, which belongs in
 `circe-orchestrator/SKILL.md`.
 
-**Readiness — do not tile a half-written profile.** `fs.watch` fires when the directory is
+**Readiness - do not tile a half-written profile.** `fs.watch` fires when the directory is
 created, before `SOUL.md` is written; tiling then would spawn an agent against a persona that
 does not yet exist, the same class of defect as commit `8733673`. The readiness condition is the
 constraint itself: **tile a profile once it describes itself**, i.e. when `isRealSoul()` passes on
@@ -229,7 +229,7 @@ today.
 
 Every piece of tile state in `index.ts` today is a module-level singleton: `tileWin`, `acp`,
 `tileLoaded`, `tileQueue`, `tileReady`, `tileSession`, `lastLaunch`. Fleet tiles make each of
-them per-profile. That is a rewrite of the one main-process file no test can import — `index.ts`
+them per-profile. That is a rewrite of the one main-process file no test can import - `index.ts`
 pulls in `electron` at module scope and calls `app.setName` there, so the import throws under
 Vitest before any test body runs. The untested surface is not incidental: `launchTile`'s window
 and client wiring, the three-way `tileReady` race, `sendToTile`'s queue-until-loaded,
@@ -238,7 +238,7 @@ and client wiring, the three-way `tileReady` race, `sendToTile`'s queue-until-lo
 the turn-end contract and can only test it against a fake.
 
 So the per-profile state moves to `src/main/tiles.ts`, which imports no Electron and takes its
-collaborators as constructor parameters — a window factory, an ACP client factory, `hermes`, and
+collaborators as constructor parameters - a window factory, an ACP client factory, `hermes`, and
 the restore function. A narrow `TileWindow` interface covers what the registry actually needs
 (`send`, `isDestroyed`, `close`, `show`, `focus`, `isMinimized`, `restore`, and the three
 lifecycle subscriptions); `windows.ts` satisfies it with a real `BrowserWindow` and tests satisfy
@@ -246,7 +246,7 @@ it with an object. This is the same treatment `restore.ts` got in the Phase 1 fi
 to what stayed behind. `index.ts` keeps the wizard IPC, `boot`, and the app lifecycle.
 
 **Supersession generalises per profile.** Phase 1 established the discipline that a launch writes
-shared state only while it is still the current one — the `acp === client` guard at
+shared state only while it is still the current one - the `acp === client` guard at
 `index.ts:191`, which stops a tile closed and reopened mid-launch from having its live session
 cleared by the superseded launch's handlers. With one client per profile the test becomes
 `registry.get(profileId)?.client === client`. The guard must survive the move intact; it is
@@ -254,7 +254,7 @@ timing-dependent, was never exercised by hand, and is exactly the kind of cross-
 that per-task review misses.
 
 **Launching a profile that already has a tile focuses it.** Today `launchTile` opens with
-`if (tileWin) return` — a silent no-op, correct when there is one tile and the only second caller
+`if (tileWin) return` - a silent no-op, correct when there is one tile and the only second caller
 is `activate`. Under a directory watch, a profile whose files are touched again must produce no
 second tile, and §4.3's own test says duplicates don't tile. Returning silently would also make
 `activate` unable to raise a specific tile. So the guard becomes: an existing tile for that
@@ -264,7 +264,7 @@ profile is shown and focused, not reopened.
 channels carry only their payload today (`preload/tile.ts`), because there has only ever been one
 tile. The main process resolves which tile spoke by matching `event.sender` against the
 registry's windows, and drops a message from a `webContents` it does not recognise. The
-alternative — having the preload pass its own `profileId` — would let a compromised renderer
+alternative - having the preload pass its own `profileId` - would let a compromised renderer
 prompt *another* agent, and `windows.ts`'s `pinToItsOwnDocument` exists precisely because an
 agent reply can render a live link into a window holding `send()`. A window may only ever speak
 for itself.
@@ -273,14 +273,14 @@ for itself.
 
 Three modes on a header button, persisted per profile, defaulting to **`ask`**:
 
-- **Ask** — park the request, render an inline permission card, wait for the user.
-- **Allow** — auto-select the allow-shaped option.
-- **Decline** — auto-select a reject-shaped option, or `outcome: 'cancelled'` if none is
+- **Ask** - park the request, render an inline permission card, wait for the user.
+- **Allow** - auto-select the allow-shaped option.
+- **Decline** - auto-select a reject-shaped option, or `outcome: 'cancelled'` if none is
   offered, and still surface the event so the user sees *why* the agent said it couldn't act.
 
 Option classification is ported from the prototype: `kind` first (`allow_*` / `reject_*`),
 falling back to name/optionId keyword matching for less strict servers. If the renderer can't
-be reached, the request is cancelled rather than left hanging — Hermes must never block
+be reached, the request is cancelled rather than left hanging - Hermes must never block
 forever on a UI that isn't there.
 
 **Copy must not imply containment.** These modes govern *the requests the agent chooses to
@@ -294,7 +294,7 @@ Circe silently answering on the user's behalf under a rule Hermes has no record 
 ### 4.5 Tile chrome
 
 Header carries display name (from `SOUL.md`'s `# ` heading), current model name (from ACP's
-`availableModels`, which marks the current entry — not by parsing `hermes profile list`),
+`availableModels`, which marks the current entry - not by parsing `hermes profile list`),
 avatar, and the mode button. Avatar is `avatar.{png,jpg,jpeg,gif,webp}` from the profile
 directory, falling back to initials coloured by the profile's `circe.json` palette (§3.1).
 Windows become resizable with `minWidth: 340`, `minHeight: 380`, and debounced bounds
@@ -306,13 +306,13 @@ Two changes follow from moving the palette into the profile:
 
 - **The wizard writes `circe.json`** alongside `SOUL.md` when it commits a character, in the same
   guarded sequence that already writes the persona before the agent that reads it starts
-  (`8733673`). A failure to write `circe.json` is not fatal — it costs colours, not an agent —
+  (`8733673`). A failure to write `circe.json` is not fatal - it costs colours, not an agent -
   and must not roll back a persona that succeeded, consistent with ruling F-1's honesty about
   partial writes.
 - **`circe-orchestrator/SKILL.md` documents the convention** from §3.1, so the orchestrator can
   create a fully-themed peer with `hermes profile create` plus file writes. This is the piece
   that makes "the fleet grows through conversation" produce a visible result. The skill states
-  the palette is chosen for the character, not asked of the user — §6.2 Step 4's rule that
+  the palette is chosen for the character, not asked of the user - §6.2 Step 4's rule that
   colours are applied silently applies to specialists too.
 
 ### 4.6 Display placement and raise
@@ -341,10 +341,10 @@ Two defects observed live on 2026-08-16, both invisible to the test suite:
 
 ## 6. Testing
 
-The existing tests must stay green — 227 as of the end of Phase 1, up from the 157 this design
+The existing tests must stay green - 227 as of the end of Phase 1, up from the 157 this design
 was written against. New coverage:
 
-- **Tile registry (§4.3.1):** the behaviour that has never had a test, now that it is importable —
+- **Tile registry (§4.3.1):** the behaviour that has never had a test, now that it is importable -
   launch wiring; the `tileReady` race resolving on each of `did-finish-load`, `did-fail-load` and
   `closed`; the queue flushing in order to the window it was queued for; turn-end firing on both
   prompt outcomes; the update filter dropping another session's updates; `onExit`; the `closed`
@@ -359,11 +359,11 @@ was written against. New coverage:
   decline with no reject option yields `cancelled`; unreachable renderer yields `cancelled`.
 - **Fleet watch:** a new profile directory produces exactly one tile; duplicates don't; a
   directory without a real `SOUL.md` produces none until one appears.
-- **Constraint 10 (required):** the spec's own test, as a test — construct a profile directory
+- **Constraint 10 (required):** the spec's own test, as a test - construct a profile directory
   by hand with only `SOUL.md` and `circe.json`, and assert Circe shows it with the right name and
   the right colours. If this passes, no agent fact has leaked into Circe's state.
 - **Palette provenance:** missing/corrupt `circe.json` yields `DEFAULT_PALETTE` and still tiles.
-- **Boundary test (required):** a fake ACP driven end to end — `session/load` → replayed
+- **Boundary test (required):** a fake ACP driven end to end - `session/load` → replayed
   updates → rendered transcript. Twelve clean per-task reviews previously missed a broken
   product because no test crossed the transport→renderer boundary. This one does.
 
@@ -373,8 +373,8 @@ appearing and being answered, a new profile producing a tile, and tile placement
 display.
 
 Each phase walks the subset it shipped, not the whole list (§9). **Phase 2's walkthrough:** a
-profile created outside Circe — at a terminal, with `hermes profile create` plus two file
-writes — produces exactly one correctly-themed tile without a restart; the orchestrator creating
+profile created outside Circe - at a terminal, with `hermes profile create` plus two file
+writes - produces exactly one correctly-themed tile without a restart; the orchestrator creating
 a specialist mid-conversation does the same; tiles open on the display holding the cursor and
 come up in front; and the `circe/replay-abandoned` notice and the held-message flow, both of
 which Phase 1 shipped without anyone watching them run.
@@ -391,7 +391,7 @@ which Phase 1 shipped without anyone watching them run.
 ## 8. Known limitation to state plainly
 
 The permission gate is a consent and visibility surface, not a sandbox. It answers the
-requests Hermes chooses to surface — verified to include `write_file` and to exclude
+requests Hermes chooses to surface - verified to include `write_file` and to exclude
 `terminal`. A user who wants to constrain what an agent can reach does it with
 `hermes skills config` and `hermes tools`, at the source. The tile's copy says so.
 
@@ -403,8 +403,8 @@ changes nothing the user can see.
 
 | Phase | Covers | Status |
 |---|---|---|
-| 1 | Session restore — ACP session lifecycle, `circe/state.json`, replayed transcript | **Done** 2026-08-16, walkthrough passed, fix wave landed |
-| 2 | The core loop — §3.1 + §4.7 (palette into the profile), §4.3 + §4.3.1 (fleet tiles and the registry seam), §4.6 (active display, raise) | Planned |
+| 1 | Session restore - ACP session lifecycle, `circe/state.json`, replayed transcript | **Done** 2026-08-16, walkthrough passed, fix wave landed |
+| 2 | The core loop - §3.1 + §4.7 (palette into the profile), §4.3 + §4.3.1 (fleet tiles and the registry seam), §4.6 (active display, raise) | Planned |
 | 3 | §4.2 tabs, §4.5 tile chrome | Not started |
 | 4 | §4.4 permission consent surface | Not started |
 

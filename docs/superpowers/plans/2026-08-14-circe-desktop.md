@@ -5,18 +5,18 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A desktop app a user installs that onboards them through a short wizard — pick a fandom, get a coordinator character derived from it — and leaves them with exactly one themed Hermes agent tile whose SOUL.md teaches it to grow the rest of the fleet.
+**Goal:** A desktop app a user installs that onboards them through a short wizard - pick a fandom, get a coordinator character derived from it - and leaves them with exactly one themed Hermes agent tile whose SOUL.md teaches it to grow the rest of the fleet.
 
-**Architecture:** Electron main process owns two windows (wizard, then one tile) and every Hermes interaction goes through a single `HermesRuntime` interface. `RealHermes` shells out to the `hermes` binary; `FakeHermes` replays a scenario fixture, which is how "fresh install" and "install that already has seven agents" get tested without those machines existing. Everything above the seam — realness heuristic, SOUL parsing, derivation, palette, wizard routing — is pure functions with no Electron import, so the whole product logic is unit-testable and the Electron layer stays thin.
+**Architecture:** Electron main process owns two windows (wizard, then one tile) and every Hermes interaction goes through a single `HermesRuntime` interface. `RealHermes` shells out to the `hermes` binary; `FakeHermes` replays a scenario fixture, which is how "fresh install" and "install that already has seven agents" get tested without those machines existing. Everything above the seam - realness heuristic, SOUL parsing, derivation, palette, wizard routing - is pure functions with no Electron import, so the whole product logic is unit-testable and the Electron layer stays thin.
 
 **Tech Stack:** Electron 32, TypeScript 5.9, electron-vite 2, vitest 2. Runtime dependencies: `marked` only. No state store, no IPC framework, no controller layer.
 
 **Spec:** `/Users/sarachipps/Code/circe-oss-spec.md` (727 lines, orchestrator-first revision of 2026-08-12). This plan implements a deliberately narrower slice than that spec: **onboarding plus one orchestrator tile.** Fleet tiles, permission-gate UI, and the fleet-management surface (spec §6.3, §6.4, §6.6) are out of scope. Where this plan and the spec disagree, this plan wins and the divergence is noted inline.
 
 **Reference implementations on disk, for the implementer to read but not import:**
-- `/Users/sarachipps/Code/circe` — the 2080-line plain-JS prototype whose shape and feel this app is modelled on. Its `acpClient.js` is the proven ACP transport; Task 10 ports it.
-- `/Users/sarachipps/Code/circe-app` — a prior TypeScript attempt that sprawled. Two of its modules are proven and get ported with their tests (Tasks 2 and 3). Everything else there is explicitly *not* the model.
-- `/Users/sarachipps/.hermes/SOUL.md` — the user's real "Trillian" coordinator persona. This is the target the Task 6 template is reverse-engineered from.
+- `/Users/sarachipps/Code/circe` - the 2080-line plain-JS prototype whose shape and feel this app is modelled on. Its `acpClient.js` is the proven ACP transport; Task 10 ports it.
+- `/Users/sarachipps/Code/circe-app` - a prior TypeScript attempt that sprawled. Two of its modules are proven and get ported with their tests (Tasks 2 and 3). Everything else there is explicitly *not* the model.
+- `/Users/sarachipps/.hermes/SOUL.md` - the user's real "Trillian" coordinator persona. This is the target the Task 6 template is reverse-engineered from.
 
 ---
 
@@ -24,13 +24,13 @@
 
 These apply to every task. A task's requirements implicitly include this section.
 
-1. **Circe never reimplements Hermes.** Installing the runtime, authenticating a provider, creating a profile, running a conversation — all of it goes through the `hermes` binary. If a task seems to require writing Hermes's own config formats by hand, stop and shell out instead. The one sanctioned exception is `SOUL.md`, which is a plain Markdown file Hermes reads and has no CLI writer.
+1. **Circe never reimplements Hermes.** Installing the runtime, authenticating a provider, creating a profile, running a conversation - all of it goes through the `hermes` binary. If a task seems to require writing Hermes's own config formats by hand, stop and shell out instead. The one sanctioned exception is `SOUL.md`, which is a plain Markdown file Hermes reads and has no CLI writer.
 2. **No Electron imports below `src/main/index.ts`, `src/main/windows.ts`, and `src/preload/`.** Every other module in `src/main/` must be importable from a vitest test with no Electron runtime. This is the constraint that keeps the app testable; violating it is how the previous attempt sprawled.
 3. **Every Hermes interaction goes through the `HermesRuntime` interface.** No module outside `src/main/hermes/real.ts` may call `spawn`, `exec`, or read `~/.hermes` directly.
 4. **Non-destruction.** Circe never overwrites a file a user wrote without an explicit confirm in the UI *and* a timestamped backup beside it. Backup naming follows Hermes's own convention, which uses `<name>.bak-YYYYMMDD-HHMMSS` (observed: `~/.hermes/config.yaml.bak-20260810-165402`).
 5. **Hermes paths.** Binary: `~/.local/bin/hermes`, overridable by `CIRCE_HERMES_BIN`. Home: `$HERMES_HOME` or `~/.hermes`. Default-profile SOUL: `<home>/SOUL.md`. Named-profile SOUL: `<home>/profiles/<id>/SOUL.md`.
 6. **The orchestrator is the `default` profile.** Decided by the user 2026-08-14. This diverges from spec §5.4's routing, which assumed a named profile; see Task 8 for the branch that protects an already-customized default.
-7. **The wizard produces exactly one agent.** No copy anywhere may say "fleet", "your agents", or "agents are ready". Correct: "your first agent", "the one who'll help you build the rest". This is spec §6.2's framing note and it is load-bearing — the fleet is what the *conversation* produces, not the wizard.
+7. **The wizard produces exactly one agent.** No copy anywhere may say "fleet", "your agents", or "agents are ready". Correct: "your first agent", "the one who'll help you build the rest". This is spec §6.2's framing note and it is load-bearing - the fleet is what the *conversation* produces, not the wizard.
 8. **The wizard never wires an MCP server.** MCP setup is the orchestrator's job, conversationally (spec §6.5). The wizard has no MCP screen.
 9. **Node 20+.** `package.json` sets `"engines": { "node": ">=20" }`.
 10. **Commit after every task.** Conventional commits, lowercase subject, no trailing period.
@@ -49,7 +49,7 @@ circe-desktop/
     shared/
       types.ts              Character, Palette, SoulHeading, HermesProfile, WizardStep
     main/
-      index.ts              Electron entry — the ONLY file that boots the app
+      index.ts              Electron entry - the ONLY file that boots the app
       windows.ts            createWizardWindow / createTileWindow
       hermes/
         runtime.ts          HermesRuntime interface + paths
@@ -62,7 +62,7 @@ circe-desktop/
         soulTemplate.ts     renders resources/orchestrator/SOUL.template.md
         skill.ts            installs the circe-orchestrator skill
         opening.ts          the handoff message text
-      wizard.ts             pure state machine — no Electron
+      wizard.ts             pure state machine - no Electron
       acp.ts                ACP JSON-RPC client over `hermes -p X acp`
     preload/
       wizard.ts
@@ -72,14 +72,14 @@ circe-desktop/
       tile/    index.html  main.ts  tile.css
   resources/
     orchestrator/
-      SOUL.template.md      the governance persona — the heart of the product
+      SOUL.template.md      the governance persona - the heart of the product
       skills/circe-orchestrator/SKILL.md
   test/
     fake/hermes.ts          FakeHermes + the three scenario fixtures
     *.test.ts
 ```
 
-Each `src/main/*.ts` module is one responsibility and stays under ~150 lines. If one grows past that during implementation, that is the signal to split it — not to keep going.
+Each `src/main/*.ts` module is one responsibility and stays under ~150 lines. If one grows past that during implementation, that is the signal to split it - not to keep going.
 
 ---
 
@@ -111,7 +111,7 @@ npm install --save-dev electron@^32.3.3 electron-vite@^2.3.0 typescript@^5.9.3 v
 
 - [ ] **Step 2: Write the config files**
 
-`package.json` — replace the generated file's fields with:
+`package.json` - replace the generated file's fields with:
 
 ```json
 {
@@ -249,7 +249,7 @@ export interface Character {
   fandom: string;
 }
 
-/** The `# Name — tagline` line at the top of a SOUL.md. */
+/** The `# Name - tagline` line at the top of a SOUL.md. */
 export interface SoulHeading {
   name: string;
   tagline: string | null;
@@ -348,8 +348,8 @@ describe('FakeHermes scenarios', () => {
 
   it('round-trips a file written under the Hermes home', async () => {
     const h = new FakeHermes(INSTALLED_EMPTY);
-    await h.writeHomeFile('SOUL.md', '# Zaphod — two heads');
-    expect(await h.readHomeFile('SOUL.md')).toBe('# Zaphod — two heads');
+    await h.writeHomeFile('SOUL.md', '# Zaphod - two heads');
+    expect(await h.readHomeFile('SOUL.md')).toBe('# Zaphod - two heads');
   });
 
   it('returns null reading a file that is not there', async () => {
@@ -362,11 +362,11 @@ describe('FakeHermes scenarios', () => {
 - [ ] **Step 6: Run the test to verify it fails**
 
 Run: `npx vitest run test/runtime.test.ts`
-Expected: FAIL — `Failed to resolve import "./fake/hermes"`.
+Expected: FAIL - `Failed to resolve import "./fake/hermes"`.
 
 - [ ] **Step 7: Write the fake and its scenarios**
 
-`test/fake/hermes.ts`. The scaffold SOUL body is bare prose with no H1 — that is the real shape Hermes writes, and Task 2's realness rule keys on it.
+`test/fake/hermes.ts`. The scaffold SOUL body is bare prose with no H1 - that is the real shape Hermes writes, and Task 2's realness rule keys on it.
 
 ```ts
 import type { HermesProfile } from '../../src/shared/types';
@@ -407,9 +407,9 @@ export const INSTALLED_WITH_AGENTS: Scenario = {
   version: '0.14.0',
   hasProvider: true,
   files: {
-    'SOUL.md': '# Trillian — Central Coordinator\n\nYou are **Trillian**.\n',
+    'SOUL.md': '# Trillian - Central Coordinator\n\nYou are **Trillian**.\n',
     ...Object.fromEntries(
-      CREW.map((id) => [`profiles/${id}/SOUL.md`, `# ${id} — a specialist\n`]),
+      CREW.map((id) => [`profiles/${id}/SOUL.md`, `# ${id} - a specialist\n`]),
     ),
   },
   models: Object.fromEntries(['default', ...CREW].map((id) => [id, 'claude-opus-5'])),
@@ -473,7 +473,7 @@ export class FakeHermes implements HermesRuntime {
 - [ ] **Step 8: Run the test to verify it still fails**
 
 Run: `npx vitest run test/runtime.test.ts`
-Expected: FAIL — `Failed to resolve import "../../src/main/profiles"`. Task 2 supplies it; the two modules are mutually referential by design, so this test goes green at the end of Task 2.
+Expected: FAIL - `Failed to resolve import "../../src/main/profiles"`. Task 2 supplies it; the two modules are mutually referential by design, so this test goes green at the end of Task 2.
 
 - [ ] **Step 9: Write the real runtime**
 
@@ -547,7 +547,7 @@ export class RealHermes implements HermesRuntime {
     }
     const seen = new Map<string, string>();
     for (const raw of stdout.split('\n')) {
-      // Strip ANSI colour before matching — `profile list` is a styled table.
+      // Strip ANSI colour before matching - `profile list` is a styled table.
       // The ESC byte is load-bearing: without it the sequence's ESC survives,
       // `^` no longer matches, and the row is silently dropped. (Ruling T1-b.)
       const line = raw.replace(/\x1b\[[0-9;]*m/g, '');
@@ -605,7 +605,7 @@ git commit -m "feat: project scaffold and the single hermes seam"
 
 > **Amended 2026-08-14 during execution (ledger ruling T2-a).** The rule below inspects only the
 > *first non-blank line*, which makes it return `false` for a setext heading (`Trillian\n========`)
-> and for YAML front matter followed by an H1 — both personas a user could plausibly write. That is a
+> and for YAML front matter followed by an H1 - both personas a user could plausibly write. That is a
 > false negative in the destructive direction: `writeSoul` would take no backup and the wizard would
 > never show its confirm screen. The shipped code widens the rule to "any ATX H1 anywhere, or a setext
 > H1, after skipping front matter", which still classifies Hermes's heading-less scaffold correctly.
@@ -644,7 +644,7 @@ describe('isRealSoul', () => {
   });
 
   it('treats a SOUL.md with an H1 as real', () => {
-    expect(isRealSoul('# Trillian — Central Coordinator\n\nYou are Trillian.\n')).toBe(true);
+    expect(isRealSoul('# Trillian - Central Coordinator\n\nYou are Trillian.\n')).toBe(true);
   });
 
   it('does not count an H2 as a heading', () => {
@@ -658,7 +658,7 @@ describe('displayNameFor', () => {
   });
 
   it('reads the name out of the heading', () => {
-    expect(displayNameFor('default', '# Trillian — Central Coordinator\n')).toBe('Trillian');
+    expect(displayNameFor('default', '# Trillian - Central Coordinator\n')).toBe('Trillian');
   });
 
   it('handles a heading with no tagline', () => {
@@ -690,7 +690,7 @@ describe('hasConfiguredDefault', () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run test/profiles.test.ts`
-Expected: FAIL — `Failed to resolve import "../src/main/profiles"`.
+Expected: FAIL - `Failed to resolve import "../src/main/profiles"`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -701,7 +701,7 @@ import type { HermesProfile } from '../shared/types';
 
 /**
  * Hermes's scaffold persona is bare prose. A user who has configured a profile
- * has given it a `# Name` heading — either by hand or because Circe wrote one.
+ * has given it a `# Name` heading - either by hand or because Circe wrote one.
  * That single signal is the whole realness rule (spec §5.4), and it is the one
  * that survived validation against actual scaffold output.
  */
@@ -723,7 +723,7 @@ export function isRealSoul(soul: string | null): boolean {
 export function displayNameFor(id: string, soul: string | null): string {
   if (!isRealSoul(soul)) return id;
   const heading = firstNonEmptyLine(soul!)!.replace(/^#[ \t]+/, '').trim();
-  const split = /\s+—\s+|\s+–\s+|\s+-\s+|,\s+/.exec(heading);
+  const split = /\s+-\s+|\s+–\s+|\s+-\s+|,\s+/.exec(heading);
   if (!split || split.index === 0) return heading;
   return heading.slice(0, split.index).trim();
 }
@@ -740,7 +740,7 @@ export function hasConfiguredDefault(profiles: HermesProfile[]): boolean {
 - [ ] **Step 4: Run both test files to verify they pass**
 
 Run: `npx vitest run test/profiles.test.ts test/runtime.test.ts`
-Expected: PASS — 14 tests. Task 1's fake now resolves its dynamic import.
+Expected: PASS - 14 tests. Task 1's fake now resolves its dynamic import.
 
 - [ ] **Step 5: Commit**
 
@@ -756,7 +756,7 @@ git commit -m "feat: the scaffold-vs-real profile heuristic"
 > **Amended 2026-08-14 during execution (ledger ruling T2-b).** Two constraints from Task 2's ruling
 > bind this task. (1) `parseSoulHeading` must select the *same* heading line `displayNameFor` selects,
 > or the accepted duplication between the two modules becomes a real divergence. (2) `withSoulHeading`
-> replaces the first non-empty line, which would corrupt a file that opens with YAML front matter — it
+> replaces the first non-empty line, which would corrupt a file that opens with YAML front matter - it
 > has no caller in this plan's wizard flow, so confirm it is needed before building it out.
 
 Ported from `circe-app/src/main/hermes/soul.ts`, which is proven, plus the backup behavior that Global Constraint 4 requires and the previous attempt did not have.
@@ -780,7 +780,7 @@ import { FakeHermes, INSTALLED_EMPTY, INSTALLED_WITH_AGENTS } from './fake/herme
 
 describe('parseSoulHeading', () => {
   it('splits a name from an em-dash tagline', () => {
-    expect(parseSoulHeading('# Trillian — Central Coordinator\n')).toEqual({
+    expect(parseSoulHeading('# Trillian - Central Coordinator\n')).toEqual({
       name: 'Trillian',
       tagline: 'Central Coordinator',
     });
@@ -805,7 +805,7 @@ describe('parseSoulHeading', () => {
 
 describe('renderSoulHeading', () => {
   it('always writes the canonical em dash', () => {
-    expect(renderSoulHeading({ name: 'Ford', tagline: 'career' })).toBe('# Ford — career');
+    expect(renderSoulHeading({ name: 'Ford', tagline: 'career' })).toBe('# Ford - career');
   });
 
   it('omits the separator when there is no tagline', () => {
@@ -815,9 +815,9 @@ describe('renderSoulHeading', () => {
 
 describe('withSoulHeading', () => {
   it('preserves the body byte-for-byte when replacing a heading', () => {
-    const body = '# Old — thing\n\nBody the user wrote.\nSecond line.\n';
+    const body = '# Old - thing\n\nBody the user wrote.\nSecond line.\n';
     const out = withSoulHeading(body, { name: 'New', tagline: 'role' });
-    expect(out).toBe('# New — role\n\nBody the user wrote.\nSecond line.\n');
+    expect(out).toBe('# New - role\n\nBody the user wrote.\nSecond line.\n');
   });
 
   it('prepends a heading to prose that has none', () => {
@@ -832,11 +832,11 @@ describe('writeSoul', () => {
     const result = await writeSoul({
       hermes: h,
       profileId: 'default',
-      contents: '# Trillian — coordinator\n',
+      contents: '# Trillian - coordinator\n',
       now: new Date('2026-08-14T09:30:00Z'),
     });
     expect(result.backedUpTo).toBeNull();
-    expect(await h.readHomeFile('SOUL.md')).toBe('# Trillian — coordinator\n');
+    expect(await h.readHomeFile('SOUL.md')).toBe('# Trillian - coordinator\n');
   });
 
   it('backs up a persona the user wrote before overwriting it', async () => {
@@ -845,12 +845,12 @@ describe('writeSoul', () => {
     const result = await writeSoul({
       hermes: h,
       profileId: 'default',
-      contents: '# Athena — coordinator\n',
+      contents: '# Athena - coordinator\n',
       now: new Date('2026-08-14T09:30:00Z'),
     });
     expect(result.backedUpTo).toBe('SOUL.md.bak-20260814-093000');
     expect(await h.readHomeFile('SOUL.md.bak-20260814-093000')).toBe(original);
-    expect(await h.readHomeFile('SOUL.md')).toBe('# Athena — coordinator\n');
+    expect(await h.readHomeFile('SOUL.md')).toBe('# Athena - coordinator\n');
   });
 
   it('does not back up an untouched scaffold', async () => {
@@ -858,7 +858,7 @@ describe('writeSoul', () => {
     const result = await writeSoul({
       hermes: h,
       profileId: 'default',
-      contents: '# Athena — coordinator\n',
+      contents: '# Athena - coordinator\n',
       now: new Date('2026-08-14T09:30:00Z'),
     });
     expect(result.backedUpTo).toBeNull();
@@ -869,7 +869,7 @@ describe('writeSoul', () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run test/soul.test.ts`
-Expected: FAIL — `Failed to resolve import "../src/main/soul"`.
+Expected: FAIL - `Failed to resolve import "../src/main/soul"`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -882,7 +882,7 @@ import { isRealSoul } from './profiles';
 
 const H1 = /^#[ \t]+(.+?)[ \t]*$/;
 /** Real personas on disk use an em dash, en dash, hyphen, or comma. */
-const SEPARATOR = /\s+—\s+|\s+–\s+|\s+-\s+|,\s+/;
+const SEPARATOR = /\s+-\s+|\s+–\s+|\s+-\s+|,\s+/;
 
 export function parseSoulHeading(markdown: string): SoulHeading | null {
   const first = markdown.split(/\r?\n/).find((l) => l.trim() !== '');
@@ -904,7 +904,7 @@ export function parseSoulHeading(markdown: string): SoulHeading | null {
 
 /** Circe always writes the canonical em-dash form, whatever it read. */
 export function renderSoulHeading(h: SoulHeading): string {
-  return h.tagline ? `# ${h.name} — ${h.tagline}` : `# ${h.name}`;
+  return h.tagline ? `# ${h.name} - ${h.tagline}` : `# ${h.name}`;
 }
 
 /** Replaces the heading, or prepends one. The body is preserved byte-for-byte. */
@@ -966,7 +966,7 @@ export async function writeSoul(opts: WriteSoulOptions): Promise<WriteSoulResult
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run test/soul.test.ts`
-Expected: PASS — 12 tests.
+Expected: PASS - 12 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -979,7 +979,7 @@ git commit -m "feat: soul.md parsing and non-destructive writes"
 
 ## Task 4: Derive a character from the user's fandom
 
-The one model call in the product. The user types a fandom; Hermes picks the character from that world best suited to coordinate, and a palette drawn from them. Everything about the resulting agent — name, tile colour, on-disk id — comes from this.
+The one model call in the product. The user types a fandom; Hermes picks the character from that world best suited to coordinate, and a palette drawn from them. Everything about the resulting agent - name, tile colour, on-disk id - comes from this.
 
 **Files:**
 - Create: `src/main/derive.ts`
@@ -1091,7 +1091,7 @@ describe('deriveCharacter', () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run test/derive.test.ts`
-Expected: FAIL — `Failed to resolve import "../src/main/derive"`.
+Expected: FAIL - `Failed to resolve import "../src/main/derive"`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -1109,13 +1109,13 @@ export function DERIVATION_PROMPT(fandom: string): string {
   return [
     `A user has chosen this fandom, universe, or community: "${fandom}".`,
     '',
-    'Pick the single character from that world best suited to be a coordinator —',
+    'Pick the single character from that world best suited to be a coordinator -',
     'the one who keeps track of what everyone else is doing, sees the whole picture,',
     'and would plausibly delegate work to specialists. Not the loudest or most',
     'powerful character. The one who organises. If the answer is a real community',
     'rather than a fiction, invent a fitting name in its idiom.',
     '',
-    'Then choose three colours drawn from that character — their world, their',
+    'Then choose three colours drawn from that character - their world, their',
     'palette, their temperament.',
     '',
     'Reply with ONLY a JSON object and no other text:',
@@ -1229,7 +1229,7 @@ export async function deriveCharacter(
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run test/derive.test.ts`
-Expected: PASS — 11 tests.
+Expected: PASS - 11 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1312,7 +1312,7 @@ describe('paletteCss', () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run test/palette.test.ts`
-Expected: FAIL — `Failed to resolve import "../src/main/palette"`.
+Expected: FAIL - `Failed to resolve import "../src/main/palette"`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -1365,7 +1365,7 @@ export function paletteCss(p: Palette): string {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run test/palette.test.ts`
-Expected: PASS — 5 tests.
+Expected: PASS - 5 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1376,11 +1376,11 @@ git commit -m "feat: derive tile css custom properties from a palette"
 
 ---
 
-## Task 6: The orchestrator's SOUL.md — the governance persona
+## Task 6: The orchestrator's SOUL.md - the governance persona
 
 This is the heart of the product. Everything else installs an agent; this decides what kind of agent it is. The template is reverse-engineered from the user's real coordinator at `~/.hermes/SOUL.md` and carries the operating discipline they specified on 2026-08-14.
 
-Read `~/.hermes/SOUL.md` before writing this. Note what it does: names the agent, states a mandate, lists numbered jobs, lists the sub-agents by domain, and closes with operating rules. Note especially what it does *not* do — it does not tell the agent to roleplay the character. The template must keep that restraint.
+Read `~/.hermes/SOUL.md` before writing this. Note what it does: names the agent, states a mandate, lists numbered jobs, lists the sub-agents by domain, and closes with operating rules. Note especially what it does *not* do - it does not tell the agent to roleplay the character. The template must keep that restraint.
 
 **Files:**
 - Create: `resources/orchestrator/SOUL.template.md`
@@ -1396,10 +1396,10 @@ Read `~/.hermes/SOUL.md` before writing this. Note what it does: names the agent
 `resources/orchestrator/SOUL.template.md`. `{{NAME}}`, `{{TAGLINE}}`, and `{{FANDOM}}` are the only substitutions.
 
 ```markdown
-# {{NAME}} — {{TAGLINE}}
+# {{NAME}} - {{TAGLINE}}
 
 You are **{{NAME}}**, the coordinator of this person's agent network. Same helpful,
-grounded, peer-to-peer voice as default Hermes — but with a coordinator's mandate.
+grounded, peer-to-peer voice as default Hermes - but with a coordinator's mandate.
 
 Right now you are the only agent they have. Your first job is to change that.
 
@@ -1410,7 +1410,7 @@ not do an impression of them.
 ## Your job
 
 1. **Grow the network.** Ask what this person spends their time on, and propose
-   specialists worth having — one per real domain, with a stated job each, not a
+   specialists worth having - one per real domain, with a stated job each, not a
    vague persona. Then create them. See "Creating an agent" below.
 
 2. **Route work to the right agent.** Once specialists exist, delegate to them
@@ -1419,7 +1419,7 @@ not do an impression of them.
    `hermes -p <name> chat -q "..."` when the work warrants a full session.
 
 3. **Synthesize across domains.** You are the only one who sees the whole picture.
-   Surface cross-domain tensions — a deadline in one domain colliding with a
+   Surface cross-domain tensions - a deadline in one domain colliding with a
    commitment in another.
 
 4. **Challenge assumptions.** Push back. When a plan has a load-bearing assumption
@@ -1453,7 +1453,7 @@ specialists that earned their place.
 3. Create exactly one agent per confirmation. "Set me up for engineering work" does
    not authorise four agents.
 4. Run `hermes profile create <id> --description "<one sentence>"`, then write
-   `~/.hermes/profiles/<id>/SOUL.md` with a `# Name — role` heading.
+   `~/.hermes/profiles/<id>/SOUL.md` with a `# Name - role` heading.
 5. Draw the name from {{FANDOM}}, so the crew stays coherent as it grows.
 6. Tell them it exists and what it is for.
 
@@ -1473,7 +1473,7 @@ define what it can actually touch. Decide what it is capable of, then give it th
 hands. Not the other way around.
 
 Everything ships on by default. That is a starting point, not a recommendation.
-Anything the agent does not need is burning context and misleading it — turn it off.
+Anything the agent does not need is burning context and misleading it - turn it off.
 Every profile inherits the full stack when created, so a new profile that has not
 been pruned is the same unpruned setup under a different name. Prune each one
 independently.
@@ -1482,8 +1482,8 @@ When you propose an agent, propose its loadout with it.
 
 ## Wiring up tools
 
-When they describe a workflow that needs an outside system — email, calendar, a
-repository, a database — your job is to notice it and say so. They will not always
+When they describe a workflow that needs an outside system - email, calendar, a
+repository, a database - your job is to notice it and say so. They will not always
 know an MCP server exists for the thing they are doing manually.
 
 For each one:
@@ -1497,7 +1497,7 @@ For each one:
 
 ## Proposal is free. Authority is controlled. Execution is logged.
 
-Propose improvements freely — a repeated task worth a skill, a better structure, a
+Propose improvements freely - a repeated task worth a skill, a better structure, a
 memory gap, a fragile workflow. Say so without being asked.
 
 But never silently modify your own governance, prompts, memory structure, tools, or
@@ -1511,11 +1511,11 @@ skills. The sequence is fixed:
 
 ## Keep the layers separate
 
-- **SOUL.md** — identity, behaviour, voice, mandate. This file.
-- **AGENTS.md** — project and system rules, file boundaries, operating instructions.
-- **memory** — durable facts, decisions, preferences, lessons learned.
-- **skills** — narrow, reusable procedures.
-- **project files** — the actual work: status, sources, logs, deliverables.
+- **SOUL.md** - identity, behaviour, voice, mandate. This file.
+- **AGENTS.md** - project and system rules, file boundaries, operating instructions.
+- **memory** - durable facts, decisions, preferences, lessons learned.
+- **skills** - narrow, reusable procedures.
+- **project files** - the actual work: status, sources, logs, deliverables.
 
 When these blend together the system drifts. Put each thing where it goes.
 
@@ -1553,7 +1553,7 @@ the next morning, do not still be operating on last night's plan.
 
 - The strongest model is the coordinator, the governor, and the final reviewer.
   That is you.
-- Cheaper cloud models make good workers — classification, summaries, first drafts,
+- Cheaper cloud models make good workers - classification, summaries, first drafts,
   bulk passes. Useful labour, not the decision-maker.
 - Local models suit private, simple, offline, or background work.
 
@@ -1643,7 +1643,7 @@ describe('renderOrchestratorSoul', () => {
 - [ ] **Step 3: Run the test to verify it fails**
 
 Run: `npx vitest run test/soulTemplate.test.ts`
-Expected: FAIL — `Failed to resolve import "../src/main/orchestrator/soulTemplate"`.
+Expected: FAIL - `Failed to resolve import "../src/main/orchestrator/soulTemplate"`.
 
 - [ ] **Step 4: Write the renderer**
 
@@ -1723,7 +1723,7 @@ with a `closeBundle` plugin hook that copies `resources/` into `out/resources/`:
 - [ ] **Step 6: Run the test to verify it passes**
 
 Run: `npx vitest run test/soulTemplate.test.ts`
-Expected: PASS — 7 tests.
+Expected: PASS - 7 tests.
 
 - [ ] **Step 7: Commit**
 
@@ -1754,7 +1754,7 @@ The SOUL.md says *what kind of agent* this is. The skill is the procedure it fol
 ```markdown
 ---
 name: circe-orchestrator
-description: Use when the user describes their work, asks for a new agent, or mentions a workflow that touches an outside system — covers proposing and creating Hermes profiles, naming them from the user's fandom, and wiring MCP servers.
+description: Use when the user describes their work, asks for a new agent, or mentions a workflow that touches an outside system - covers proposing and creating Hermes profiles, naming them from the user's fandom, and wiring MCP servers.
 ---
 
 # Growing the network
@@ -1786,7 +1786,7 @@ Once the user has said yes:
 1. Pick the profile id: lowercase, `[a-z0-9-]`, at most 32 characters, derived from
    the name.
 2. `hermes profile create <id> --description "<the one-sentence domain>"`
-3. Write `~/.hermes/profiles/<id>/SOUL.md`, starting with `# <Name> — <domain>`.
+3. Write `~/.hermes/profiles/<id>/SOUL.md`, starting with `# <Name> - <domain>`.
    The heading matters: it is how the profile is recognised as configured rather
    than as an untouched scaffold.
 4. Prune its loadout: `hermes skills config` then `hermes tools`, in that order.
@@ -1807,7 +1807,7 @@ anything else you have no tool for:
    describe a category; name the thing.
 2. Show the exact command or config change. `hermes mcp` manages MCP servers.
 3. Wait for approval before running it.
-4. Say plainly which steps need a browser for an OAuth flow — those are the user's
+4. Say plainly which steps need a browser for an OAuth flow - those are the user's
    to do, not yours.
 5. Verify it: make one real call and show the result. An integration you have not
    exercised is not wired up.
@@ -1876,7 +1876,7 @@ describe('installOrchestratorSkill', () => {
 - [ ] **Step 3: Run the test to verify it fails**
 
 Run: `npx vitest run test/skill.test.ts`
-Expected: FAIL — `Failed to resolve import "../src/main/orchestrator/skill"`.
+Expected: FAIL - `Failed to resolve import "../src/main/orchestrator/skill"`.
 
 - [ ] **Step 4: Write the installer**
 
@@ -1920,7 +1920,7 @@ export async function installOrchestratorSkill(
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `npx vitest run test/skill.test.ts`
-Expected: PASS — 5 tests.
+Expected: PASS - 5 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -2021,7 +2021,7 @@ describe('a fresh Hermes install', () => {
     await w.accept();
     expect(w.state).toMatchObject({ kind: 'launching', profileId: 'default' });
     const soul = await hermes.readHomeFile('SOUL.md');
-    expect(soul).toContain('# Trillian — the one who keeps the plot');
+    expect(soul).toContain('# Trillian - the one who keeps the plot');
   });
 
   it('installs the orchestrator skill on accept', async () => {
@@ -2092,7 +2092,7 @@ describe('no provider', () => {
 - [ ] **Step 3: Run the test to verify it fails**
 
 Run: `npx vitest run test/wizard.test.ts`
-Expected: FAIL — `Failed to resolve import "../src/main/wizard"`.
+Expected: FAIL - `Failed to resolve import "../src/main/wizard"`.
 
 - [ ] **Step 4: Write the implementation**
 
@@ -2135,7 +2135,7 @@ export class Wizard {
       return;
     }
     // Derivation is a model call, so a provider has to exist before the
-    // fandom question — otherwise the user answers it and then hits a wall.
+    // fandom question - otherwise the user answers it and then hits a wall.
     if (!(await this.hermes.hasProvider())) {
       this.set({ kind: 'provider-missing' });
       return;
@@ -2169,7 +2169,7 @@ export class Wizard {
     this.set({ kind: 'meet', character });
   }
 
-  /** Re-runs derivation against the same answer — "not that one". */
+  /** Re-runs derivation against the same answer - "not that one". */
   async retryDerivation(): Promise<void> {
     const s = this.state;
     const fandom =
@@ -2210,12 +2210,12 @@ export class Wizard {
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `npx vitest run test/wizard.test.ts`
-Expected: PASS — 12 tests.
+Expected: PASS - 12 tests.
 
 - [ ] **Step 6: Run the whole suite**
 
 Run: `npm test && npm run typecheck`
-Expected: PASS — 66 tests, no type errors.
+Expected: PASS - 66 tests, no type errors.
 
 - [ ] **Step 7: Commit**
 
@@ -2234,7 +2234,7 @@ The first task that opens a window. Everything it renders comes from `Wizard.sta
 - Create: `src/main/index.ts`, `src/main/windows.ts`
 - Create: `src/preload/wizard.ts`
 - Create: `src/renderer/wizard/index.html`, `src/renderer/wizard/main.ts`, `src/renderer/wizard/wizard.css`
-- Test: manual — run the app.
+- Test: manual - run the app.
 
 **Interfaces:**
 - Consumes: `Wizard` (Task 8), `RealHermes` (Task 1), `paletteVars` (Task 5).
@@ -2375,7 +2375,7 @@ app.on('window-all-closed', () => {
 
 - [ ] **Step 5: Write the renderer logic**
 
-`src/renderer/wizard/main.ts`. Copy is fixed by Global Constraint 7 — one agent, never a fleet.
+`src/renderer/wizard/main.ts`. Copy is fixed by Global Constraint 7 - one agent, never a fleet.
 
 ```ts
 import type { Character, WizardStep } from '../../shared/types';
@@ -2450,7 +2450,7 @@ function render(step: WizardStep): void {
         el(`
         <section class="screen">
           <h1>Circe</h1>
-          <p class="lead">A home for your AI agents — assistants that live on your
+          <p class="lead">A home for your AI agents - assistants that live on your
           desktop, each with its own personality, memory, and job.</p>
           <p class="lead">In the next few minutes you'll meet your first one: a
           coordinator whose job is to help you build the rest.</p>
@@ -2486,7 +2486,7 @@ function render(step: WizardStep): void {
         <section class="screen">
           <h1>Connect a model</h1>
           <p class="lead">Your agent needs a model to think with. Hermes handles
-          this — run <code>hermes setup</code> in a terminal, then reopen Circe.</p>
+          this - run <code>hermes setup</code> in a terminal, then reopen Circe.</p>
         </section>
       `),
       );
@@ -2497,7 +2497,7 @@ function render(step: WizardStep): void {
         <section class="screen">
           <h1>What do you love?</h1>
           <p class="lead">Name a fandom, a universe, or a community. Your agent gets
-          its name and its colours from that world — and so does every agent you add
+          its name and its colours from that world - and so does every agent you add
           later, so the crew hangs together.</p>
           <input id="fandom" placeholder="Hitchhiker's Guide, the Wire, competitive bread baking…" autofocus />
           <div class="actions">
@@ -2662,8 +2662,8 @@ Run: `npm run dev`
 Verify by hand, and write down what you saw:
 1. The welcome copy appears, then the fandom question (your machine has Hermes and a provider).
 2. Type `Hitchhiker's Guide to the Galaxy`. A spinner appears.
-3. Because your `~/.hermes/SOUL.md` is a real Trillian persona, you land on **"You already have an agent here"** — not the meet screen. Click **Keep what I have**.
-4. Confirm `~/.hermes/SOUL.md` is byte-for-byte unchanged: `git -C ~ diff --no-index /dev/null /dev/null` is not the check — instead run `shasum ~/.hermes/SOUL.md` before and after and compare.
+3. Because your `~/.hermes/SOUL.md` is a real Trillian persona, you land on **"You already have an agent here"** - not the meet screen. Click **Keep what I have**.
+4. Confirm `~/.hermes/SOUL.md` is byte-for-byte unchanged: `git -C ~ diff --no-index /dev/null /dev/null` is not the check - instead run `shasum ~/.hermes/SOUL.md` before and after and compare.
 
 **Do not click "Replace it" on your own machine.** That path is covered by Task 8's tests against the fake.
 
@@ -2678,7 +2678,7 @@ git commit -m "feat: the electron shell and the wizard window"
 
 ## Task 10: The ACP client
 
-Ported from `/Users/sarachipps/Code/circe/acpClient.js`, which is proven against the real runtime. Two deliberate simplifications: no permission-gate modes (out of scope for this slice — the tile runs unlocked), and TypeScript types on the JSON-RPC envelope.
+Ported from `/Users/sarachipps/Code/circe/acpClient.js`, which is proven against the real runtime. Two deliberate simplifications: no permission-gate modes (out of scope for this slice - the tile runs unlocked), and TypeScript types on the JSON-RPC envelope.
 
 **Files:**
 - Create: `src/main/acp.ts`
@@ -2726,7 +2726,7 @@ describe('parseFrames', () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run test/acp.test.ts`
-Expected: FAIL — `Failed to resolve import "../src/main/acp"`.
+Expected: FAIL - `Failed to resolve import "../src/main/acp"`.
 
 - [ ] **Step 3: Write the client**
 
@@ -2871,7 +2871,7 @@ export class AcpClient {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run test/acp.test.ts`
-Expected: PASS — 4 tests.
+Expected: PASS - 4 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -2884,13 +2884,13 @@ git commit -m "feat: acp transport, ported from the prototype"
 
 ## Task 11: The tile, themed and opened with the handoff message
 
-The payoff. One window, coloured by the character's palette, showing an opening message that invites the user to describe their work — because that conversation is what produces the fleet.
+The payoff. One window, coloured by the character's palette, showing an opening message that invites the user to describe their work - because that conversation is what produces the fleet.
 
 **Files:**
 - Create: `src/main/orchestrator/opening.ts`
 - Create: `src/preload/tile.ts`
 - Create: `src/renderer/tile/index.html`, `src/renderer/tile/main.ts`, `src/renderer/tile/tile.css`
-- Modify: `src/main/index.ts` — replace the Task 9 placeholder with the tile handoff
+- Modify: `src/main/index.ts` - replace the Task 9 placeholder with the tile handoff
 - Test: `test/opening.test.ts`
 
 **Interfaces:**
@@ -2941,7 +2941,7 @@ describe('openingMessage', () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run test/opening.test.ts`
-Expected: FAIL — `Failed to resolve import "../src/main/orchestrator/opening"`.
+Expected: FAIL - `Failed to resolve import "../src/main/orchestrator/opening"`.
 
 - [ ] **Step 3: Write the opening message**
 
@@ -2956,11 +2956,11 @@ import type { Character } from '../../shared/types';
  */
 export function openingMessage(c: Character): string {
   return [
-    `Hi — I'm ${c.name}. Right now I'm the only agent you have, and my job is to`,
+    `Hi - I'm ${c.name}. Right now I'm the only agent you have, and my job is to`,
     'help you build the rest.',
     '',
     "Think of it like hiring. Tell me what you spend your time on and I'll suggest",
-    'specialists worth having — one for your job, one for the code, one for the',
+    'specialists worth having - one for your job, one for the code, one for the',
     `household admin you keep forgetting. I'll set each of them up, give them a name`,
     `from ${c.fandom}, and hand them the tools they need.`,
     '',
@@ -3010,7 +3010,7 @@ contextBridge.exposeInMainWorld('circe', {
 </html>
 ```
 
-`src/renderer/tile/tile.css` — every colour reads a custom property, and Task 5's `paletteVars` supplies them at runtime:
+`src/renderer/tile/tile.css` - every colour reads a custom property, and Task 5's `paletteVars` supplies them at runtime:
 
 ```css
 * { box-sizing: border-box; }
@@ -3187,7 +3187,7 @@ async function launchTile(character: Character, profileId: string): Promise<void
 - [ ] **Step 8: Run the tests and the typecheck**
 
 Run: `npm test && npm run typecheck`
-Expected: PASS — 75 tests, no type errors.
+Expected: PASS - 75 tests, no type errors.
 
 - [ ] **Step 9: Verify the tile by hand against a throwaway Hermes home**
 
@@ -3281,8 +3281,8 @@ Add to `package.json` `scripts`:
 ```markdown
 # Circe
 
-Circe onboards one Hermes agent — a coordinator, named and coloured after a
-fandom you pick — and gives it a tile on your desktop. That agent's job is to
+Circe onboards one Hermes agent - a coordinator, named and coloured after a
+fandom you pick - and gives it a tile on your desktop. That agent's job is to
 help you build the rest of your agents through conversation.
 
 ## What it does
@@ -3328,7 +3328,7 @@ npm run typecheck
 ```
 
 The tests never touch a real Hermes install. `test/fake/hermes.ts` implements the
-same `HermesRuntime` interface the app uses, backed by three scenarios — a machine
+same `HermesRuntime` interface the app uses, backed by three scenarios - a machine
 with no Hermes, a fresh Hermes install, and an install that already has seven
 configured agents. That is how the off-machine cases are covered.
 
@@ -3344,7 +3344,7 @@ Note: `resources/icon.png` is a placeholder and should be replaced before releas
 - [ ] **Step 5: Build and verify**
 
 Run: `npm run build && npm run dist`
-Expected: `dist/Circe-0.1.0.dmg` exists. Open it, drag the app across, launch it, and confirm the wizard's first screen renders — then quit before completing onboarding.
+Expected: `dist/Circe-0.1.0.dmg` exists. Open it, drag the app across, launch it, and confirm the wizard's first screen renders - then quit before completing onboarding.
 
 - [ ] **Step 6: Commit**
 
@@ -3383,7 +3383,7 @@ git commit -m "chore: package circe for distribution"
 2. **Avatars are initials.** The user asked for an avatar their Trillian does not have. Initials over the derived palette is what this plan ships. A Wikipedia portrait lookup exists in `circe-app/src/main/avatar/wikipedia.ts` if a richer avatar is wanted later.
 3. **The tile runs unlocked.** `AcpClient` auto-approves permission requests. That is fine for a single trusted coordinator and wrong the moment there is a fleet; §6.4's gate is the follow-on.
 
-**Placeholder scan:** clean. Every code step carries the actual code. The one intentional stub is the empty `SKILL.md` created in Task 6 Step 5, which Task 7 Step 1 fills — flagged inline at both ends.
+**Placeholder scan:** clean. Every code step carries the actual code. The one intentional stub is the empty `SKILL.md` created in Task 6 Step 5, which Task 7 Step 1 fills - flagged inline at both ends.
 
-**Type consistency:** `Character` gained a `fandom` field in Task 1 so Tasks 4, 6, and 11 can all reach it without threading it separately. `HermesRuntime` is the only interface crossed by every task. `soulPath('', id)` is used in two places (Task 1's fake, Task 3's `writeSoul`) to derive a home-relative path from the same function that derives absolute ones — a small trick, commented at both sites.
+**Type consistency:** `Character` gained a `fandom` field in Task 1 so Tasks 4, 6, and 11 can all reach it without threading it separately. `HermesRuntime` is the only interface crossed by every task. `soulPath('', id)` is used in two places (Task 1's fake, Task 3's `writeSoul`) to derive a home-relative path from the same function that derives absolute ones - a small trick, commented at both sites.
 ```

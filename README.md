@@ -97,7 +97,7 @@ npm run typecheck
 ```
 
 The tests never touch a real Hermes install. `test/fake/hermes.ts` implements the
-same `HermesRuntime` interface the app uses, backed by three scenarios — a machine
+same `HermesRuntime` interface the app uses, backed by three scenarios - a machine
 with no Hermes, a fresh Hermes install, and an install that already has seven
 configured agents. That is how the off-machine cases are covered.
 
@@ -113,7 +113,7 @@ flat visual style matches the onboarding experience. Earlier concepts remain at
 comparison.
 
 Note: the build is unsigned and unnotarised, so macOS quarantines a downloaded
-`.dmg` — Gatekeeper refuses it on a double-click. Right-click the app and choose
+`.dmg` - Gatekeeper refuses it on a double-click. Right-click the app and choose
 **Open** the first time, then confirm. Signing and notarising the release
 removes the step.
 

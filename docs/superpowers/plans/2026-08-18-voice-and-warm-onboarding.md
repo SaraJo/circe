@@ -1,7 +1,7 @@
 > **Historical plan:** Do not execute unchecked tasks from this document. See
 > [../../CURRENT_BUILD.md](../../CURRENT_BUILD.md) for the current scope.
 
-# The Character's Voice, and a Warm Onboarding — Implementation Plan
+# The Character's Voice, and a Warm Onboarding - Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -11,25 +11,25 @@
 > nobody performed. The commits are the real record, and the suite is green at 404 tests. The one
 > question this plan deferred to the product owner is answered in the Self-Review section.
 
-**Goal:** The derived character speaks in a voice of its own, says so in its first message and asks whether the user likes it — and the onboarding that introduces it stops looking like a form in a dark box.
+**Goal:** The derived character speaks in a voice of its own, says so in its first message and asks whether the user likes it - and the onboarding that introduces it stops looking like a form in a dark box.
 
-**Architecture:** Derivation already returns a character as JSON; it gains three fields — a `voice` description that is written into the profile's `SOUL.md`, an in-voice `greeting`, and an in-voice `voiceCheck` question. Every one of them degrades to the current behaviour when absent, so a model that ignores them costs flavour and never an agent. The persona template gains a `## Voice` section and the rule that converts a "speak plainly" reply into a rewrite of that section. The wizard's copy and CSS are then reworked against the amended §1.4 and §7.
+**Architecture:** Derivation already returns a character as JSON; it gains three fields - a `voice` description that is written into the profile's `SOUL.md`, an in-voice `greeting`, and an in-voice `voiceCheck` question. Every one of them degrades to the current behaviour when absent, so a model that ignores them costs flavour and never an agent. The persona template gains a `## Voice` section and the rule that converts a "speak plainly" reply into a rewrite of that section. The wizard's copy and CSS are then reworked against the amended §1.4 and §7.
 
 **Tech Stack:** TypeScript, Electron 32, electron-vite, Vitest. No new dependencies.
 
-**Spec:** `~/Code/circe-oss-spec.md` — §1.4 (amended 2026-08-18), §6.2 "The character's voice" (added 2026-08-18), §6.5 (amended 2026-08-18), §7 (amended 2026-08-18), §5.6 (resolved 2026-08-18).
+**Spec:** `~/Code/circe-oss-spec.md` - §1.4 (amended 2026-08-18), §6.2 "The character's voice" (added 2026-08-18), §6.5 (amended 2026-08-18), §7 (amended 2026-08-18), §5.6 (resolved 2026-08-18).
 
 ## Global Constraints
 
 Copied from the spec; every task's requirements implicitly include these.
 
-- **Constraint 10 — a profile describes itself; Circe stores no agent facts.** The voice lives in the profile's `SOUL.md`, in its own `## Voice` section. Circe stores nothing about it and re-reads it like the rest of the persona.
+- **Constraint 10 - a profile describes itself; Circe stores no agent facts.** The voice lives in the profile's `SOUL.md`, in its own `## Voice` section. Circe stores nothing about it and re-reads it like the rest of the persona.
 - **Voice, not roleplay.** "The *diction* is the character's; the *judgement* is the agent's. It never invents in-world facts, never answers in character at the cost of being understood, and never uses the voice to soften something the user needs to hear straight… When the voice would obscure the answer, it drops for that sentence and comes back afterwards. An agent that cannot say 'I can't do that' plainly has the setting wrong."
 - **Degradation rule.** A missing, corrupt, or over-long field costs presentation, never an agent and never a conversation. Every new field parses to `''` rather than throwing, and `''` means "behave exactly as the product does today".
-- **Copy rule for onboarding (§1.4, amended).** Talks like a person; explains briefly where the steady-state app would not; allowed to be playful; never cheerleads. "We're so excited to have you" stays banned. Jargon-free — Hermes is the one nameable exception, and only with a plain gloss the first time.
+- **Copy rule for onboarding (§1.4, amended).** Talks like a person; explains briefly where the steady-state app would not; allowed to be playful; never cheerleads. "We're so excited to have you" stays banned. Jargon-free - Hermes is the one nameable exception, and only with a plain gloss the first time.
 - **Design rule for onboarding (§7, amended).** Room to breathe; a softer, larger type scale than the tiles; the character's own colours the moment they exist; motion that acknowledges what just happened; a little playfulness. No mascot, no confetti, no spinner pretending to be a personality.
 - **Circe owns its visual language (§5.6, resolved).** There is no external library to match. Do not introduce a dependency for primitives.
-- **Constraint 4 — no telemetry.** Circe's own process makes zero network calls. The derivation call goes through Hermes, as it does today.
+- **Constraint 4 - no telemetry.** Circe's own process makes zero network calls. The derivation call goes through Hermes, as it does today.
 - **Nothing shells out except `RealHermes`.**
 - **The opening message is Circe's prose written into the tile as if the agent sent it.** It is not replayed on restore (Phase 1), and it must never claim something that did not happen.
 
@@ -39,7 +39,7 @@ Copied from the spec; every task's requirements implicitly include these.
 
 | File | Responsibility |
 |---|---|
-| `src/shared/types.ts` (modify) | `Character` gains `voice`, `greeting`, `voiceCheck` — all possibly empty. |
+| `src/shared/types.ts` (modify) | `Character` gains `voice`, `greeting`, `voiceCheck` - all possibly empty. |
 | `src/main/derive.ts` (modify) | Prompt asks for the three new fields; `validate` accepts them, bounds them, and never throws on them. |
 | `test/derive.test.ts` (modify) | The new fields: happy path, missing, wrong type, over-long. |
 | `resources/orchestrator/SOUL.template.md` (modify) | `## Voice` section, `{{VOICE}}` placeholder, the voice-not-roleplay rule, and the dial-down instruction. |
@@ -61,11 +61,11 @@ Copied from the spec; every task's requirements implicitly include these.
 
 **Interfaces:**
 - Consumes: nothing from other tasks.
-- Produces: `Character.voice: string`, `Character.greeting: string`, `Character.voiceCheck: string` — each `''` when the model did not supply a usable one. Tasks 2 and 3 read these.
+- Produces: `Character.voice: string`, `Character.greeting: string`, `Character.voiceCheck: string` - each `''` when the model did not supply a usable one. Tasks 2 and 3 read these.
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `test/derive.test.ts`. Match the file's existing harness for `deriveCharacter` — read how the current tests fake `hermes.query` and follow it exactly rather than inventing a second style.
+Add to `test/derive.test.ts`. Match the file's existing harness for `deriveCharacter` - read how the current tests fake `hermes.query` and follow it exactly rather than inventing a second style.
 
 ```typescript
 const FULL_REPLY = JSON.stringify({
@@ -74,7 +74,7 @@ const FULL_REPLY = JSON.stringify({
   palette: { bg: '#1b2a1f', border: '#d8c9a3', accent: '#e0a458' },
   why: 'He keeps the crew pointed at one plan.',
   voice: 'Rolling, salt-worn sailor talk. Calls the user "friend". Measures things in leagues.',
-  greeting: "Aye, friend — Long John Silver, at your service.",
+  greeting: "Aye, friend - Long John Silver, at your service.",
   voiceCheck: 'Do ye like bein' spoke to this way, or shall I drop the salt?',
 });
 
@@ -139,7 +139,7 @@ it('asks the model for a voice', () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run test/derive.test.ts`
-Expected: FAIL — `c.voice` is `undefined`, and `DERIVATION_PROMPT` has no "voice" in it.
+Expected: FAIL - `c.voice` is `undefined`, and `DERIVATION_PROMPT` has no "voice" in it.
 
 - [ ] **Step 3: Extend the `Character` type**
 
@@ -147,7 +147,7 @@ In `src/shared/types.ts`, inside `interface Character`:
 
 ```typescript
   /**
-   * How this character speaks — diction, rhythm, the words they reach for.
+   * How this character speaks - diction, rhythm, the words they reach for.
    * Written into the profile's `## Voice` section. Empty means plain-spoken,
    * which is also what a user who asks for plain speech ends up with.
    */
@@ -164,7 +164,7 @@ In `src/main/derive.ts`, inside `DERIVATION_PROMPT`, after the colour paragraph 
 
 ```typescript
     '',
-    'Then write their voice. Not a biography — how they *talk*: diction, rhythm,',
+    'Then write their voice. Not a biography - how they *talk*: diction, rhythm,',
     'the words they reach for, what they never say. Two sentences at most. This',
     'is the difference between an agent that feels like someone and a themed text',
     'box.',
@@ -188,7 +188,7 @@ and extend the JSON shape in the same string, after the `"why"` line:
     '     being spoken to this way and offering to speak plainly instead>"',
 ```
 
-Note the `"why"` line currently ends without a comma — add one when you append.
+Note the `"why"` line currently ends without a comma - add one when you append.
 
 - [ ] **Step 5: Accept them in `validate`**
 
@@ -197,7 +197,7 @@ In `src/main/derive.ts`, above `function validate`:
 ```typescript
 /**
  * A model-supplied string, or `''`. Never throws: per the degradation rule a
- * bad voice costs flavour, not an agent — and `''` is a meaningful value
+ * bad voice costs flavour, not an agent - and `''` is a meaningful value
  * everywhere it lands, since a plain-spoken agent is exactly what a user who
  * dislikes the voice ends up with anyway.
  *
@@ -230,7 +230,7 @@ then extend the returned object:
 
 - [ ] **Step 6: Fix every other construction of a `Character`**
 
-`Character` gained required fields, so the typecheck now fails wherever one is built — tests and `startup.ts`'s `characterFor` among them. Run `npm run typecheck` and fix each site. For `characterFor`, which rebuilds a character from `SOUL.md` and `circe.json` for a profile Circe did not just derive, the honest values are empty:
+`Character` gained required fields, so the typecheck now fails wherever one is built - tests and `startup.ts`'s `characterFor` among them. Run `npm run typecheck` and fix each site. For `characterFor`, which rebuilds a character from `SOUL.md` and `circe.json` for a profile Circe did not just derive, the honest values are empty:
 
 ```typescript
     voice: '',
@@ -243,7 +243,7 @@ with this comment above them:
 ```typescript
     // Rebuilt from disk, where only the persona and the palette live. The
     // voice is *in* that SOUL.md and belongs to the agent; Circe does not
-    // parse it back out, because nothing here needs it — the greeting and the
+    // parse it back out, because nothing here needs it - the greeting and the
     // check happen once, at the handoff, for a character just derived.
 ```
 
@@ -278,7 +278,7 @@ git commit -m "feat: derivation gives the character a voice"
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `test/soulTemplate.test.ts`, inside the existing `describe`. The file already has a `render()` helper and a `TRILLIAN` fixture — use them, and give the fixture the new fields if the typecheck asks.
+Add to `test/soulTemplate.test.ts`, inside the existing `describe`. The file already has a `render()` helper and a `TRILLIAN` fixture - use them, and give the fixture the new fields if the typecheck asks.
 
 ```typescript
 it('writes the derived voice into its own section', async () => {
@@ -296,7 +296,7 @@ it('falls back to plain speech when no voice was derived', async () => {
   expect(soul).toMatch(/speak plainly/i);
 });
 
-// Voice, not roleplay — the line the whole feature stands on.
+// Voice, not roleplay - the line the whole feature stands on.
 it('keeps judgement out of the costume', async () => {
   const soul = await render();
   expect(soul).toMatch(/never.*(invent|in-world|in character)/i);
@@ -315,7 +315,7 @@ it('tells it how to drop the voice when asked', async () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run test/soulTemplate.test.ts`
-Expected: FAIL — no `## Voice` section exists.
+Expected: FAIL - no `## Voice` section exists.
 
 - [ ] **Step 3: Add the section to the template**
 
@@ -338,8 +338,8 @@ distinction is load-bearing:
 - Never use the voice to soften bad news, and never let it stand between the
   user and what they asked for.
 
-**If the user says they would rather you spoke plainly**, do it — from the next
-sentence on — and rewrite this section to say so. Their answer is what
+**If the user says they would rather you spoke plainly**, do it - from the next
+sentence on - and rewrite this section to say so. Their answer is what
 authorises that edit, so do not ask a second time; log it like any other change
 to this file. Keep your name, your colours, and everything else about who you
 are. The person stays; the accent goes.
@@ -353,7 +353,7 @@ Replace with:
 
 ```markdown
 Keep the name and keep the world it came from ({{FANDOM}}). Speak in the voice
-below — and never play the part: you are an assistant with a manner, not a
+below - and never play the part: you are an assistant with a manner, not a
 character in a scene.
 ```
 
@@ -369,7 +369,7 @@ and above the function:
 
 ```typescript
 /**
- * What goes under `## Voice`. An empty voice is not a failure — it is the
+ * What goes under `## Voice`. An empty voice is not a failure - it is the
  * plain-spoken setting, and the same text a user gets after asking to be
  * spoken to plainly, so the file reads the same either way.
  */
@@ -400,7 +400,7 @@ git commit -m "feat: the persona carries its voice, and the rule for dropping it
 
 **Interfaces:**
 - Consumes: `Character.greeting`, `Character.voiceCheck`, `Character.voice` from Task 1.
-- Produces: no signature change — `openingMessage(c: Character): string` as today.
+- Produces: no signature change - `openingMessage(c: Character): string` as today.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -415,7 +415,7 @@ const SILVER: Character = {
   why: 'He keeps the crew pointed at one plan.',
   fandom: 'pirates',
   voice: 'Rolling, salt-worn sailor talk.',
-  greeting: "Aye, friend — Long John Silver. Point me at the work and it's done.",
+  greeting: "Aye, friend - Long John Silver. Point me at the work and it's done.",
   voiceCheck: 'Do ye like bein’ spoke to this way, or shall I drop the salt?',
 };
 
@@ -450,7 +450,7 @@ it('asks nothing when the character has no voice', () => {
   expect(message).not.toMatch(/plainly|drop the salt/i);
 });
 
-// A voice with no question supplied still gets asked about — the question is
+// A voice with no question supplied still gets asked about - the question is
 // the point, and Circe can always write it.
 it('asks plainly when the character supplied no question of its own', () => {
   const message = openingMessage({ ...SILVER, voiceCheck: '' });
@@ -461,7 +461,7 @@ it('asks plainly when the character supplied no question of its own', () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run test/opening.test.ts`
-Expected: FAIL — the scripted message is returned regardless.
+Expected: FAIL - the scripted message is returned regardless.
 
 - [ ] **Step 3: Implement**
 
@@ -470,7 +470,7 @@ Rewrite the body of `src/main/orchestrator/opening.ts`'s `openingMessage`, keepi
 ```typescript
 export function openingMessage(c: Character): string {
   // One line per paragraph, joined by blank lines. The tile renders this with
-  // `white-space: pre-wrap`, so it honours every newline here — wrapping the
+  // `white-space: pre-wrap`, so it honours every newline here - wrapping the
   // source to a fixed column would hard-break the prose mid-sentence in a
   // ~340px tile. Let the renderer wrap; only paragraph breaks belong in the
   // string.
@@ -499,7 +499,7 @@ function scripted(c: Character): string {
  * purpose: this is Circe speaking, and Circe does not do accents.
  */
 function plainCheck(c: Character): string {
-  return `One more thing — I talk like this because ${c.fandom} is where I'm from. Tell me if you'd rather I spoke plainly and I'll drop it.`;
+  return `One more thing - I talk like this because ${c.fandom} is where I'm from. Tell me if you'd rather I spoke plainly and I'll drop it.`;
 }
 ```
 
@@ -520,17 +520,17 @@ git commit -m "feat: the first message speaks in voice, then asks"
 ### Task 4: Onboarding copy a casual user would enjoy
 
 **Files:**
-- Modify: `src/renderer/wizard/main.ts` (the strings only — no structural change)
+- Modify: `src/renderer/wizard/main.ts` (the strings only - no structural change)
 - Test: `test/wizard.test.ts`
 
 **Interfaces:**
 - Consumes: nothing. Produces: nothing other tasks read.
 
-**Before writing anything, read §1.4 of the spec.** The rules are narrow: talk like a person, explain briefly, be a little playful, never cheerlead. "Warm" is not "chatty" — every screen still gets to its action in one glance.
+**Before writing anything, read §1.4 of the spec.** The rules are narrow: talk like a person, explain briefly, be a little playful, never cheerlead. "Warm" is not "chatty" - every screen still gets to its action in one glance.
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `test/wizard.test.ts`. If the file has no existing means of rendering a screen's copy, assert against the exported strings — extract each screen's copy into an exported `COPY` record in `main.ts` as part of Step 3 rather than reaching into the DOM.
+Add to `test/wizard.test.ts`. If the file has no existing means of rendering a screen's copy, assert against the exported strings - extract each screen's copy into an exported `COPY` record in `main.ts` as part of Step 3 rather than reaching into the DOM.
 
 ```typescript
 // §1.4 (amended 2026-08-18): onboarding explains itself to someone who has
@@ -557,7 +557,7 @@ it('speaks to the reader, not about the product', () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run test/wizard.test.ts`
-Expected: FAIL — `COPY` is not exported.
+Expected: FAIL - `COPY` is not exported.
 
 - [ ] **Step 3: Extract and warm the copy**
 
@@ -566,13 +566,13 @@ In `src/renderer/wizard/main.ts`, add near the top:
 ```typescript
 /**
  * Every string the wizard shows, in one place, because onboarding copy is
- * reviewed as a whole — it has to read as one voice across five screens — and
+ * reviewed as a whole - it has to read as one voice across five screens - and
  * because §1.4's rules are testable only if the strings are reachable.
  */
 export const COPY = {
   welcome: {
     title: 'Meet your first agent',
-    lead: "Circe gives you AI assistants that live on your own computer — they keep what they learn, and they're yours.",
+    lead: "Circe gives you AI assistants that live on your own computer - they keep what they learn, and they're yours.",
     sub: "This takes about a minute. At the end you'll meet the first one.",
     action: 'Start',
   },
@@ -583,12 +583,12 @@ export const COPY = {
   },
   provider: {
     title: 'Connect a model',
-    lead: "Your agent needs a model to think with — the same kind of thing that powers ChatGPT or Claude. You'll sign in once, and it stays on this machine.",
+    lead: "Your agent needs a model to think with - the same kind of thing that powers ChatGPT or Claude. You'll sign in once, and it stays on this machine.",
     action: 'Connect',
   },
   fandom: {
     title: 'What do you love?',
-    lead: 'Name a world you like — a show, a book, a game, a hobby, a group chat. We ask because your agents get their names and their character from it, so it may as well be somewhere you enjoy.',
+    lead: 'Name a world you like - a show, a book, a game, a hobby, a group chat. We ask because your agents get their names and their character from it, so it may as well be somewhere you enjoy.',
     placeholder: "Hitchhiker's Guide, the Wire, competitive bread baking…",
     action: 'Continue',
     stuck: "Not sure? Give me some ideas",
@@ -605,7 +605,7 @@ export const COPY = {
 } as const;
 ```
 
-Then replace the literal strings in each screen's template with the matching `COPY` entry. Do not change any element structure, class name, or id in this task — the CSS pass is Task 5 and a reviewer needs to see one change at a time.
+Then replace the literal strings in each screen's template with the matching `COPY` entry. Do not change any element structure, class name, or id in this task - the CSS pass is Task 5 and a reviewer needs to see one change at a time.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -625,7 +625,7 @@ git commit -m "copy: onboarding that explains itself to someone new"
 
 **Files:**
 - Modify: `src/renderer/wizard/wizard.css`, and `src/renderer/wizard/main.ts` only where a new element is genuinely needed
-- Test: none automated — this task is verified by eye, and the plan says so rather than pretending otherwise
+- Test: none automated - this task is verified by eye, and the plan says so rather than pretending otherwise
 
 **Read §7 of the spec first.** The five bullets are the brief: room to breathe, a softer and larger type scale than the tile, the character's colours the moment they exist, motion that acknowledges what happened, a little playfulness. No mascot, no confetti.
 
@@ -671,7 +671,7 @@ h1 {
 .sub { margin: 0; color: var(--ink-faint); font-size: 14px; max-width: 42ch; }
 ```
 
-Then check every screen still fits the fixed window (`WIZARD_W`/`WIZARD_H` in `src/main/windows.ts`) — the walkthrough history records a five-panel screen that measured 624px of content in a 520px window, and a larger type scale is exactly how that happens again. If a screen overflows, cut words before cutting the scale.
+Then check every screen still fits the fixed window (`WIZARD_W`/`WIZARD_H` in `src/main/windows.ts`) - the walkthrough history records a five-panel screen that measured 624px of content in a 520px window, and a larger type scale is exactly how that happens again. If a screen overflows, cut words before cutting the scale.
 
 - [ ] **Step 2: Soften the controls**
 
@@ -723,7 +723,7 @@ The meet screen already knows the palette. In `renderCharacter`, set the derived
 }
 ```
 
-Set `--agent-bg` from the derived palette when rendering that screen. Keep the wash subtle — the spec bans decoration standing in front of the primary action, and a full-bleed colour field is decoration.
+Set `--agent-bg` from the derived palette when rendering that screen. Keep the wash subtle - the spec bans decoration standing in front of the primary action, and a full-bleed colour field is decoration.
 
 - [ ] **Step 4: Acknowledge what just happened**
 
@@ -748,7 +748,7 @@ The reduced-motion block is not optional: this is a native-feeling Mac app, and 
 
 - [ ] **Step 5: Look at it**
 
-Build and drive it with `.claude/skills/run-circe`, against a sandboxed `HERMES_HOME`. Screenshot every screen: welcome, fandom, deriving, meet. Open the images — a blank frame means the launch failed, not that the design is minimal.
+Build and drive it with `.claude/skills/run-circe`, against a sandboxed `HERMES_HOME`. Screenshot every screen: welcome, fandom, deriving, meet. Open the images - a blank frame means the launch failed, not that the design is minimal.
 
 Check against §7 by eye: does the fandom step feel like being asked something interesting, and the meet screen like being introduced to someone? If either still reads as a form, the problem is spacing and type scale before it is colour.
 
@@ -767,9 +767,9 @@ git commit -m "style: onboarding that looks like an introduction"
 
 ## Self-Review
 
-**Spec coverage.** §6.2 "The character's voice": derivation (Task 1), lives in `SOUL.md` (Task 2), voice-not-roleplay (Task 2), demonstrates then asks (Task 3), dial-down rewrites the section (Task 2), specialists inherit the rule — **carried by the existing `circe-orchestrator` skill, which already tells the orchestrator to write a specialist's persona; Task 2's template rule is what it copies from.** If the executor finds the skill needs an explicit line about giving a specialist a voice, add it to Task 2's step 3 rather than opening a sixth task. §1.4 → Task 4. §7 → Task 5. §5.6 → no work needed; it only forbids a dependency.
+**Spec coverage.** §6.2 "The character's voice": derivation (Task 1), lives in `SOUL.md` (Task 2), voice-not-roleplay (Task 2), demonstrates then asks (Task 3), dial-down rewrites the section (Task 2), specialists inherit the rule - **carried by the existing `circe-orchestrator` skill, which already tells the orchestrator to write a specialist's persona; Task 2's template rule is what it copies from.** If the executor finds the skill needs an explicit line about giving a specialist a voice, add it to Task 2's step 3 rather than opening a sixth task. §1.4 → Task 4. §7 → Task 5. §5.6 → no work needed; it only forbids a dependency.
 
-**Not covered, deliberately.** The spec left one thing open — whether the meet screen shows a line in the character's voice before the user clicks. No task implements it. Decide it with the user after Task 5, when there is something to look at.
+**Not covered, deliberately.** The spec left one thing open - whether the meet screen shows a line in the character's voice before the user clicks. No task implements it. Decide it with the user after Task 5, when there is something to look at.
 
 > **Decided 2026-08-19: yes.** `Character.intro`, one in-voice sentence written for being introduced rather than for after acceptance. The argument that settled it was the re-roll: without a voice line, "Try someone else" swaps one Circe-written third-person description for another, and the voice is the only thing that actually distinguishes two candidates. See the decision record for the height finding that came with it.
 
