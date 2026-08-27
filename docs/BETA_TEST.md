@@ -31,7 +31,7 @@ unredacted screenshots with feedback.
 
 ## Install
 
-1. Open `Circe-0.2.2-arm64.dmg`.
+1. Open `Circe-0.2.3-arm64.dmg`.
 2. Drag Circe into Applications.
 3. Because this beta is unsigned, Control-click Circe, choose **Open**, then
    confirm **Open**. A normal double-click may be rejected by Gatekeeper.
@@ -47,13 +47,13 @@ If Hermes already has configured agents:
    confirm both appear even when the default `SOUL.md` has no Markdown heading.
 2. Choose which existing agents should appear as Circe tiles. Exclude at least
    one and confirm it remains untouched in Hermes but does not open in Circe.
-3. Exercise either **Keep their current names** or **Give them Circe identities**.
-4. On the identity path, independently keep one included agent's existing name
-   and accept another agent's suggested identity. Confirm the suggestion fits
-   what that agent already does. Only selected agents should receive a new
-   visible name, tagline, and colours; their profile ids and remaining
-   instructions must stay unchanged, and a `SOUL.md.bak-*` file must exist for
-   every renamed agent.
+3. Choose **Keep all current identities** or **Suggest identities**.
+4. On the suggestion path, leave one agent checked to use its suggestion and
+   uncheck another to keep its existing identity. Confirm each suggestion fits
+   what that agent already does. Only agents whose suggestions remain checked
+   should receive a new visible name, tagline, and colours; profile ids and
+   remaining instructions must stay unchanged, and a `SOUL.md.bak-*` file must
+   exist for every renamed agent.
 5. Choose an existing coordinator, create a separate one, or skip. Confirm
    Circe does exactly the selected option and does not replace another profile.
 6. Ask the coordinator to create a Circe tile. Confirm it explains that a tile

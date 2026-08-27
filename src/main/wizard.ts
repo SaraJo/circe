@@ -133,11 +133,26 @@ export class Wizard {
   }
 
   personalizeExistingFleet(): void {
-    if (this.state.kind !== 'existing-fleet') return;
-    this.set({ kind: 'fleet-fandom', profiles: this.state.profiles, intent: 'rename' });
+    if (this.state.kind !== 'fleet-identity-choice') return;
+    this.set({
+      kind: 'fleet-fandom',
+      profiles: this.state.profiles,
+      intent: 'rename',
+      ignoredProfileIds: this.state.ignoredProfileIds,
+    });
   }
 
   keepExistingFleetNames(): void {
+    if (this.state.kind !== 'fleet-identity-choice') return;
+    this.set({
+      kind: 'coordinator-choice',
+      profiles: this.state.profiles,
+      fandom: null,
+      ignoredProfileIds: this.state.ignoredProfileIds,
+    });
+  }
+
+  reviewExistingFleet(): void {
     if (this.state.kind !== 'existing-fleet') return;
     this.set({ kind: 'fleet-selection', profiles: this.state.profiles });
   }
@@ -150,9 +165,8 @@ export class Wizard {
     const selectedIds = [...new Set(profileIds)].filter((id) => allowed.has(id));
     if (selectedIds.length === 0) return;
     this.set({
-      kind: 'coordinator-choice',
+      kind: 'fleet-identity-choice',
       profiles: profiles.filter((profile) => selectedIds.includes(profile.id)),
-      fandom: null,
       ignoredProfileIds: profiles
         .map((profile) => profile.id)
         .filter((id) => !selectedIds.includes(id)),
@@ -189,7 +203,12 @@ export class Wizard {
           profile: byId.get(character.profileId)!,
           character,
         }));
-        this.set({ kind: 'fleet-preview', proposals, fandom: trimmed });
+        this.set({
+          kind: 'fleet-preview',
+          proposals,
+          fandom: trimmed,
+          ignoredProfileIds: ignoredProfileIds ?? [],
+        });
         return;
       }
 
@@ -228,6 +247,10 @@ export class Wizard {
     const selected = [...new Set(renameProfileIds)].filter(
       (id) => allowed.has(id) && tiled.includes(id),
     );
+    const ignoredProfileIds = [
+      ...this.state.ignoredProfileIds,
+      ...proposals.map((proposal) => proposal.profile.id).filter((id) => !tiled.includes(id)),
+    ];
     this.set({ kind: 'fleet-saving', proposals, selectedProfileIds: selected });
     try {
       for (const proposal of proposals) {
@@ -256,9 +279,7 @@ export class Wizard {
         kind: 'coordinator-choice',
         profiles: profiles.filter((profile) => tiled.includes(profile.id)),
         fandom: proposals[0]?.character.fandom ?? null,
-        ignoredProfileIds: proposals
-          .map((proposal) => proposal.profile.id)
-          .filter((id) => !tiled.includes(id)),
+        ignoredProfileIds: [...new Set(ignoredProfileIds)],
       });
     } catch (err) {
       this.set({

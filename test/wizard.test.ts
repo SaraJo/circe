@@ -92,6 +92,13 @@ async function toMeet(base: Scenario) {
   return { hermes, w };
 }
 
+describe('the opening screen', () => {
+  it('waits for the user before checking the runtime', () => {
+    const w = new Wizard(new FakeHermes(scenario(INSTALLED_EMPTY)));
+    expect(w.state).toEqual({ kind: 'welcome' });
+  });
+});
+
 describe('a machine with no Hermes', () => {
   it('stops at the install screen', async () => {
     const w = new Wizard(new FakeHermes(FRESH_MACHINE));
@@ -244,15 +251,17 @@ describe('adopting an existing Hermes fleet', () => {
 
   it('lets the user keep existing names while choosing which agents become tiles', async () => {
     const { hermes, wizard } = await adoptionWizard();
-    wizard.keepExistingFleetNames();
+    wizard.reviewExistingFleet();
     expect(wizard.state.kind).toBe('fleet-selection');
 
     wizard.acceptFleetSelection(['writer']);
     expect(wizard.state).toMatchObject({
-      kind: 'coordinator-choice',
+      kind: 'fleet-identity-choice',
       profiles: [{ id: 'writer', displayName: 'Writer' }],
       ignoredProfileIds: ['default'],
     });
+    wizard.keepExistingFleetNames();
+    expect(wizard.state.kind).toBe('coordinator-choice');
     await wizard.chooseExistingCoordinator(null);
 
     expect(JSON.parse((await hermes.readHomeFile(LAST_LAUNCH_PATH))!)).toMatchObject({
@@ -264,6 +273,8 @@ describe('adopting an existing Hermes fleet', () => {
 
   it('uses each existing persona as data when proposing fandom identities', async () => {
     const { hermes, wizard } = await adoptionWizard();
+    wizard.reviewExistingFleet();
+    wizard.acceptFleetSelection(['default', 'writer']);
     wizard.personalizeExistingFleet();
     await wizard.submitFleetFandom('Star Trek');
 
@@ -276,6 +287,8 @@ describe('adopting an existing Hermes fleet', () => {
   it('does not rename an agent excluded from Circe even if its rename id is submitted', async () => {
     const { hermes, wizard } = await adoptionWizard();
     const defaultBefore = await hermes.readHomeFile('SOUL.md');
+    wizard.reviewExistingFleet();
+    wizard.acceptFleetSelection(['default', 'writer']);
     wizard.personalizeExistingFleet();
     await wizard.submitFleetFandom('Star Trek');
 
@@ -292,6 +305,8 @@ describe('adopting an existing Hermes fleet', () => {
   it('renames and skins only the agents selected in the preview', async () => {
     const { hermes, wizard } = await adoptionWizard();
     const defaultBefore = await hermes.readHomeFile('SOUL.md');
+    wizard.reviewExistingFleet();
+    wizard.acceptFleetSelection(['default', 'writer']);
     wizard.personalizeExistingFleet();
     await wizard.submitFleetFandom('Star Trek');
     expect(wizard.state.kind).toBe('fleet-preview');
@@ -332,6 +347,8 @@ describe('adopting an existing Hermes fleet', () => {
       ],
     });
 
+    wizard.reviewExistingFleet();
+    wizard.acceptFleetSelection(['default', 'writer']);
     wizard.personalizeExistingFleet();
     await wizard.submitFleetFandom('Star Trek');
     await wizard.acceptFleetRenames(['default'], ['default', 'writer']);
@@ -348,8 +365,9 @@ describe('adopting an existing Hermes fleet', () => {
   it('can add orchestration to an existing agent without rewriting its persona', async () => {
     const { hermes, wizard } = await adoptionWizard();
     const before = await hermes.readHomeFile('profiles/writer/SOUL.md');
-    wizard.keepExistingFleetNames();
+    wizard.reviewExistingFleet();
     wizard.acceptFleetSelection(['default', 'writer']);
+    wizard.keepExistingFleetNames();
     await wizard.chooseExistingCoordinator('writer');
 
     expect(wizard.state).toEqual({
@@ -372,8 +390,9 @@ describe('adopting an existing Hermes fleet', () => {
 
   it('can preserve the fleet and skip orchestration', async () => {
     const { hermes, wizard } = await adoptionWizard();
-    wizard.keepExistingFleetNames();
+    wizard.reviewExistingFleet();
     wizard.acceptFleetSelection(['default', 'writer']);
+    wizard.keepExistingFleetNames();
     await wizard.chooseExistingCoordinator(null);
     expect(wizard.state).toEqual({
       kind: 'fleet-launching',
@@ -393,8 +412,9 @@ describe('adopting an existing Hermes fleet', () => {
   it('can create a dedicated coordinator beside the existing profiles', async () => {
     const { hermes, wizard } = await adoptionWizard();
     const defaultBefore = await hermes.readHomeFile('SOUL.md');
-    wizard.keepExistingFleetNames();
+    wizard.reviewExistingFleet();
     wizard.acceptFleetSelection(['default', 'writer']);
+    wizard.keepExistingFleetNames();
     wizard.beginNewCoordinator();
     await wizard.submitFleetFandom("Hitchhiker's Guide");
     expect(wizard.state.kind).toBe('new-coordinator-preview');
@@ -841,6 +861,7 @@ describe('onboarding copy (spec §1.4, amended 2026-08-18)', () => {
         'fandom',
         'fleetDeriving',
         'fleetFandom',
+        'fleetIdentityChoice',
         'fleetPreview',
         'fleetSelection',
         'launching',
@@ -848,6 +869,7 @@ describe('onboarding copy (spec §1.4, amended 2026-08-18)', () => {
         'newCoordinator',
         'provider',
         'runtime',
+        'runtimeChecking',
         'saving',
         'welcome',
         'writeFailed',
@@ -866,6 +888,7 @@ describe('onboarding copy (spec §1.4, amended 2026-08-18)', () => {
   it('glosses Hermes the first time it names it, wherever in the flow that first happens', () => {
     const order = [
       'welcome',
+      'runtimeChecking',
       'runtime',
       'provider',
       'fandom',

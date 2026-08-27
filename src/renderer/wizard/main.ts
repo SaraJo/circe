@@ -9,11 +9,13 @@ declare global {
     circe: {
       onStep(cb: (s: WizardStep) => void): void;
       ready(): void;
+      start(): void;
       submitFandom(text: string): void;
       retry(): void;
       accept(): void;
       confirmClaim(): void;
       declineClaim(): void;
+      reviewFleet(): void;
       personalizeFleet(): void;
       keepFleetNames(): void;
       acceptFleetSelection(profileIds: string[]): void;
@@ -149,11 +151,9 @@ function render(step: WizardStep): void {
   screenEl.replaceChildren();
 
   switch (step.kind) {
-    case 'welcome':
-    case 'runtime-checking':
-      screenEl.append(
-        el(`
-        <section class="screen intro">
+    case 'welcome': {
+      const node = el(`
+        <section class="screen welcome-screen">
           <div class="brand-mark" aria-hidden="true">
             <svg viewBox="0 0 180 132" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M52 29C74 13 112 14 136 37" />
@@ -172,9 +172,26 @@ function render(step: WizardStep): void {
           <h1>${COPY.welcome.title}</h1>
           <p class="lead">${COPY.welcome.lead}</p>
           <p class="sub">${COPY.welcome.sub}</p>
-          <p class="status">${COPY.welcome.status}</p>
+          <div class="actions welcome-actions">
+            <button class="primary" id="start">${COPY.welcome.action}</button>
+          </div>
         </section>
-      `),
+      `);
+      node.querySelector('#start')!.addEventListener('click', () => window.circe.start());
+      screenEl.append(node);
+      break;
+    }
+
+    case 'runtime-checking':
+      screenEl.append(
+        el(`
+          <section class="screen working">
+            <h1>${COPY.runtimeChecking.title}</h1>
+            <p class="lead">${COPY.runtimeChecking.lead}</p>
+            <p class="status">${COPY.runtimeChecking.status}</p>
+            <div class="spinner"></div>
+          </section>
+        `),
       );
       break;
 
@@ -220,8 +237,31 @@ function render(step: WizardStep): void {
           <p class="lead">${COPY.existingFleet.lead}</p>
           <div class="fleet-list" aria-label="Existing agents"></div>
           <div class="actions">
-            <button class="primary" id="personalize">${COPY.existingFleet.personalize}</button>
-            <button class="quiet" id="keep">${COPY.existingFleet.keep}</button>
+            <button class="primary" id="review-fleet">${COPY.existingFleet.action}</button>
+          </div>
+        </section>
+      `);
+      const list = node.querySelector('.fleet-list')!;
+      for (const profile of step.profiles) {
+        const row = el('<div class="fleet-row"><strong></strong><span></span></div>');
+        row.querySelector('strong')!.textContent = profile.displayName;
+        row.querySelector('span')!.textContent = profile.id;
+        list.append(row);
+      }
+      node.querySelector('#review-fleet')!.addEventListener('click', () => window.circe.reviewFleet());
+      screenEl.append(node);
+      break;
+    }
+
+    case 'fleet-identity-choice': {
+      const node = el(`
+        <section class="screen fleet-adoption">
+          <h1>${COPY.fleetIdentityChoice.title}</h1>
+          <p class="lead">${COPY.fleetIdentityChoice.lead}</p>
+          <div class="fleet-list" aria-label="Selected agents"></div>
+          <div class="actions">
+            <button class="primary" id="personalize">${COPY.fleetIdentityChoice.personalize}</button>
+            <button class="quiet" id="keep">${COPY.fleetIdentityChoice.keep}</button>
           </div>
         </section>
       `);
@@ -321,7 +361,7 @@ function render(step: WizardStep): void {
 
     case 'fleet-derive-failed': {
       const node = el(`
-        <section class="screen">
+        <section class="screen error">
           <h1>${COPY.deriveFailed.title}</h1>
           <p class="lead"></p>
           <div class="actions"><button class="primary" id="retry-fleet">${COPY.deriveFailed.action}</button></div>
@@ -339,7 +379,6 @@ function render(step: WizardStep): void {
           <h1>${COPY.fleetPreview.title}</h1>
           <p class="lead">${COPY.fleetPreview.lead}</p>
           <div class="fleet-proposals"></div>
-          <p class="status selection-status" hidden>${COPY.fleetSelection.required}</p>
           <div class="actions"><button class="primary" id="apply-fleet">${COPY.fleetPreview.action}</button></div>
         </section>
       `);
@@ -347,23 +386,28 @@ function render(step: WizardStep): void {
       for (const proposal of step.proposals) {
         const row = el(`
           <div class="proposal-row">
-            <input class="tile-toggle" type="checkbox" checked />
             <span class="proposal-copy"><strong></strong><small></small></span>
             <span class="palette-preview"><i></i><i></i><i></i></span>
-            <label class="rename-option"><input class="rename-toggle" type="checkbox" checked /> Use suggested identity</label>
+            <label class="rename-option">
+              <input class="rename-toggle" type="checkbox" checked />
+              <span><strong></strong><small></small></span>
+            </label>
           </div>
         `);
-        const tileToggle = row.querySelector<HTMLInputElement>('.tile-toggle')!;
         const renameToggle = row.querySelector<HTMLInputElement>('.rename-toggle')!;
-        tileToggle.value = proposal.profile.id;
         renameToggle.value = proposal.profile.id;
-        tileToggle.setAttribute('aria-label', `Show ${proposal.profile.displayName} as a Circe tile`);
-        tileToggle.addEventListener('change', () => {
-          renameToggle.disabled = !tileToggle.checked;
-          row.classList.toggle('excluded', !tileToggle.checked);
-        });
         row.querySelector('strong')!.textContent = `${proposal.profile.displayName} → ${proposal.character.name}`;
         row.querySelector('small')!.textContent = proposal.character.tagline;
+        const option = row.querySelector('.rename-option')!;
+        option.querySelector('strong')!.textContent = `Use ${proposal.character.name}`;
+        option.querySelector('small')!.textContent = `Uncheck to keep ${proposal.profile.displayName}`;
+        renameToggle.setAttribute(
+          'aria-label',
+          `Use ${proposal.character.name} instead of ${proposal.profile.displayName}`,
+        );
+        renameToggle.addEventListener('change', () => {
+          row.classList.toggle('kept', !renameToggle.checked);
+        });
         const colours = [proposal.character.palette.bg, proposal.character.palette.border, proposal.character.palette.accent];
         row.querySelectorAll<HTMLElement>('.palette-preview i').forEach((swatch, index) => {
           swatch.style.background = colours[index]!;
@@ -371,15 +415,11 @@ function render(step: WizardStep): void {
         proposals.append(row);
       }
       node.querySelector('#apply-fleet')!.addEventListener('click', () => {
-        const tileIds = Array.from(
-          node.querySelectorAll<HTMLInputElement>('.proposal-row .tile-toggle:checked'),
-        ).map((checkbox) => checkbox.value);
         const renameIds = Array.from(
-          node.querySelectorAll<HTMLInputElement>('.proposal-row .rename-toggle:checked:not(:disabled)'),
+          node.querySelectorAll<HTMLInputElement>('.proposal-row .rename-toggle:checked'),
         ).map((checkbox) => checkbox.value);
-        const status = node.querySelector<HTMLElement>('.selection-status')!;
-        status.hidden = tileIds.length > 0;
-        if (tileIds.length > 0) window.circe.acceptFleetRenames(renameIds, tileIds);
+        const tileIds = step.proposals.map((proposal) => proposal.profile.id);
+        window.circe.acceptFleetRenames(renameIds, tileIds);
       });
       screenEl.append(node);
       break;
@@ -451,7 +491,7 @@ function render(step: WizardStep): void {
 
     case 'adoption-write-failed': {
       const node = el(`
-        <section class="screen">
+        <section class="screen error">
           <h1>${COPY.adoptionFailed.title}</h1>
           <p class="lead"></p>
           <div class="actions"><button class="primary" id="resume-adoption">${COPY.adoptionFailed.action}</button></div>
@@ -545,7 +585,7 @@ function render(step: WizardStep): void {
 
     case 'derive-failed': {
       const node = el(`
-        <section class="screen">
+        <section class="screen error">
           <h1>${COPY.deriveFailed.title}</h1>
           <p class="lead"></p>
           <div class="actions">
@@ -618,7 +658,7 @@ function render(step: WizardStep): void {
 
     case 'write-failed': {
       const node = el(`
-        <section class="screen">
+        <section class="screen error">
           <h1>${COPY.writeFailed.title}</h1>
           <p class="lead"></p>
           <p class="status"></p>

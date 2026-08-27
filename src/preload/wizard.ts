@@ -5,11 +5,13 @@ contextBridge.exposeInMainWorld('circe', {
   onStep: (cb: (s: WizardStep) => void) =>
     ipcRenderer.on('wizard:step', (_e, s: WizardStep) => cb(s)),
   ready: () => ipcRenderer.send('wizard:ready'),
+  start: () => ipcRenderer.send('wizard:start'),
   submitFandom: (text: string) => ipcRenderer.send('wizard:fandom', text),
   retry: () => ipcRenderer.send('wizard:retry'),
   accept: () => ipcRenderer.send('wizard:accept'),
   confirmClaim: () => ipcRenderer.send('wizard:confirm-claim'),
   declineClaim: () => ipcRenderer.send('wizard:decline-claim'),
+  reviewFleet: () => ipcRenderer.send('wizard:review-fleet'),
   personalizeFleet: () => ipcRenderer.send('wizard:personalize-fleet'),
   keepFleetNames: () => ipcRenderer.send('wizard:keep-fleet-names'),
   acceptFleetSelection: (profileIds: string[]) =>

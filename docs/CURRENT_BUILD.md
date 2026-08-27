@@ -18,15 +18,18 @@ of state needed to reopen a conversation.
 ## What works now
 
 - Detects Hermes and whether a model provider is available.
+- Keeps the opening explanation on screen until the user explicitly starts the
+  setup review.
 - Onboards the default profile from a fandom or universe chosen by the user.
 - Detects unadopted existing fleets and inventories them without writing.
 - Includes Hermes's root `default` agent in an adopted fleet even when its
   existing `SOUL.md` has no Circe-style H1 heading.
 - Lets the user choose which existing agents receive Circe tiles without
   deleting or modifying excluded Hermes profiles.
-- Can propose role-aware fandom names and palettes for the existing fleet in one
-  model call; tile inclusion and renaming are independent, profile ids stay
-  fixed, and each changed `SOUL.md` is backed up before its heading changes.
+- Can propose role-aware fandom names and palettes for the selected fleet in one
+  model call. Tile inclusion is chosen first; every suggestion then has its own
+  keep-or-use control. Profile ids stay fixed, and each changed `SOUL.md` is
+  backed up before its heading changes.
 - Lets an existing user keep every name, install orchestration on one chosen
   agent, create a separate cloned coordinator, or skip orchestration.
 - Provides **Circe → Run Onboarding Again…**, with confirmation and a timestamped

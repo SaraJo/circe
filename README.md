@@ -17,8 +17,9 @@ For a small trusted test, use the guided [beta checklist](docs/BETA_TEST.md).
    that a model provider is connected.
 2. Detects whether this is a new setup or an existing fleet that has not yet
    made its Circe choices.
-3. Existing users can preserve everything, preview fandom-based names and
-   colours per agent, and choose an orchestrator without changing profile ids.
+3. Existing users choose agents individually for Circe tiles, then accept or
+   reject each fandom-based name and colour suggestion independently. Excluded
+   agents stay untouched in Hermes, and profile ids never change.
 4. New users are asked what fandom, universe, or community they love.
 5. Asks your model to pick the coordinator from that world, and three colours
    drawn from them.

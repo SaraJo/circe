@@ -96,6 +96,11 @@ export type WizardStep =
   | { kind: 'existing-fleet'; profiles: HermesProfile[] }
   | { kind: 'fleet-selection'; profiles: HermesProfile[] }
   | {
+      kind: 'fleet-identity-choice';
+      profiles: HermesProfile[];
+      ignoredProfileIds: string[];
+    }
+  | {
       kind: 'fleet-fandom';
       profiles: HermesProfile[];
       intent: FleetFandomIntent;
@@ -116,7 +121,12 @@ export type WizardStep =
       message: string;
       ignoredProfileIds?: string[];
     }
-  | { kind: 'fleet-preview'; proposals: FleetIdentityProposal[]; fandom: string }
+  | {
+      kind: 'fleet-preview';
+      proposals: FleetIdentityProposal[];
+      fandom: string;
+      ignoredProfileIds: string[];
+    }
   | {
       kind: 'fleet-saving';
       proposals: FleetIdentityProposal[];

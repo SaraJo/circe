@@ -18,23 +18,17 @@
  */
 export const COPY = {
   welcome: {
-    title: 'Meet your first agent',
-    lead: "Circe gives you AI assistants that live on your own computer. They keep what they learn, and they're yours.",
-    // §6.2 Step 1 requires this screen to answer "what happens next", and the
-    // answer is the coordinator: the wizard makes one agent whose job is
-    // helping you build the others. The warm rewrite briefly lost that to "at
-    // the end you'll meet the first one", which pushed the idea three screens
-    // later and left the one screen Circe gets to explain itself explaining
-    // less than it used to.
-    sub: "It takes about a minute. At the end you'll meet your coordinator, the agent whose job is helping you build the others.",
-    // No `action` field: this screen auto-advances (`Wizard.start()` fires
-    // as soon as the renderer signals ready), so there is nothing a
-    // "Start" button would do that isn't already happening. A dead button
-    // would be worse than none — see task-5-report.md.
-    // The very first mention of Hermes in the product — it has to carry the
-    // gloss itself, because this status line can render before anything
-    // else does (I3).
-    status: "Checking for Hermes, the open-source software your agents run on…",
+    title: 'Meet your agents',
+    lead: "Circe gives your local AI assistants a home on your desktop. They keep what they learn, and they're yours.",
+    // Existing and new users share this stable first screen. It describes the
+    // next decision without pretending every person is creating a first agent.
+    sub: "If you already have agents, you'll choose which appear and whether each keeps its identity. If you're starting fresh, Circe helps create a coordinator that can build the rest.",
+    action: 'Review my setup',
+  },
+  runtimeChecking: {
+    title: 'Looking for your agents',
+    lead: 'Circe is checking Hermes, the open-source software your agents run on. Nothing is being changed.',
+    status: 'This usually takes only a few seconds.',
   },
   runtime: {
     title: 'One thing to install first',
@@ -66,15 +60,20 @@ export const COPY = {
   },
   existingFleet: {
     title: 'Your agents are already here',
-    lead: 'Circe found an existing Hermes setup. Nothing will be renamed, recoloured, or given new responsibilities unless you choose it and confirm the preview.',
-    personalize: 'Give them Circe identities',
-    keep: 'Keep their current names',
+    lead: 'Circe found an existing Hermes setup. Next you will review each agent. Nothing is renamed, recoloured, hidden, or given new responsibilities until you confirm it.',
+    action: 'Review agents individually',
   },
   fleetSelection: {
     title: 'Choose your Circe tiles',
     lead: 'Checked agents will open as Circe tiles. Unchecked agents stay safely in Hermes and are not deleted or changed.',
     action: 'Continue with selected agents',
     required: 'Choose at least one agent to use in Circe.',
+  },
+  fleetIdentityChoice: {
+    title: 'What about their identities?',
+    lead: 'You can keep every selected agent exactly as named, or ask Circe for fandom suggestions and accept or reject each suggestion individually.',
+    personalize: 'Suggest identities',
+    keep: 'Keep all current identities',
   },
   fleetFandom: {
     renameTitle: 'Choose a world for your fleet',
@@ -90,8 +89,8 @@ export const COPY = {
     coordinatorLead: 'Looking through {{FANDOM}} for the one who keeps everyone else on track. This can take up to a minute.',
   },
   fleetPreview: {
-    title: 'Choose your tiles and identities',
-    lead: 'Choose which agents open in Circe, then decide whether each keeps its current name or uses the suggested fandom identity. Agents left out remain untouched in Hermes.',
+    title: 'Choose each identity',
+    lead: 'Each selected agent is listed separately. Leave its box checked to use the suggestion, or uncheck it to keep that agent’s current name and colours.',
     action: 'Apply choices',
     savingTitle: 'Updating your fleet',
     savingLead: 'Saving backups, names, and colours before Circe opens any agents.',

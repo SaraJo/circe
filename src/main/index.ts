@@ -283,13 +283,14 @@ function registerIpc(): void {
     if (!wizard) return;
     const w = wizard;
     if (wizardWin && !wizardWin.isDestroyed()) wizardWin.webContents.send('wizard:step', w.state);
-    void w.start();
   });
+  ipcMain.on('wizard:start', () => void wizard?.start());
   ipcMain.on('wizard:fandom', (_e, text: string) => void wizard?.submitFandom(text));
   ipcMain.on('wizard:retry', () => void wizard?.retryDerivation());
   ipcMain.on('wizard:accept', () => void wizard?.accept());
   ipcMain.on('wizard:confirm-claim', () => void wizard?.confirmClaimDefault());
   ipcMain.on('wizard:decline-claim', () => wizard?.declineClaimDefault());
+  ipcMain.on('wizard:review-fleet', () => wizard?.reviewExistingFleet());
   ipcMain.on('wizard:personalize-fleet', () => wizard?.personalizeExistingFleet());
   ipcMain.on('wizard:keep-fleet-names', () => wizard?.keepExistingFleetNames());
   ipcMain.on('wizard:accept-fleet-selection', (_e, profileIds: unknown) => {
