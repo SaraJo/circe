@@ -43,6 +43,8 @@ export interface AvatarProvenance {
   articleUrl: string;
   imageUrl: string;
   license: AvatarLicense;
+  /** The stored file is a local derivative when this field is present. */
+  treatment?: 'pixel-art-32';
   /** ISO 8601, so a record can be aged without re-fetching anything. */
   retrievedAt: string;
 }
@@ -61,7 +63,14 @@ export async function saveAvatar(
   profileId: string,
   find: Pick<
     AvatarFind,
-    'bytes' | 'contentType' | 'source' | 'title' | 'articleUrl' | 'imageUrl' | 'license'
+    | 'bytes'
+    | 'contentType'
+    | 'source'
+    | 'title'
+    | 'articleUrl'
+    | 'imageUrl'
+    | 'license'
+    | 'treatment'
   >,
   toPng: ToPng,
 ): Promise<boolean> {
@@ -83,6 +92,7 @@ export async function saveAvatar(
     articleUrl: find.articleUrl,
     imageUrl: find.imageUrl,
     license: find.license,
+    ...(find.treatment ? { treatment: find.treatment } : {}),
     retrievedAt: new Date().toISOString(),
   };
   try {

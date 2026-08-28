@@ -36,6 +36,9 @@ of state needed to reopen a conversation.
   setup-record backup, so fleet visibility, identities, and coordinator choice
   can be revisited without deleting agents, conversations, or tab history.
 - Writes the coordinator persona and installs the `circe-orchestrator` skill.
+- Turns portraits into face-focused 32×32 pixel-art avatars while preserving
+  source and treatment provenance, and lets users click any tile avatar to
+  replace it with a local PNG or JPEG.
 - Installs a Circe operating reference with that skill, covering automatic tile
   discovery, profile file locations, theming, private state, and troubleshooting.
 - Records the chosen orchestrator separately from the foreground tile and safely

@@ -52,6 +52,7 @@ body {
  * that is not a control.
  */
 .tile {
+  position: relative;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -66,6 +67,62 @@ body {
   backdrop-filter: blur(24px) saturate(140%);
   -webkit-backdrop-filter: blur(24px) saturate(140%);
   -webkit-app-region: drag;
+}
+#orchestrator-help {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 10;
+  -webkit-app-region: no-drag;
+}
+#orchestrator-help-trigger {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--tile-border);
+  border-radius: 50%;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.16);
+  font: 600 13px/20px -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+  cursor: help;
+}
+#orchestrator-help-trigger:hover,
+#orchestrator-help-trigger:focus-visible {
+  border-color: var(--accent-soft);
+  background: var(--accent-glow);
+  outline: none;
+}
+#orchestrator-help-tooltip {
+  position: absolute;
+  top: 30px;
+  right: 0;
+  width: 320px;
+  padding: 12px 14px 12px 32px;
+  border: 1px solid var(--tile-border);
+  border-radius: 12px;
+  color: var(--text);
+  background: var(--tile-bg);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
+  font-size: 12px;
+  line-height: 1.4;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
+  pointer-events: none;
+}
+#orchestrator-help-tooltip ol {
+  margin: 0;
+  padding-left: 12px;
+}
+#orchestrator-help-tooltip li + li {
+  margin-top: 7px;
+}
+#orchestrator-help:hover #orchestrator-help-tooltip,
+#orchestrator-help:focus-within #orchestrator-help-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
 }
 #bar,
 #tabs,
@@ -123,6 +180,21 @@ footer {
   /* Scaled with the circle so the initials fallback still fills it. */
   font-size: 14px;
   font-weight: 600;
+  padding: 0;
+  color: var(--text);
+  background: transparent;
+  font-family: inherit;
+  appearance: none;
+  cursor: pointer;
+  transition: border-color 120ms ease, transform 120ms ease;
+}
+#bar .avatar:hover {
+  border-color: var(--accent);
+  transform: scale(1.04);
+}
+#bar .avatar:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 #bar .avatar img {
   position: absolute;
@@ -130,6 +202,7 @@ footer {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  image-rendering: pixelated;
 }
 
 #tabs {
@@ -141,6 +214,81 @@ footer {
 }
 #tabs[hidden] {
   display: none;
+}
+#context-health {
+  margin: 0 0 9px;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.12);
+  font-size: 11px;
+  -webkit-app-region: no-drag;
+}
+#context-health[hidden],
+#context-health-advice[hidden],
+#handoff[hidden] {
+  display: none;
+}
+.context-health-summary,
+#context-health-advice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+#context-health-label {
+  color: var(--muted);
+}
+#context-health-value {
+  font-variant-numeric: tabular-nums;
+}
+.context-health-track {
+  height: 3px;
+  margin-top: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+}
+#context-health-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-soft);
+  transition: width 180ms ease, background 180ms ease;
+}
+#context-health.warning {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+#context-health.critical {
+  border-color: rgba(255, 166, 120, 0.55);
+  background: rgba(90, 30, 15, 0.22);
+}
+#context-health.critical #context-health-fill {
+  background: #ffa678;
+}
+#context-health-advice {
+  align-items: flex-start;
+  margin-top: 7px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+#handoff {
+  flex: none;
+  max-width: 145px;
+  padding: 4px 7px;
+  border: 1px solid var(--tile-border);
+  border-radius: 7px;
+  color: var(--text);
+  background: var(--accent-glow);
+  font: inherit;
+  cursor: pointer;
+}
+#handoff:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+#handoff:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 #tab-list {
   display: flex;

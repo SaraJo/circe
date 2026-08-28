@@ -76,6 +76,8 @@ export const COPY = {
     keep: 'Keep all current identities',
   },
   fleetFandom: {
+    keepTitle: 'Where are your agents from?',
+    keepLead: 'Circe will keep every current identity unchanged. The shared world is used only to verify and find the right face for each agent.',
     renameTitle: 'Choose a world for your fleet',
     renameLead: 'Circe will propose a distinct name and colour palette for each existing agent, matched to the role it already has. Their profile ids and instructions stay in place.',
     coordinatorTitle: 'Choose a world for your coordinator',
@@ -83,6 +85,8 @@ export const COPY = {
     action: 'Show me',
   },
   fleetDeriving: {
+    keepTitle: 'Finding their faces',
+    keepLead: 'Keeping every current identity and looking for verified faces from {{FANDOM}}. Some agents may keep initials when no trustworthy image is available.',
     renameTitle: 'Finding your fleet',
     renameLead: 'Matching each existing role with a distinct identity from {{FANDOM}}. This can take up to a minute.',
     coordinatorTitle: 'Finding your coordinator',

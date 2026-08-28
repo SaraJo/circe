@@ -9,6 +9,7 @@ import {
 } from './fake/hermes';
 import { LAST_LAUNCH_PATH } from '../src/main/startup';
 import { adoptableProfiles } from '../src/main/profiles';
+import { dataUrl } from '../src/main/avatarStore';
 // Pulled from a leaf module (not `../src/renderer/wizard/main`) on purpose:
 // `main.ts` touches `document`/`window.circe` at module load, which does not
 // exist under this suite's `node` test environment. `copy.ts` is pure data,
@@ -261,14 +262,65 @@ describe('adopting an existing Hermes fleet', () => {
       ignoredProfileIds: ['default'],
     });
     wizard.keepExistingFleetNames();
+    expect(wizard.state).toMatchObject({ kind: 'fleet-fandom', intent: 'keep' });
+    await wizard.submitFleetFandom('Star Trek');
     expect(wizard.state.kind).toBe('coordinator-choice');
     await wizard.chooseExistingCoordinator(null);
+    expect(await hermes.readHomeFile('profiles/writer/circe.json')).not.toBeNull();
 
     expect(JSON.parse((await hermes.readHomeFile(LAST_LAUNCH_PATH))!)).toMatchObject({
       mainProfileId: 'writer',
       ignoredProfileIds: ['default'],
     });
     expect(await hermes.readHomeFile('SOUL.md')).toBe(ADOPTION_BASE.files['SOUL.md']);
+  });
+
+  it('uses the supplied fandom to source faces without renaming retained agents', async () => {
+    const hermes = new FakeHermes({
+      ...ADOPTION_BASE,
+      files: { ...ADOPTION_BASE.files },
+      models: { ...ADOPTION_BASE.models },
+    });
+    const profiles = adoptableProfiles(await hermes.listProfiles());
+    const lookups: Array<{ name: string; fandom: string }> = [];
+    const pixels = new Uint8Array([32, 32, 32]);
+    const wizard = new Wizard(
+      hermes,
+      {
+        deps: {
+          fetchJson: async () => ({}),
+          fetchImage: async () => ({ bytes: pixels, contentType: 'image/png' }),
+        },
+        toPng: () => pixels,
+        find: async (name, fandom) => {
+          lookups.push({ name, fandom });
+          return {
+            bytes: pixels,
+            contentType: 'image/png',
+            source: 'wikipedia',
+            articleUrl: `https://en.wikipedia.org/wiki/${name}`,
+            imageUrl: `https://upload.wikimedia.org/wikipedia/commons/${name}.png`,
+            title: name,
+            license: 'commons',
+          };
+        },
+      },
+      profiles,
+    );
+    await wizard.start();
+    wizard.reviewExistingFleet();
+    wizard.acceptFleetSelection(['default', 'writer']);
+    wizard.keepExistingFleetNames();
+
+    await wizard.submitFleetFandom('Star Trek');
+
+    expect(lookups).toEqual([
+      { name: 'Research', fandom: 'Star Trek' },
+      { name: 'Writer', fandom: 'Star Trek' },
+    ]);
+    expect(await hermes.readHomeFile('SOUL.md')).toBe(ADOPTION_BASE.files['SOUL.md']);
+    expect(await hermes.readHomeFileBytes('avatar.png')).toEqual(pixels);
+    expect(await hermes.readHomeFileBytes('profiles/writer/avatar.png')).toEqual(pixels);
   });
 
   it('uses each existing persona as data when proposing fandom identities', async () => {
@@ -326,6 +378,52 @@ describe('adopting an existing Hermes fleet', () => {
     ).toBe(true);
   });
 
+  it('adds a transformed avatar only to agents whose suggested identities were accepted', async () => {
+    const hermes = new FakeHermes({
+      ...ADOPTION_BASE,
+      files: { ...ADOPTION_BASE.files },
+      models: { ...ADOPTION_BASE.models },
+      replies: [{ match: 'existing assistant', reply: FLEET_REPLY }],
+    });
+    const profiles = adoptableProfiles(await hermes.listProfiles());
+    const source = new Uint8Array([1, 2, 3]);
+    const pixels = new Uint8Array([32, 32, 32]);
+    const wizard = new Wizard(
+      hermes,
+      {
+        deps: {
+          fetchJson: async () => ({}),
+          fetchImage: async () => ({ bytes: source, contentType: 'image/png' }),
+        },
+        toPng: () => pixels,
+        find: async (name) => ({
+          bytes: source,
+          contentType: 'image/png',
+          source: 'wikipedia',
+          articleUrl: `https://en.wikipedia.org/wiki/${name}`,
+          imageUrl: `https://upload.wikimedia.org/wikipedia/commons/${name}.png`,
+          title: name,
+          license: 'commons',
+        }),
+      },
+      profiles,
+    );
+    await wizard.start();
+    wizard.reviewExistingFleet();
+    wizard.acceptFleetSelection(['default', 'writer']);
+    wizard.personalizeExistingFleet();
+    await wizard.submitFleetFandom('Star Trek');
+
+    await wizard.acceptFleetRenames(['writer'], ['default', 'writer']);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(await hermes.readHomeFileBytes('avatar.png')).toBeNull();
+    expect(await hermes.readHomeFileBytes('profiles/writer/avatar.png')).toEqual(pixels);
+    expect(
+      JSON.parse((await hermes.readHomeFile('profiles/writer/avatar.json'))!).treatment,
+    ).toBe('pixel-art-32');
+  });
+
   it('offers and safely skins a headingless default agent beside a configured named agent', async () => {
     const hermes = new FakeHermes({
       ...ADOPTION_BASE,
@@ -368,6 +466,7 @@ describe('adopting an existing Hermes fleet', () => {
     wizard.reviewExistingFleet();
     wizard.acceptFleetSelection(['default', 'writer']);
     wizard.keepExistingFleetNames();
+    await wizard.submitFleetFandom('Star Trek');
     await wizard.chooseExistingCoordinator('writer');
 
     expect(wizard.state).toEqual({
@@ -393,6 +492,7 @@ describe('adopting an existing Hermes fleet', () => {
     wizard.reviewExistingFleet();
     wizard.acceptFleetSelection(['default', 'writer']);
     wizard.keepExistingFleetNames();
+    await wizard.submitFleetFandom('Star Trek');
     await wizard.chooseExistingCoordinator(null);
     expect(wizard.state).toEqual({
       kind: 'fleet-launching',
@@ -415,8 +515,9 @@ describe('adopting an existing Hermes fleet', () => {
     wizard.reviewExistingFleet();
     wizard.acceptFleetSelection(['default', 'writer']);
     wizard.keepExistingFleetNames();
-    wizard.beginNewCoordinator();
     await wizard.submitFleetFandom("Hitchhiker's Guide");
+    wizard.beginNewCoordinator();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(wizard.state.kind).toBe('new-coordinator-preview');
 
     await wizard.acceptNewCoordinator();
@@ -1060,6 +1161,24 @@ describe('the character gets a face', () => {
     await w.start();
     await w.submitFandom("Hitchhiker's");
     expect(w.avatarDataUrl()).toMatch(/^data:image\/png;base64,/);
+  });
+
+  it('previews and stores the transformed 32px treatment rather than the source bytes', async () => {
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
+    const pixels = new Uint8Array([...PNG, 32]);
+    const w = new Wizard(h, {
+      ...avatar(),
+      toPng: () => pixels,
+      find: async () => found,
+    });
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    expect(w.avatarDataUrl()).toBe(dataUrl(pixels, 'image/png'));
+
+    await w.accept();
+
+    expect(await h.readHomeFileBytes('avatar.png')).toEqual(pixels);
+    expect(JSON.parse((await h.readHomeFile('avatar.json'))!).treatment).toBe('pixel-art-32');
   });
 
   it('writes the face into the profile on accept', async () => {

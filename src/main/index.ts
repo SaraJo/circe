@@ -7,7 +7,9 @@ import {
   nativeImage,
   shell,
   type MenuItemConstructorOptions,
+  type OpenDialogOptions,
 } from 'electron';
+import { readFile } from 'node:fs/promises';
 import { RealHermes } from './hermes/real';
 import { Wizard } from './wizard';
 import { adaptTileWindow, createTileWindow, createWizardWindow } from './windows';
@@ -18,16 +20,27 @@ import { archiveLastLaunch, characterFor, readStartup } from './startup';
 import { TileRegistry } from './tiles';
 import { httpDeps } from './avatar';
 import type { HermesProfile } from '../shared/types';
+import { pixelateAvatar } from './pixelAvatar';
+import { detectPrimaryFace } from './faceFocus';
+import { ensureRetainedTheme } from './existingAppearance';
+import { replaceAvatarFromUpload } from './avatarReplacement';
 
 app.setName('Circe');
 
 // `contentType` is unused by `nativeImage`, which sniffs the bytes; it stays in
-// the signature so the store can shortcut a PNG without decoding it.
+// the injected signature shared with the test implementation.
 
 // Wikimedia's API policy asks callers to identify themselves. It lives here and
 // not in `avatar.ts` because it names a host that is never contacted, and the
 // provenance test reads that file's hostnames as outbound destinations.
 const USER_AGENT = 'Circe/0.1 (https://github.com/sarachipps/circe-desktop)';
+
+const avatarDeps = httpDeps((url, init) => fetch(url, init), USER_AGENT);
+
+function toPixelPng(bytes: Uint8Array, _contentType: string): Uint8Array | null {
+  const image = nativeImage.createFromBuffer(Buffer.from(bytes));
+  return pixelateAvatar(image, detectPrimaryFace(image.toPNG()));
+}
 
 let wizardWin: BrowserWindow | null = null;
 let hermes: RealHermes;
@@ -42,7 +55,11 @@ let fleetWatch: (() => void) | null = null;
  * re-derived, so it can only ever agree with what actually booted.
  */
 let mainProfileId: string | null = null;
+/** The only profile whose tile gets the orchestrator help affordance. */
+let orchestratorProfileId: string | null = null;
 let resettingOnboarding = false;
+/** One native picker per profile; repeated clicks must not stack dialogs. */
+const avatarPickers = new Set<string>();
 
 function installApplicationMenu(): void {
   const template: MenuItemConstructorOptions[] = [
@@ -103,6 +120,7 @@ async function runOnboardingAgain(): Promise<void> {
       for (const profileId of tiles.openProfileIds()) tiles.close(profileId);
     }
     mainProfileId = null;
+    orchestratorProfileId = null;
     await boot();
   } catch (err) {
     console.error('Could not restart Circe onboarding.', err);
@@ -148,7 +166,9 @@ function createRegistry(): TileRegistry {
   return new TileRegistry({
     hermes,
     createWindow: (character, profileId, index) =>
-      adaptTileWindow(createTileWindow(character, profileId, index)),
+      adaptTileWindow(
+        createTileWindow(character, profileId, index, profileId === orchestratorProfileId),
+      ),
     createClient: (opts) => new AcpClient(opts),
   });
 }
@@ -156,11 +176,8 @@ function createRegistry(): TileRegistry {
 /** Creates the wizard and its window, and wires the one to the other. */
 function openWizard(existingProfiles: HermesProfile[] = []): void {
   const w = new Wizard(hermes, {
-    deps: httpDeps((url, init) => fetch(url, init), USER_AGENT),
-    toPng: (bytes, contentType) => {
-      const img = nativeImage.createFromBuffer(Buffer.from(bytes));
-      return img.isEmpty() ? null : new Uint8Array(img.toPNG());
-    },
+    deps: avatarDeps,
+    toPng: toPixelPng,
   }, existingProfiles);
   wizard = w;
   wizardWin = createWizardWindow();
@@ -177,6 +194,7 @@ function openWizard(existingProfiles: HermesProfile[] = []): void {
       wizardWin?.close();
       wizardWin = null;
       mainProfileId = s.mainProfileId;
+      orchestratorProfileId = s.openingProfileId;
       void openFleet(s.mainProfileId, s.openingProfileId, s.ignoredProfileIds);
       return;
     }
@@ -191,6 +209,7 @@ function openWizard(existingProfiles: HermesProfile[] = []): void {
     // wizard writes them *before* announcing it, so the agent this spawns
     // reads the character it is supposed to be. See `Wizard.commitAccept`.
     if (s.kind !== 'launching') return;
+    orchestratorProfileId = s.profileId;
     void tiles.launch(s.character, s.profileId, openingMessage(s.character));
     // The handoff is done as soon as the tile is launched, not after the
     // first agent turn: that turn can legitimately run for minutes, and a
@@ -347,6 +366,48 @@ function registerIpc(): void {
     if (profileId === null) return;
     void tiles.clearTab(profileId);
   });
+  ipcMain.on('tile:rollover', (e) => {
+    const profileId = tiles.profileForSender(e.sender);
+    if (profileId === null) return;
+    void tiles.rollover(profileId);
+  });
+  ipcMain.on('tile:choose-avatar', (e) => {
+    const profileId = tiles.profileForSender(e.sender);
+    if (profileId === null || avatarPickers.has(profileId)) return;
+    avatarPickers.add(profileId);
+
+    const sender = e.sender;
+    const parent = BrowserWindow.fromWebContents(sender);
+    void (async () => {
+      try {
+        const options: OpenDialogOptions = {
+          title: 'Choose a replacement avatar',
+          properties: ['openFile'],
+          filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg'] }],
+        };
+        const choice = parent
+          ? await dialog.showOpenDialog(parent, options)
+          : await dialog.showOpenDialog(options);
+        const selectedPath = choice.filePaths[0];
+        if (choice.canceled || !selectedPath) return;
+
+        const bytes = await readFile(selectedPath);
+        const replaced = await replaceAvatarFromUpload(
+          hermes,
+          profileId,
+          bytes,
+          selectedPath,
+          toPixelPng,
+        );
+        if (replaced) tiles.refreshAvatar(profileId);
+      } catch {
+        // Cancelled, unreadable, and invalid images all leave the current face
+        // untouched. Avatar selection should never interrupt a conversation.
+      } finally {
+        avatarPickers.delete(profileId);
+      }
+    })();
+  });
   ipcMain.on('tile:close-tab', (e, index: unknown) => {
     const profileId = tiles.profileForSender(e.sender);
     if (profileId === null || !Number.isInteger(index)) return;
@@ -403,6 +464,14 @@ async function doBoot(): Promise<void> {
   // branch instead of being mistaken for a finished Circe setup.
   const startup = await readStartup(hermes);
   if (startup.kind === 'fleet') {
+    orchestratorProfileId = startup.orchestratorProfileId;
+    const ignored = new Set(startup.ignoredProfileIds);
+    const retained = (await hermes.listProfiles()).filter(
+      (profile) => profile.isReal && !ignored.has(profile.id),
+    );
+    // Profiles without a theme get the same stable non-black fallback,
+    // regardless of where they came from. Existing themes remain untouched.
+    for (const profile of retained) await ensureRetainedTheme(hermes, profile);
     await openFleet(startup.mainProfileId, null, startup.ignoredProfileIds);
   } else {
     openWizard(startup.profiles ?? []);

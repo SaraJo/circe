@@ -42,7 +42,7 @@ const MAX_BYTES = 3_000_000;
  */
 export type AvatarLicense = 'commons' | 'non-free' | 'unknown';
 
-export type AvatarSource = 'wikipedia' | 'fandom';
+export type AvatarSource = 'wikipedia' | 'fandom' | 'upload';
 
 export interface AvatarFind {
   bytes: Uint8Array;
@@ -55,6 +55,8 @@ export interface AvatarFind {
   imageUrl: string;
   title: string;
   license: AvatarLicense;
+  /** Local visual treatment applied after retrieval, never inferred. */
+  treatment?: 'pixel-art-32';
 }
 
 /** What the guardrails agree on before any bytes are fetched. */
@@ -143,8 +145,16 @@ export function fandomTokens(fandom: string): string[] {
 export function mentionsFandom(extract: string, fandom: string): boolean {
   const tokens = fandomTokens(fandom);
   if (tokens.length === 0) return false;
-  const haystack = extract.toLowerCase();
-  return tokens.some((t) => haystack.includes(t));
+  // Users commonly omit punctuation in names such as "Hitchhiker's", and
+  // voice dictation often turns that possessive into the plural
+  // "Hitchhikers". Compare significant word stems rather than raw
+  // substrings so those spellings agree without weakening the guard into a
+  // fuzzy prose match.
+  const stem = (word: string) => word.length > 4 && word.endsWith('s')
+    ? word.slice(0, -1)
+    : word;
+  const inExtract = new Set(fandomTokens(extract).map(stem));
+  return tokens.map(stem).some((token) => inExtract.has(token));
 }
 
 /**

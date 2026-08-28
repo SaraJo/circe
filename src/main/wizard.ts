@@ -13,10 +13,11 @@ import { loadTemplate, renderOrchestratorSoul } from './orchestrator/soulTemplat
 import { installOrchestratorSkill } from './orchestrator/skill';
 import { LAST_LAUNCH_PATH, serializeLastLaunch } from './startup';
 import { writeProfileTheme } from './profileTheme';
-import { soulPath } from './hermes/runtime';
+import { avatarPath, soulPath } from './hermes/runtime';
 import { findAvatar, type AvatarDeps, type AvatarFind, type FindOptions } from './avatar';
 import { findFandomAvatar } from './fandom';
 import { dataUrl, saveAvatar, type ToPng } from './avatarStore';
+import { ensureRetainedTheme } from './existingAppearance';
 
 /**
  * Injected so the whole feature is absent unless wired. `find` is overridable
@@ -88,6 +89,8 @@ export class Wizard {
    * for an `accept()` that has already been and gone.
    */
   private committed = false;
+  /** Prevents a double-click from running the coordinator commit twice. */
+  private coordinatorSaving = false;
 
   constructor(
     private hermes: HermesRuntime,
@@ -145,9 +148,9 @@ export class Wizard {
   keepExistingFleetNames(): void {
     if (this.state.kind !== 'fleet-identity-choice') return;
     this.set({
-      kind: 'coordinator-choice',
+      kind: 'fleet-fandom',
       profiles: this.state.profiles,
-      fandom: null,
+      intent: 'keep',
       ignoredProfileIds: this.state.ignoredProfileIds,
     });
   }
@@ -194,6 +197,37 @@ export class Wizard {
     const { profiles, intent, ignoredProfileIds } = state;
     this.set({ kind: 'fleet-deriving', profiles, intent, fandom: trimmed, ignoredProfileIds });
     try {
+      if (intent === 'keep') {
+        // Existing identities do not carry machine-readable fandom metadata.
+        // Ask for it rather than recognizing a prototype fleet or risking an
+        // unrelated person's photograph from a name-only search.
+        for (const profile of profiles) {
+          const palette = await ensureRetainedTheme(this.hermes, profile);
+          await this.sourceAndWriteAvatar(profile.id, {
+            name: profile.displayName,
+            fullName: profile.displayName,
+            wiki: '',
+            wikiPage: profile.displayName,
+            profileId: profile.id,
+            tagline: '',
+            palette,
+            why: '',
+            fandom: trimmed,
+            voice: '',
+            intro: '',
+            greeting: '',
+            voiceCheck: '',
+          });
+        }
+        if (gen !== this.generation) return;
+        this.set({
+          kind: 'coordinator-choice',
+          profiles,
+          fandom: trimmed,
+          ignoredProfileIds: ignoredProfileIds ?? [],
+        });
+        return;
+      }
       if (intent === 'rename') {
         const inputs = await this.fleetIdentityInputs(profiles);
         const characters = await deriveFleetCharacters(this.hermes, trimmed, inputs);
@@ -273,6 +307,10 @@ export class Wizard {
           backupExisting: true,
         });
         await writeProfileTheme(this.hermes, proposal.profile.id, proposal.character.palette);
+        // Identity approval includes the matching face. This runs in the
+        // background so a slow wiki cannot hold the adoption flow hostage;
+        // the fleet watcher refreshes the tile when avatar.png arrives.
+        void this.sourceAndWriteAvatar(proposal.profile.id, proposal.character);
       }
       const profiles = adoptableProfiles(await this.hermes.listProfiles());
       this.set({
@@ -293,7 +331,7 @@ export class Wizard {
   }
 
   async chooseExistingCoordinator(profileId: string | null): Promise<void> {
-    if (this.state.kind !== 'coordinator-choice') return;
+    if (this.state.kind !== 'coordinator-choice' || this.coordinatorSaving) return;
     const profiles = this.state.profiles;
     const ignoredProfileIds = this.state.ignoredProfileIds;
     const selected = profileId === null ? null : profiles.find((profile) => profile.id === profileId);
@@ -303,7 +341,11 @@ export class Wizard {
       profiles.find((profile) => profile.id === 'default')?.id ??
       profiles[0]?.id;
     if (!mainProfileId) return;
+    this.coordinatorSaving = true;
     try {
+      for (const profile of profiles) {
+        await ensureRetainedTheme(this.hermes, profile);
+      }
       if (selected) await installOrchestratorSkill(this.hermes, selected.id);
       await this.hermes.writeHomeFile(
         LAST_LAUNCH_PATH,
@@ -316,6 +358,7 @@ export class Wizard {
         ignoredProfileIds,
       });
     } catch (err) {
+      this.coordinatorSaving = false;
       this.set({
         kind: 'adoption-write-failed',
         message: err instanceof Error ? err.message : String(err),
@@ -345,6 +388,7 @@ export class Wizard {
         contents: renderOrchestratorSoul(character, await loadTemplate()),
       });
       await writeProfileTheme(this.hermes, profileId, character.palette);
+      void this.sourceAndWriteAvatar(profileId, character);
       await installOrchestratorSkill(this.hermes, profileId);
       await this.hermes.writeHomeFile(
         LAST_LAUNCH_PATH,
@@ -493,35 +537,22 @@ export class Wizard {
    * D1 established for palettes arriving late.
    */
   private lookUpFace(character: Character, generation: number): void {
-    const avatar = this.avatar;
-    if (!avatar) return;
-    const find = avatar.find ?? findAvatar;
-    const findFandom = avatar.findFandom ?? findFandomAvatar;
-    // Wikipedia first: it is the only source that says anything about an
-    // image's licence, so it keeps first refusal. Fandom carries the tail it
-    // does not have, and is asked only when the first source came back empty.
-    const lookUp = async (): Promise<AvatarFind | null> => {
-      const first = await find(character.name, character.fandom, avatar.deps, {
-        fullName: character.fullName,
-      });
-      if (first || !character.wiki) return first;
-      return findFandom(character.wiki, character.wikiPage, avatar.deps);
-    };
-    void lookUp()
-      .then((found) => {
+    if (!this.avatar) return;
+    void this.findPreparedAvatar(character)
+      .then((prepared) => {
         // The same staleness rule the derivation itself uses. Without it a face
         // for a character the user has already replaced attaches to the one on
         // screen.
         if (generation !== this.generation) return;
-        this.pendingAvatar = found;
+        this.pendingAvatar = prepared;
         // `accept()` reads `pendingAvatar` once, as it runs. A lookup that
         // settles after that used to leave the face found, held, and never
         // written, and the user kept initials for good. The lookup can now
         // cost as many as eleven requests where it used to cost one, so the
         // window this loses faces in is no longer narrow. The tile picks the
         // file up on the fleet's next sweep.
-        if (found && this.committed) {
-          void this.writeAvatar(found);
+        if (prepared && this.committed) {
+          void this.writeAvatar('default', prepared);
           return;
         }
         // Re-emitting is only meaningful on the two screens that display a
@@ -533,7 +564,7 @@ export class Wizard {
         // the tile now" — a stale re-emit of it launches the tile a second
         // time, seconds into the user's first conversation.
         const kind = this.state.kind;
-        if (found && (kind === 'meet' || kind === 'claim-default')) {
+        if (prepared && (kind === 'meet' || kind === 'claim-default')) {
           this.set({ ...this.state });
         }
       })
@@ -542,15 +573,58 @@ export class Wizard {
       });
   }
 
+  /** Applies the local treatment once, before either previewing or saving. */
+  private prepareAvatar(find: AvatarFind): AvatarFind | null {
+    if (!this.avatar) return null;
+    const png = this.avatar.toPng(find.bytes, find.contentType);
+    if (!png || png.length === 0) return null;
+    return {
+      ...find,
+      bytes: png,
+      contentType: 'image/png',
+      treatment: 'pixel-art-32',
+    };
+  }
+
+  /** Finds and transforms a face without writing it anywhere. */
+  private async findPreparedAvatar(character: Character): Promise<AvatarFind | null> {
+    const avatar = this.avatar;
+    if (!avatar) return null;
+    const find = avatar.find ?? findAvatar;
+    const first = await find(character.name, character.fandom, avatar.deps, {
+      fullName: character.fullName,
+    });
+    const found =
+      first || !character.wiki
+        ? first
+        : await (avatar.findFandom ?? findFandomAvatar)(
+            character.wiki,
+            character.wikiPage,
+            avatar.deps,
+          );
+    return found ? this.prepareAvatar(found) : null;
+  }
+
+  /** Sources a face for an already-approved fleet identity, then stores it. */
+  private async sourceAndWriteAvatar(profileId: string, character: Character): Promise<void> {
+    try {
+      if (await this.hermes.readHomeFileBytes(avatarPath(profileId))) return;
+      const found = await this.findPreparedAvatar(character);
+      if (found) await this.writeAvatar(profileId, found);
+    } catch {
+      // A face is optional. The profile and its initials remain fully usable.
+    }
+  }
+
   /**
    * The one place a face is written. Two copies of this would be two chances
    * for the late path and the accept path to disagree about where a face goes.
    * Swallowed because a profile with no face is a working profile (§10.7).
    */
-  private async writeAvatar(find: AvatarFind): Promise<void> {
+  private async writeAvatar(profileId: string, find: AvatarFind): Promise<void> {
     if (!this.avatar) return;
     try {
-      await saveAvatar(this.hermes, 'default', find, this.avatar.toPng);
+      await saveAvatar(this.hermes, profileId, find, this.avatar.toPng);
     } catch (err) {
       console.warn('Could not write the avatar for the new profile.', err);
     }
@@ -631,7 +705,7 @@ export class Wizard {
       // After the persona, because a face without a persona is the worse of the
       // two half-written states, and swallowed because a profile with no face
       // is a working profile. §10.7: failure is silent.
-      if (this.pendingAvatar) await this.writeAvatar(this.pendingAvatar);
+      if (this.pendingAvatar) await this.writeAvatar('default', this.pendingAvatar);
       await installOrchestratorSkill(this.hermes, 'default');
     } catch (err) {
       // Nothing is launched: a tile in front of an agent with no persona is

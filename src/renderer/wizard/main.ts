@@ -319,10 +319,21 @@ function render(step: WizardStep): void {
 
     case 'fleet-fandom': {
       const rename = step.intent === 'rename';
+      const keep = step.intent === 'keep';
+      const title = keep
+        ? COPY.fleetFandom.keepTitle
+        : rename
+          ? COPY.fleetFandom.renameTitle
+          : COPY.fleetFandom.coordinatorTitle;
+      const lead = keep
+        ? COPY.fleetFandom.keepLead
+        : rename
+          ? COPY.fleetFandom.renameLead
+          : COPY.fleetFandom.coordinatorLead;
       const node = el(`
         <section class="screen ask fleet-fandom">
-          <h1>${rename ? COPY.fleetFandom.renameTitle : COPY.fleetFandom.coordinatorTitle}</h1>
-          <p class="lead">${rename ? COPY.fleetFandom.renameLead : COPY.fleetFandom.coordinatorLead}</p>
+          <h1>${title}</h1>
+          <p class="lead">${lead}</p>
           <input id="fleet-fandom" placeholder="${COPY.fandom.placeholder}" autofocus />
           <div class="actions">
             <button class="primary" id="fleet-go">${COPY.fleetFandom.action}</button>
@@ -342,14 +353,24 @@ function render(step: WizardStep): void {
 
     case 'fleet-deriving': {
       const rename = step.intent === 'rename';
+      const keep = step.intent === 'keep';
       const lead = fill(
-        rename ? COPY.fleetDeriving.renameLead : COPY.fleetDeriving.coordinatorLead,
+        keep
+          ? COPY.fleetDeriving.keepLead
+          : rename
+            ? COPY.fleetDeriving.renameLead
+            : COPY.fleetDeriving.coordinatorLead,
         { FANDOM: step.fandom },
       );
+      const title = keep
+        ? COPY.fleetDeriving.keepTitle
+        : rename
+          ? COPY.fleetDeriving.renameTitle
+          : COPY.fleetDeriving.coordinatorTitle;
       screenEl.append(
         el(`
           <section class="screen working">
-            <h1>${rename ? COPY.fleetDeriving.renameTitle : COPY.fleetDeriving.coordinatorTitle}</h1>
+            <h1>${title}</h1>
             <p class="lead"></p>
             <div class="spinner"></div>
           </section>

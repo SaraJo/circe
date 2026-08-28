@@ -4,6 +4,12 @@ import { DEFAULT_PALETTE, isPalette, paletteVars } from '../../main/palette';
 import { applyFace, initials } from '../face';
 import { nextToolTitle, toolLabel } from './toolLabel';
 import { commandPreview, permissionOutcomeLabel } from './permission';
+import {
+  compactTokenCount,
+  contextPressure,
+  likelyCompacted,
+  type ContextPressure,
+} from './contextPressure';
 
 /**
  * The tile and the wizard each load their own preload bridge and never share
@@ -22,6 +28,8 @@ interface TileApi {
   newTab(): void;
   switchTab(index: number): void;
   clearTab(): void;
+  rollover(): void;
+  replaceAvatar(): void;
   closeTab(index: number): void;
   close(): void;
   answerPermission(id: number, choice: string): void;
@@ -53,14 +61,30 @@ function parseCharacter(raw: string | null): Character | null {
 
 const params = new URLSearchParams(location.search);
 const character = parseCharacter(params.get('character'));
+const isOrchestrator = params.get('orchestrator') === 'true';
 
 const log = document.getElementById('log')!;
 const input = document.getElementById('input') as HTMLTextAreaElement;
-const face = document.getElementById('face')!;
+const face = document.getElementById('face') as HTMLButtonElement;
 const tabs = document.getElementById('tabs')!;
 const tabList = document.getElementById('tab-list')!;
 const newTab = document.getElementById('new-tab') as HTMLButtonElement;
+const contextHealth = document.getElementById('context-health')!;
+const contextHealthLabel = document.getElementById('context-health-label')!;
+const contextHealthValue = document.getElementById('context-health-value')!;
+const contextHealthFill = document.getElementById('context-health-fill')!;
+const contextHealthAdvice = document.getElementById('context-health-advice')!;
+const contextHealthMessage = document.getElementById('context-health-message')!;
+const handoff = document.getElementById('handoff') as HTMLButtonElement;
 let tabsView: TileTabsView | null = null;
+let pressure: ContextPressure | null = null;
+let previousUsed = 0;
+let compactionCount = 0;
+let handoffRunning = false;
+
+if (isOrchestrator) {
+  document.getElementById('orchestrator-help')!.hidden = false;
+}
 
 /**
  * Draws who this tile belongs to: its colours, its heading, and the name in
@@ -87,10 +111,12 @@ function applyCharacter(c: Character | null): void {
   // The initials fall back with `#who`'s own name, so a malformed or missing
   // character never leaves the two disagreeing about who this tile is.
   face.textContent = initials(name);
+  face.setAttribute('aria-label', `Replace ${name}'s avatar`);
   input.placeholder = `Message ${name}…`;
 }
 
 applyCharacter(character);
+face.addEventListener('click', () => circe.replaceAvatar());
 
 /** The element the current streaming reply is accumulating into. */
 let streaming: HTMLElement | null = null;
@@ -152,6 +178,46 @@ function renderTabs(view: TileTabsView): void {
     tabList.append(item);
   }
   newTab.disabled = view.busy;
+  renderContextHealth();
+}
+
+function renderContextHealth(): void {
+  if (!pressure) {
+    contextHealth.hidden = true;
+    return;
+  }
+  contextHealth.hidden = false;
+  contextHealth.className = pressure.level;
+  contextHealthLabel.textContent = compactionCount > 0
+    ? `Context · compacted ${compactionCount}×`
+    : 'Context';
+  contextHealthValue.textContent = compactTokenCount(pressure.used);
+  contextHealthFill.style.width = `${pressure.meterPercent}%`;
+  contextHealth.title =
+    `${pressure.used.toLocaleString()} of ${pressure.size.toLocaleString()} model-context tokens. ` +
+    `Circe's cost warning begins around ${pressure.softLimit.toLocaleString()} tokens.`;
+
+  const advised = pressure.level !== 'normal' || handoffRunning;
+  contextHealthAdvice.hidden = !advised;
+  if (handoffRunning) {
+    contextHealthMessage.textContent = 'Preparing a compact handoff…';
+  } else if (pressure.level === 'critical') {
+    contextHealthMessage.textContent = 'This chat is expensive to continue.';
+  } else {
+    contextHealthMessage.textContent = 'Long tool-using turns may cost more.';
+  }
+  const canRollover =
+    pressure.level === 'critical' && tabsView?.supported === true && !handoffRunning;
+  handoff.hidden = !canRollover;
+  handoff.disabled = tabsView?.busy === true;
+}
+
+function resetContextHealth(): void {
+  pressure = null;
+  previousUsed = 0;
+  compactionCount = 0;
+  handoffRunning = false;
+  renderContextHealth();
 }
 
 /**
@@ -286,6 +352,12 @@ circe.onTabs((value) => {
 });
 
 newTab.addEventListener('click', () => circe.newTab());
+handoff.addEventListener('click', () => {
+  if (handoff.disabled || handoffRunning) return;
+  handoffRunning = true;
+  renderContextHealth();
+  circe.rollover();
+});
 
 // Command-T is the native macOS convention; Control-T is supported too so the
 // shortcut the user asked for behaves identically to the visible `+` button.
@@ -304,6 +376,7 @@ function resetTranscript(): void {
   toolBubble = null;
   toolTitle = '';
   log.replaceChildren();
+  resetContextHealth();
 }
 
 /**
@@ -315,6 +388,18 @@ function resetTranscript(): void {
 circe.onUpdate((update) => {
   const u = update as { sessionUpdate?: string; content?: unknown; title?: string };
   switch (u.sessionUpdate) {
+    case 'usage_update': {
+      const update = contextPressure(
+        (u as { size?: unknown }).size,
+        (u as { used?: unknown }).used,
+      );
+      if (!update) return;
+      if (likelyCompacted(previousUsed, update.used, update.softLimit)) compactionCount++;
+      previousUsed = update.used;
+      pressure = update;
+      renderContextHealth();
+      return;
+    }
     case 'agent_message_chunk': {
       const piece = extractText(u.content);
       if (!piece) return;
@@ -359,6 +444,14 @@ circe.onUpdate((update) => {
       return;
     case 'circe/tab-reset':
       resetTranscript();
+      return;
+    case 'circe/handoff-start':
+      handoffRunning = true;
+      renderContextHealth();
+      return;
+    case 'circe/handoff-failed':
+      handoffRunning = false;
+      renderContextHealth();
       return;
     // The resume failed after Hermes had already replayed part of the
     // conversation — it emits history *before* it answers `session/load`, so

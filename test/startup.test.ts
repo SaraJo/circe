@@ -32,6 +32,7 @@ describe('resolveStartup', () => {
     expect(resolveStartup(record)).toEqual({
       kind: 'fleet',
       mainProfileId: 'ford',
+      orchestratorProfileId: 'ford',
       ignoredProfileIds: [],
     });
   });
@@ -233,7 +234,7 @@ describe('readStartup', () => {
     const hermes = new FakeHermes(INSTALLED_EMPTY);
     await hermes.writeHomeFile(LAST_LAUNCH_PATH, serializeLastLaunch('writer', null));
     expect(await readStartup(hermes)).toEqual({
-      kind: 'fleet', mainProfileId: 'writer', ignoredProfileIds: [],
+      kind: 'fleet', mainProfileId: 'writer', orchestratorProfileId: null, ignoredProfileIds: [],
     });
   });
 
@@ -243,7 +244,7 @@ describe('readStartup', () => {
     await hermes.writeHomeFile(LAST_LAUNCH_PATH, serializeLastLaunch('ford', 'default'));
 
     expect(await readStartup(hermes)).toEqual({
-      kind: 'fleet', mainProfileId: 'ford', ignoredProfileIds: [],
+      kind: 'fleet', mainProfileId: 'ford', orchestratorProfileId: 'default', ignoredProfileIds: [],
     });
   });
 
@@ -277,7 +278,7 @@ describe('readStartup', () => {
     );
 
     expect(await readStartup(hermes)).toEqual({
-      kind: 'fleet', mainProfileId: 'default', ignoredProfileIds: [],
+      kind: 'fleet', mainProfileId: 'default', orchestratorProfileId: 'default', ignoredProfileIds: [],
     });
     expect(JSON.parse((await hermes.readHomeFile(LAST_LAUNCH_PATH))!)).toEqual({
       version: 3,

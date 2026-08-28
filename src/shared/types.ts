@@ -86,7 +86,7 @@ export interface FleetIdentityProposal {
   character: Character;
 }
 
-export type FleetFandomIntent = 'rename' | 'new-coordinator';
+export type FleetFandomIntent = 'rename' | 'keep' | 'new-coordinator';
 
 export type WizardStep =
   | { kind: 'welcome' }

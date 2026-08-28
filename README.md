@@ -32,6 +32,10 @@ For a small trusted test, use the guided [beta checklist](docs/BETA_TEST.md).
 9. Opens tiles for existing profiles and notices new profiles created while it
    is running.
 
+When Circe finds a character portrait during onboarding, it centre-crops the
+source into a 32×32 retro pixel-art avatar. The original article, image URL,
+licence, and local treatment remain recorded beside the stored image.
+
 Circe versions its own installed orchestrator resources. On launch it updates
 copies that still match what Circe previously installed and leaves customized
 copies untouched.

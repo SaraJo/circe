@@ -58,6 +58,18 @@ describe('mentionsFandom', () => {
     expect(mentionsFandom('a novel by Douglas Adams, The Galaxy series', 'the Galaxy')).toBe(true);
   });
 
+  it('matches an omitted possessive or plural spelling without fuzzy prose matching', () => {
+    expect(
+      mentionsFandom(
+        "a character in Douglas Adams's The Hitchhiker's Guide to the Galaxy",
+        'Hitchhikers Guide',
+      ),
+    ).toBe(true);
+    expect(
+      mentionsFandom('a character in the Hitchhikers Guide radio series', "Hitchhiker's Guide"),
+    ).toBe(true);
+  });
+
   // Fails closed. A fandom we cannot check is not a fandom we may assume.
   it('is false when the fandom reduces to nothing checkable', () => {
     expect(mentionsFandom('anything at all', 'up')).toBe(false);

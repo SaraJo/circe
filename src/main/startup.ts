@@ -58,7 +58,12 @@ export async function archiveLastLaunch(
 
 export type Startup =
   | { kind: 'wizard'; profiles?: HermesProfile[] }
-  | { kind: 'fleet'; mainProfileId: string; ignoredProfileIds: string[] };
+  | {
+      kind: 'fleet';
+      mainProfileId: string;
+      orchestratorProfileId: string | null;
+      ignoredProfileIds: string[];
+    };
 
 export function serializeLastLaunch(
   mainProfileId: string,
@@ -255,6 +260,10 @@ export async function readStartup(hermes: HermesRuntime): Promise<Startup> {
           LAST_LAUNCH_PATH,
           serializeLastLaunch(startup.mainProfileId, inferredOrchestrator),
         );
+        // Use the inferred owner for this launch too. Otherwise the migrated
+        // record is correct on disk but the orchestrator help affordance does
+        // not appear until the following restart.
+        return { ...startup, orchestratorProfileId: inferredOrchestrator };
       }
     } catch (err) {
       console.warn("Could not refresh Circe's installed orchestrator resources.", err);
@@ -288,6 +297,7 @@ export function resolveStartup(recordJson: string | null): Startup {
     return {
       kind: 'fleet',
       mainProfileId: record.mainProfileId,
+      orchestratorProfileId: record.orchestratorProfileId,
       ignoredProfileIds: record.ignoredProfileIds,
     };
   }

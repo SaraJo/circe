@@ -49,6 +49,7 @@ export function createTileWindow(
   character: Character,
   profileId: string,
   index = 0,
+  isOrchestrator = false,
 ): BrowserWindow {
   // The display holding the cursor, not the primary one. Onboarding finished on
   // a laptop screen used to put the tile on a 3840-wide external display.
@@ -87,7 +88,11 @@ export function createTileWindow(
   });
   pinToItsOwnDocument(win);
   win.loadFile(join(__dirname, '../renderer/tile/index.html'), {
-    query: { profile: profileId, character: JSON.stringify(character) },
+    query: {
+      profile: profileId,
+      character: JSON.stringify(character),
+      orchestrator: String(isOrchestrator),
+    },
   });
   // Nothing raised a tile on creation, so a frameless, transparent, chrome-less
   // window opened behind whatever the user had in front. `show()` on an

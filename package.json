@@ -1,7 +1,7 @@
 {
   "name": "circe-desktop",
   "productName": "Circe",
-  "version": "0.2.3",
+  "version": "0.2.7",
   "description": "Adopts a local Hermes agent fleet and gives each selected profile a desktop tile",
   "license": "MIT",
   "main": "out/main/index.js",

@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { TileRegistry, type TileClient, type TileDeps, type TileWindow } from '../src/main/tiles';
+import {
+  HANDOFF_REQUEST,
+  TileRegistry,
+  type TileClient,
+  type TileDeps,
+  type TileWindow,
+} from '../src/main/tiles';
 import type { PermissionChoice, PermissionRequest } from '../src/main/acp';
 import { FakeHermes, INSTALLED_EMPTY } from './fake/hermes';
 import type { Character } from '../src/shared/types';
@@ -380,6 +386,45 @@ describe('conversation tabs', () => {
       version: 1,
       profiles: { default: { tabs: ['session-1', 'session-2'], activeIndex: 1 } },
     });
+  });
+
+  it('starts fresh with a model-written handoff and preserves the old tab', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+
+    const rollover = h.registry.rollover('default');
+    expect(h.windows[0]!.updates()).toContainEqual({ sessionUpdate: 'circe/handoff-start' });
+    expect(h.clients[0]!.prompts).toEqual([
+      { sessionId: 'session-1', text: HANDOFF_REQUEST },
+    ]);
+
+    h.clients[0]!.onUpdate('session-1', {
+      sessionUpdate: 'agent_message_chunk',
+      content: { type: 'text', text: 'Goal: finish the context meter. Next: run tests.' },
+    });
+    h.clients[0]!.finishTurn();
+    await flushMicrotasks();
+
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ count: 2, activeIndex: 1 });
+    expect(h.windows[0]!.openings()).toContain('Started fresh with a handoff from Chat 1.');
+    expect(h.clients[0]!.prompts[1]).toMatchObject({ sessionId: 'session-2' });
+    expect(h.clients[0]!.prompts[1]!.text).toContain('Goal: finish the context meter');
+
+    h.clients[0]!.finishTurn();
+    await rollover;
+  });
+
+  it('keeps the current conversation when the agent produces no handoff', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+
+    const rollover = h.registry.rollover('default');
+    h.clients[0]!.finishTurn();
+    await rollover;
+
+    expect(h.clients[0]!.newSessionCalls).toBe(1);
+    expect(h.windows[0]!.updates()).toContainEqual({ sessionUpdate: 'circe/handoff-failed' });
+    expect(h.windows[0]!.openings().at(-1)).toContain('kept this conversation open');
   });
 
   it('clears the active conversation in place without adding a tab', async () => {
