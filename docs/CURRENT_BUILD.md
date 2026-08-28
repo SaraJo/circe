@@ -36,9 +36,9 @@ of state needed to reopen a conversation.
   setup-record backup, so fleet visibility, identities, and coordinator choice
   can be revisited without deleting agents, conversations, or tab history.
 - Writes the coordinator persona and installs the `circe-orchestrator` skill.
-- Turns portraits into face-focused 32×32 pixel-art avatars while preserving
-  source and treatment provenance, and lets users click any tile avatar to
-  replace it with a local PNG or JPEG.
+- Turns portraits into tightly face-focused, higher-contrast 32×32 pixel-art
+  avatars while preserving source and treatment provenance, and lets users
+  click any tile avatar to replace it with a local PNG or JPEG.
 - Resolves avatar-only full names and validated Fandom pages for retained
   agents without renaming them, then tries exact page and name aliases when a
   single Fandom title has no usable portrait.

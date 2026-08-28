@@ -51,7 +51,7 @@ describe('pixelateAvatar', () => {
     });
     expect(calls[0]).toEqual({
       kind: 'crop',
-      value: { x: 106, y: 32, width: 122, height: 122 },
+      value: { x: 119, y: 45, width: 96, height: 96 },
     });
   });
 

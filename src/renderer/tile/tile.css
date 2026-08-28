@@ -160,12 +160,9 @@ footer {
 }
 
 /*
- * 34px, not 22px. At 22 a fetched face is a coloured smudge - the shape of a
- * head, no features, indistinguishable from the initials it replaced at a
- * glance. Compared against 22 and 28 in the running tile: 34 is the first size
- * where the character is recognisably a person, which is the entire point of
- * having gone and found their face. It costs about 12px of height in a 480px
- * tile, which the log absorbs.
+ * The 34px border-box is a 32px image area plus a 1px ring on each side. That
+ * exact mapping matters: the stored 32px grid reaches the browser without a
+ * fractional resize, then Retina doubles each source pixel evenly.
  */
 #bar .avatar {
   position: relative;
@@ -203,6 +200,9 @@ footer {
   height: 100%;
   object-fit: cover;
   image-rendering: pixelated;
+  /* Small portraits need separation more than photographic subtlety. Applied
+     after pixel scaling, so it strengthens features without softening edges. */
+  filter: contrast(1.34) saturate(1.24) brightness(1.03);
 }
 
 #tabs {

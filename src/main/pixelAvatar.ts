@@ -38,7 +38,11 @@ function faceSquare(
   // face a little above centre so the crop keeps some hair and shoulders.
   const faceTop = (1 - face.y - face.height) * height;
   const centerY = faceTop + faceHeight * 0.85;
-  const side = Math.min(Math.min(width, height), Math.max(faceWidth, faceHeight) * 2.35);
+  // At 2.35 the detected face occupied only about 14 of the final 32 pixels:
+  // recognisable at wizard size, but a low-contrast smudge in the tile. 1.85
+  // still keeps hair and a little shoulder while giving the eyes, nose and
+  // mouth roughly four more pixels to read with.
+  const side = Math.min(Math.min(width, height), Math.max(faceWidth, faceHeight) * 1.85);
   const x = Math.max(0, Math.min(width - side, centerX - side / 2));
   const y = Math.max(0, Math.min(height - side, centerY - side / 2));
   return {

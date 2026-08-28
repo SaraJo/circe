@@ -171,6 +171,7 @@ button:active { transform: translateY(1px); }
 .avatar img {
   position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
   image-rendering: pixelated;
+  filter: contrast(1.34) saturate(1.24) brightness(1.03);
 }
 .tagline { margin: 0; color: var(--ink-soft); }
 
