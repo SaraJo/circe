@@ -6,7 +6,13 @@ import type {
   WizardStep,
 } from '../shared/types';
 import type { HermesRuntime } from './hermes/runtime';
-import { deriveCharacter, deriveFleetCharacters, type FleetIdentityInput } from './derive';
+import {
+  deriveCharacter,
+  deriveFleetAvatarLookups,
+  deriveFleetCharacters,
+  type FleetAvatarLookup,
+  type FleetIdentityInput,
+} from './derive';
 import { adoptableProfiles, hasConfiguredDefault } from './profiles';
 import { parseSoulHeading, withSoulHeading, writeSoul } from './soul';
 import { loadTemplate, renderOrchestratorSoul } from './orchestrator/soulTemplate';
@@ -33,7 +39,12 @@ export interface AvatarOptions {
     deps: AvatarDeps,
     opts?: FindOptions,
   ) => Promise<AvatarFind | null>;
-  findFandom?: (wiki: string, page: string, deps: AvatarDeps) => Promise<AvatarFind | null>;
+  findFandom?: (wiki: string, pages: string | string[], deps: AvatarDeps) => Promise<AvatarFind | null>;
+  deriveRetainedAvatarMetadata?: (
+    hermes: HermesRuntime,
+    fandom: string,
+    profiles: Array<Pick<FleetIdentityInput, 'profileId' | 'name'>>,
+  ) => Promise<FleetAvatarLookup[]>;
 }
 
 /**
@@ -199,15 +210,33 @@ export class Wizard {
     try {
       if (intent === 'keep') {
         // Existing identities do not carry machine-readable fandom metadata.
-        // Ask for it rather than recognizing a prototype fleet or risking an
-        // unrelated person's photograph from a name-only search.
+        // Resolve lookup facts only: names, personas, and profile ids remain
+        // exactly as the user had them. Failure merely falls back to the old
+        // Wikipedia name search because a face is optional to onboarding.
+        let metadata = new Map<string, FleetAvatarLookup>();
+        if (this.avatar) {
+          try {
+            const inputs = profiles.map((profile) => ({
+              profileId: profile.id,
+              name: profile.displayName,
+            }));
+            const resolved = await (
+              this.avatar.deriveRetainedAvatarMetadata ?? deriveFleetAvatarLookups
+            )(this.hermes, trimmed, inputs);
+            metadata = new Map(resolved.map((lookup) => [lookup.profileId, lookup]));
+          } catch {
+            // Keep-name adoption worked before metadata existed and must keep
+            // working if the optional model call is unavailable or malformed.
+          }
+        }
         for (const profile of profiles) {
           const palette = await ensureRetainedTheme(this.hermes, profile);
+          const lookup = metadata.get(profile.id);
           await this.sourceAndWriteAvatar(profile.id, {
             name: profile.displayName,
-            fullName: profile.displayName,
-            wiki: '',
-            wikiPage: profile.displayName,
+            fullName: lookup?.fullName ?? profile.displayName,
+            wiki: lookup?.wiki ?? '',
+            wikiPage: lookup?.wikiPage ?? profile.displayName,
             profileId: profile.id,
             tagline: '',
             palette,
@@ -599,7 +628,9 @@ export class Wizard {
         ? first
         : await (avatar.findFandom ?? findFandomAvatar)(
             character.wiki,
-            character.wikiPage,
+            [character.wikiPage, character.fullName, character.name].filter(
+              (page, index, pages) => page.trim() && pages.indexOf(page) === index,
+            ),
             avatar.deps,
           );
     return found ? this.prepareAvatar(found) : null;

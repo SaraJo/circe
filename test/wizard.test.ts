@@ -323,6 +323,70 @@ describe('adopting an existing Hermes fleet', () => {
     expect(await hermes.readHomeFileBytes('profiles/writer/avatar.png')).toEqual(pixels);
   });
 
+  it('uses avatar-only metadata and Fandom aliases for retained identities', async () => {
+    const hermes = new FakeHermes({
+      ...ADOPTION_BASE,
+      files: { ...ADOPTION_BASE.files },
+      models: { ...ADOPTION_BASE.models },
+    });
+    const profiles = adoptableProfiles(await hermes.listProfiles());
+    const pixels = new Uint8Array([32, 32, 32]);
+    const fandomLookups: Array<[string, string | string[]]> = [];
+    const wizard = new Wizard(
+      hermes,
+      {
+        deps: {
+          fetchJson: async () => ({}),
+          fetchImage: async () => ({ bytes: pixels, contentType: 'image/png' }),
+        },
+        toPng: () => pixels,
+        deriveRetainedAvatarMetadata: async () => [
+          {
+            profileId: 'default',
+            fullName: 'Research Prime',
+            wiki: 'memory-alpha.fandom.com',
+            wikiPage: 'Research (character)',
+          },
+          {
+            profileId: 'writer',
+            fullName: 'Writer Prime',
+            wiki: 'memory-alpha.fandom.com',
+            wikiPage: 'Writer (character)',
+          },
+        ],
+        find: async () => null,
+        findFandom: async (wiki, pages) => {
+          fandomLookups.push([wiki, pages]);
+          return {
+            bytes: pixels,
+            contentType: 'image/png',
+            source: 'fandom',
+            articleUrl: `https://${wiki}/wiki/found`,
+            imageUrl: 'https://static.wikia.nocookie.net/found.jpg',
+            title: 'Found',
+            license: 'unknown',
+          };
+        },
+      },
+      profiles,
+    );
+    await wizard.start();
+    wizard.reviewExistingFleet();
+    wizard.acceptFleetSelection(['default', 'writer']);
+    wizard.keepExistingFleetNames();
+
+    await wizard.submitFleetFandom('Star Trek');
+
+    expect(fandomLookups).toEqual([
+      ['memory-alpha.fandom.com', ['Research (character)', 'Research Prime', 'Research']],
+      ['memory-alpha.fandom.com', ['Writer (character)', 'Writer Prime', 'Writer']],
+    ]);
+    expect(await hermes.readHomeFile('SOUL.md')).toBe(ADOPTION_BASE.files['SOUL.md']);
+    expect(await hermes.readHomeFile('profiles/writer/SOUL.md')).toBe(
+      ADOPTION_BASE.files['profiles/writer/SOUL.md'],
+    );
+  });
+
   it('uses each existing persona as data when proposing fandom identities', async () => {
     const { hermes, wizard } = await adoptionWizard();
     wizard.reviewExistingFleet();
@@ -1353,7 +1417,7 @@ describe('the character gets a face', () => {
   // has the five characters in twelve that Wikipedia simply does not carry.
   it('falls back to the fandom wiki when Wikipedia has nothing', async () => {
     const h = new FakeHermes(scenario(INSTALLED_EMPTY));
-    const asked: Array<[string, string]> = [];
+    const asked: Array<[string, string | string[]]> = [];
     const w = new Wizard(h, {
       ...avatar(),
       find: async () => null,
@@ -1364,7 +1428,9 @@ describe('the character gets a face', () => {
     });
     await w.start();
     await w.submitFandom("Hitchhiker's");
-    expect(asked).toEqual([['hitchhikers.fandom.com', 'Trillian Astra']]);
+    expect(asked).toEqual([
+      ['hitchhikers.fandom.com', ['Trillian Astra', 'Trillian']],
+    ]);
     // One tick more than the Wikipedia-only path: the fallback is a second
     // await, so the face lands a microtask later than the tests above expect it.
     await new Promise((r) => setTimeout(r, 0));

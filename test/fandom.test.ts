@@ -122,6 +122,26 @@ describe('findFandomAvatar', () => {
     expect(asked.searchParams.get('redirects')).toBe('1');
   });
 
+  it('tries distinct safe aliases until one page has a face', async () => {
+    const titles: string[] = [];
+    const found = await findFandomAvatar(
+      'firefly.fandom.com',
+      ['Kaylee Frye', 'Kaywinnet Lee Frye', 'Kaylee Frye'],
+      deps({
+        fetchJson: async (url) => {
+          const title = new URL(url).searchParams.get('titles')!;
+          titles.push(title);
+          return title === 'Kaywinnet Lee Frye'
+            ? page()
+            : page({ missing: '', original: undefined });
+        },
+      }),
+    );
+
+    expect(found).not.toBeNull();
+    expect(titles).toEqual(['Kaylee Frye', 'Kaywinnet Lee Frye']);
+  });
+
   // Defence in depth. `derive.ts` already refuses anything that is not a plain
   // Fandom subdomain, but this module is what actually opens the connection,
   // and a host check that lives only in the validator is a host check one

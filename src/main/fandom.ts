@@ -137,10 +137,26 @@ function wikiPageTitle(raw: unknown, fallback: string): string {
  */
 export async function findFandomAvatar(
   wiki: string,
+  page: string | string[],
+  deps: AvatarDeps,
+): Promise<AvatarFind | null> {
+  if (!FANDOM_HOST.test(wiki)) return null;
+  const pages = (Array.isArray(page) ? page : [page])
+    .map((candidate) => candidate.trim())
+    .filter((candidate, index, all) => candidate && all.indexOf(candidate) === index);
+  for (const candidate of pages) {
+    const found = await findFandomPage(wiki, candidate, deps);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** One exact MediaWiki page attempt; the public function supplies safe aliases. */
+async function findFandomPage(
+  wiki: string,
   page: string,
   deps: AvatarDeps,
 ): Promise<AvatarFind | null> {
-  if (!FANDOM_HOST.test(wiki) || !page.trim()) return null;
   try {
     const query = new URLSearchParams({
       action: 'query',

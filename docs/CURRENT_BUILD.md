@@ -39,6 +39,9 @@ of state needed to reopen a conversation.
 - Turns portraits into face-focused 32×32 pixel-art avatars while preserving
   source and treatment provenance, and lets users click any tile avatar to
   replace it with a local PNG or JPEG.
+- Resolves avatar-only full names and validated Fandom pages for retained
+  agents without renaming them, then tries exact page and name aliases when a
+  single Fandom title has no usable portrait.
 - Installs a Circe operating reference with that skill, covering automatic tile
   discovery, profile file locations, theming, private state, and troubleshooting.
 - Records the chosen orchestrator separately from the foreground tile and safely
