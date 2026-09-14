@@ -1,5 +1,5 @@
 import type { SoulHeading } from '../shared/types';
-import { soulPath, type HermesRuntime } from './hermes/runtime';
+import { profileFilePath, type HermesRuntime } from './hermes/runtime';
 import { findH1, isRealSoul, splitHeading } from './profiles';
 
 /**
@@ -96,8 +96,8 @@ async function freeBackupPath(hermes: HermesRuntime, base: string): Promise<stri
  */
 export async function writeSoul(opts: WriteSoulOptions): Promise<WriteSoulResult> {
   const { hermes, profileId, contents, now = new Date(), backupExisting = false } = opts;
-  // soulPath with an empty home yields the home-relative path the runtime wants.
-  const rel = soulPath('', profileId).replace(/^\//, '');
+  // Runtime methods use home-relative paths consistently on every platform.
+  const rel = profileFilePath(profileId, 'SOUL.md');
 
   let existing: string | null;
   try {

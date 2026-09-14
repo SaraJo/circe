@@ -1,5 +1,5 @@
 import type { Character, HermesProfile } from '../shared/types';
-import { profileFilePath, soulPath, type HermesRuntime } from './hermes/runtime';
+import { profileFilePath, type HermesRuntime } from './hermes/runtime';
 import { refreshInstalledOrchestratorSkills } from './orchestrator/skill';
 import { DEFAULT_PALETTE } from './palette';
 import { adoptableProfiles } from './profiles';
@@ -182,7 +182,7 @@ export async function characterFor(
 ): Promise<Character> {
   let soulText: string | null = null;
   try {
-    soulText = await hermes.readHomeFile(soulPath('', profile.id).replace(/^\//, ''));
+    soulText = await hermes.readHomeFile(profileFilePath(profile.id, 'SOUL.md'));
   } catch (err) {
     console.warn(`Could not read the persona for profile "${profile.id}".`, err);
   }
@@ -223,7 +223,7 @@ export async function characterFor(
  * read first, so an unreadable SOUL.md still can't be destroyed.
  */
 export async function readStartup(hermes: HermesRuntime): Promise<Startup> {
-  const soulRel = soulPath('', 'default').replace(/^\//, '');
+  const soulRel = profileFilePath('default', 'SOUL.md');
   let recordJson: string | null;
   try {
     await hermes.readHomeFile(soulRel);

@@ -1,0 +1,2 @@
+# Keep bundled prompts and managed-skill hashes identical across platforms.
+*.md text eol=lf

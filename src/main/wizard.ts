@@ -19,7 +19,7 @@ import { loadTemplate, renderOrchestratorSoul } from './orchestrator/soulTemplat
 import { installOrchestratorSkill } from './orchestrator/skill';
 import { LAST_LAUNCH_PATH, serializeLastLaunch } from './startup';
 import { writeProfileTheme } from './profileTheme';
-import { avatarPath, soulPath } from './hermes/runtime';
+import { avatarPath, profileFilePath } from './hermes/runtime';
 import { findAvatar, type AvatarDeps, type AvatarFind, type FindOptions } from './avatar';
 import { findFandomAvatar } from './fandom';
 import { dataUrl, saveAvatar, type ToPng } from './avatarStore';
@@ -319,7 +319,7 @@ export class Wizard {
     try {
       for (const proposal of proposals) {
         if (!selected.includes(proposal.profile.id)) continue;
-        const rel = soulPath('', proposal.profile.id).replace(/^\//, '');
+        const rel = profileFilePath(proposal.profile.id, 'SOUL.md');
         const existing = await this.hermes.readHomeFile(rel);
         if (existing === null) {
           throw new Error(`Could not find ${rel}; nothing was changed for that agent.`);
@@ -456,7 +456,7 @@ export class Wizard {
   private async fleetIdentityInputs(profiles: HermesProfile[]): Promise<FleetIdentityInput[]> {
     return Promise.all(
       profiles.map(async (profile) => {
-        const rel = soulPath('', profile.id).replace(/^\//, '');
+        const rel = profileFilePath(profile.id, 'SOUL.md');
         const soul = await this.hermes.readHomeFile(rel);
         const heading = soul === null ? null : parseSoulHeading(soul);
         return {
