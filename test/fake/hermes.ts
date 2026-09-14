@@ -85,9 +85,10 @@ export class FakeHermes implements HermesRuntime {
     if (this.scenario.version === null) return [];
     const ids = Object.keys(this.scenario.models);
     const { isRealSoul, displayNameFor } = await import('../../src/main/profiles');
-    const { soulPath } = await import('../../src/main/hermes/runtime');
+    const { profileFilePath } = await import('../../src/main/hermes/runtime');
     return ids.map((id) => {
-      const rel = soulPath('', id).replace(/^\//, '');
+      // Fixture keys are home-relative paths, not native filesystem paths.
+      const rel = profileFilePath(id, 'SOUL.md');
       const soul = this.files.get(rel) ?? null;
       return {
         id,

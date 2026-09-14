@@ -26,6 +26,17 @@ describe('FakeHermes scenarios', () => {
     expect(ids).toHaveLength(8);
   });
 
+  it('reads named-profile fixtures as configured agents on every platform', async () => {
+    const h = new FakeHermes({
+      version: '0.14.0', hasProvider: true,
+      files: { 'profiles/writer/SOUL.md': '# Writer — writes clearly\n' },
+      models: { writer: 'test-model' },
+    });
+    expect(await h.listProfiles()).toEqual([{
+      id: 'writer', displayName: 'Writer', model: 'test-model', isReal: true,
+    }]);
+  });
+
   it('round-trips a file written under the Hermes home', async () => {
     const h = new FakeHermes(INSTALLED_EMPTY);
     await h.writeHomeFile('SOUL.md', '# Zaphod — two heads');
