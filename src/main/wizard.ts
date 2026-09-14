@@ -33,6 +33,7 @@ import { ensureRetainedTheme } from './existingAppearance';
 export interface AvatarOptions {
   deps: AvatarDeps;
   toPng: ToPng;
+  generate?: (character: Character, reference: AvatarFind | null) => Promise<AvatarFind | null>;
   find?: (
     name: string,
     fandom: string,
@@ -633,6 +634,14 @@ export class Wizard {
             ),
             avatar.deps,
           );
+    if (avatar.generate) {
+      try {
+        const generated = await avatar.generate(character, found);
+        if (generated) return generated;
+      } catch {
+        // Generation is optional; keep a usable sourced face on failure.
+      }
+    }
     return found ? this.prepareAvatar(found) : null;
   }
 

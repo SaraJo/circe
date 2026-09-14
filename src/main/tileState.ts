@@ -11,6 +11,8 @@ export interface ProfileTileState {
   /** Hermes session ids, in the same order as the visible tab strip. */
   tabs: string[];
   activeIndex: number;
+  /** First-prompt labels keyed by Hermes session id. */
+  titles?: Record<string, string>;
   /**
    * Fields a later build wrote and this one doesn't understand — the design's
    * `bounds` and `accessMode` are already spec'd (§3). They are carried through

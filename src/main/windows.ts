@@ -36,7 +36,7 @@ export function createWizardWindow(): BrowserWindow {
     width: WIZARD_W,
     height: WIZARD_H,
     resizable: false,
-    titleBarStyle: 'hiddenInset',
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     backgroundColor: '#12121a',
     webPreferences: { preload: join(__dirname, '../preload/wizard.js') },
   });
@@ -67,7 +67,7 @@ export function createTileWindow(
     // wrong corner, and no minimise or zoom at all. Their position is left at
     // the `hiddenInset` default, which is where every other Mac window puts
     // them; the card's top padding is the room they sit in.
-    titleBarStyle: 'hiddenInset',
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     /**
      * Deliberately **not** vibrant. `vibrancy: 'under-window'` was tried and
      * reverted: it does blur the desktop, which CSS cannot, but the material
@@ -82,8 +82,8 @@ export function createTileWindow(
      * than a CSS shadow inside a gutter ever did.
      */
     roundedCorners: true,
-    transparent: true,
-    backgroundColor: '#00000000',
+    transparent: process.platform === 'darwin',
+    backgroundColor: process.platform === 'darwin' ? '#00000000' : character.palette.bg,
     webPreferences: { preload: join(__dirname, '../preload/tile.js') },
   });
   pinToItsOwnDocument(win);

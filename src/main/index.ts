@@ -24,6 +24,7 @@ import { pixelateAvatar } from './pixelAvatar';
 import { detectPrimaryFace } from './faceFocus';
 import { ensureRetainedTheme } from './existingAppearance';
 import { replaceAvatarFromUpload } from './avatarReplacement';
+import { generateAvatar } from './generatedAvatar';
 
 app.setName('Circe');
 
@@ -40,6 +41,22 @@ const avatarDeps = httpDeps((url, init) => fetch(url, init), USER_AGENT);
 function toPixelPng(bytes: Uint8Array, _contentType: string): Uint8Array | null {
   const image = nativeImage.createFromBuffer(Buffer.from(bytes));
   return pixelateAvatar(image, detectPrimaryFace(image.toPNG()));
+}
+
+/** Preserve portrait detail; providers may return a different portrait ratio. */
+function toPortraitPng(bytes: Uint8Array): Uint8Array | null {
+  const image = nativeImage.createFromBuffer(Buffer.from(bytes));
+  if (image.isEmpty()) return null;
+  const { width, height } = image.getSize();
+  const cropWidth = Math.min(width, Math.floor(height * 2 / 3));
+  const cropHeight = Math.min(height, Math.floor(width * 3 / 2));
+  if (cropWidth < 1 || cropHeight < 1) return null;
+  return image.crop({
+    x: Math.floor((width - cropWidth) / 2),
+    y: Math.floor((height - cropHeight) / 2),
+    width: cropWidth,
+    height: cropHeight,
+  }).resize({ width: 1024, height: 1536, quality: 'good' }).toPNG();
 }
 
 let wizardWin: BrowserWindow | null = null;
@@ -73,12 +90,14 @@ function installApplicationMenu(): void {
           click: () => void runOnboardingAgain(),
         },
         { type: 'separator' },
-        { role: 'services' },
-        { type: 'separator' },
-        { role: 'hide' },
-        { role: 'hideOthers' },
-        { role: 'unhide' },
-        { type: 'separator' },
+        ...(process.platform === 'darwin' ? [
+          { role: 'services' },
+          { type: 'separator' },
+          { role: 'hide' },
+          { role: 'hideOthers' },
+          { role: 'unhide' },
+          { type: 'separator' },
+        ] as MenuItemConstructorOptions[] : []),
         { role: 'quit' },
       ],
     },
@@ -178,6 +197,7 @@ function openWizard(existingProfiles: HermesProfile[] = []): void {
   const w = new Wizard(hermes, {
     deps: avatarDeps,
     toPng: toPixelPng,
+    generate: (character, reference) => generateAvatar(hermes, character, reference, toPortraitPng),
   }, existingProfiles);
   wizard = w;
   wizardWin = createWizardWindow();

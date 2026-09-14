@@ -1,5 +1,5 @@
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, win32 } from 'node:path';
 import type { HermesProfile } from '../../shared/types';
 
 export interface HermesPaths {
@@ -8,7 +8,18 @@ export interface HermesPaths {
 }
 
 /** Env overrides exist so tests and the fake can point somewhere harmless. */
-export function hermesPaths(env: NodeJS.ProcessEnv = process.env): HermesPaths {
+export function hermesPaths(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): HermesPaths {
+  if (platform === 'win32') {
+    const local = env.LOCALAPPDATA ?? win32.join(env.USERPROFILE ?? homedir(), 'AppData', 'Local');
+    const root = win32.join(local, 'hermes');
+    return {
+      bin: env.CIRCE_HERMES_BIN ?? win32.join(root, 'bin', 'hermes.exe'),
+      home: env.HERMES_HOME ?? root,
+    };
+  }
   return {
     bin: env.CIRCE_HERMES_BIN ?? join(homedir(), '.local', 'bin', 'hermes'),
     home: env.HERMES_HOME ?? join(homedir(), '.hermes'),
@@ -88,7 +99,7 @@ export interface HermesRuntime {
    *
    * Recursive, because `profiles/` does not exist on a fresh install and
    * watching a directory that is not there fails rather than waiting for it.
-   * macOS only (constraint 1), which is where recursive watching works.
+   * Supported by Node on both macOS and Windows.
    */
   watchHome(onChange: (relPath: string) => void): () => void;
 }

@@ -68,7 +68,8 @@ export class RealHermes implements HermesRuntime {
   private async exec(args: string[], timeout = 30_000): Promise<string> {
     const { stdout } = await run(this.p.bin, args, {
       timeout,
-      env: { ...process.env, HERMES_ACCEPT_HOOKS: '1' },
+      env: { ...process.env, HERMES_HOME: this.p.home, HERMES_ACCEPT_HOOKS: '1' },
+      windowsHide: true,
       maxBuffer: 8 * 1024 * 1024,
     });
     return stdout;

@@ -42,7 +42,7 @@ const MAX_BYTES = 3_000_000;
  */
 export type AvatarLicense = 'commons' | 'non-free' | 'unknown';
 
-export type AvatarSource = 'wikipedia' | 'fandom' | 'upload';
+export type AvatarSource = 'wikipedia' | 'fandom' | 'upload' | 'generated';
 
 export interface AvatarFind {
   bytes: Uint8Array;
@@ -56,7 +56,7 @@ export interface AvatarFind {
   title: string;
   license: AvatarLicense;
   /** Local visual treatment applied after retrieval, never inferred. */
-  treatment?: 'pixel-art-32';
+  treatment?: 'pixel-art-32' | 'retro-rpg-portrait';
 }
 
 /** What the guardrails agree on before any bytes are fetched. */

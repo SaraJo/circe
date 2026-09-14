@@ -53,6 +53,7 @@ describe('RealHermes.readHomeFile', () => {
   it('raises rather than reporting absent when the file is unreadable (EACCES)', async () => {
     // Root bypasses the permission bits entirely, so there is no EACCES to
     // provoke; the EISDIR case above still covers the branch there.
+    if (process.platform === 'win32') return; // Windows chmod cannot remove read access.
     if (typeof process.getuid === 'function' && process.getuid() === 0) return;
     const path = join(home, 'SOUL.md');
     await writeFile(path, '# A hand-written persona\n');
@@ -102,6 +103,7 @@ describe('RealHermes.readHomeFileBytes', () => {
   it('raises rather than reporting absent when the file is unreadable (EACCES)', async () => {
     // Root bypasses the permission bits entirely, so there is no EACCES to
     // provoke; the EISDIR case above still covers the branch there.
+    if (process.platform === 'win32') return; // Windows chmod cannot remove read access.
     if (typeof process.getuid === 'function' && process.getuid() === 0) return;
     const path = join(home, 'avatar.png');
     const data = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);

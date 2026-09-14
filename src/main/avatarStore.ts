@@ -44,7 +44,7 @@ export interface AvatarProvenance {
   imageUrl: string;
   license: AvatarLicense;
   /** The stored file is a local derivative when this field is present. */
-  treatment?: 'pixel-art-32';
+  treatment?: AvatarFind['treatment'];
   /** ISO 8601, so a record can be aged without re-fetching anything. */
   retrievedAt: string;
 }

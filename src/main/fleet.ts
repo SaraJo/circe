@@ -104,6 +104,7 @@ export class FleetWatch {
       // The home also carries `state.db`, logs, and session files, all of which
       // change constantly during a conversation. Only a profile directory can
       // produce a new agent.
+      relPath = relPath.replace(/\\/g, '/');
       if (!relPath.startsWith('profiles/') && relPath !== 'profiles') return;
       this.schedule();
     });

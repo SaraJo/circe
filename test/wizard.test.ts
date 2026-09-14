@@ -1245,6 +1245,52 @@ describe('the character gets a face', () => {
     expect(JSON.parse((await h.readHomeFile('avatar.json'))!).treatment).toBe('pixel-art-32');
   });
 
+  it('stores a generated portrait without reducing it to the 32px treatment', async () => {
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
+    const portrait = { ...found, source: 'generated' as const, treatment: 'retro-rpg-portrait' as const };
+    let reference: unknown;
+    const w = new Wizard(h, {
+      ...avatar(),
+      find: async () => found,
+      toPng: () => { throw new Error('Portrait must not be pixelated'); },
+      generate: async (_character, image) => { reference = image; return portrait; },
+    });
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(reference).toBe(found);
+    expect(w.avatarDataUrl()).toBe(dataUrl(PNG, 'image/png'));
+    await w.accept();
+    expect(await h.readHomeFileBytes('avatar.png')).toEqual(PNG);
+    expect(JSON.parse((await h.readHomeFile('avatar.json'))!).treatment).toBe('retro-rpg-portrait');
+  });
+
+  it('generates from character details when no reference exists', async () => {
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
+    let reference: unknown = 'unset';
+    const w = new Wizard(h, {
+      ...avatar(), find: async () => null, findFandom: async () => null,
+      generate: async (_character, image) => { reference = image; return found; },
+    });
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(reference).toBeNull();
+    expect(w.avatarDataUrl()).toBe(dataUrl(PNG, 'image/png'));
+  });
+
+  it('keeps the sourced fallback when generation fails', async () => {
+    const h = new FakeHermes(scenario(INSTALLED_EMPTY));
+    const w = new Wizard(h, {
+      ...avatar(), find: async () => found,
+      generate: async () => { throw new Error('Unavailable'); },
+    });
+    await w.start();
+    await w.submitFandom("Hitchhiker's");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(w.avatarDataUrl()).toBe(dataUrl(PNG, 'image/png'));
+  });
+
   it('writes the face into the profile on accept', async () => {
     const h = new FakeHermes(scenario(INSTALLED_EMPTY));
     const w = new Wizard(h, { ...avatar(), find: async () => found });

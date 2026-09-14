@@ -50,15 +50,26 @@ of state needed to reopen a conversation.
 - Opens existing usable profiles as separate themed desktop tiles.
 - Notices profiles created while Circe is running and opens their tiles.
 - Streams messages and tool activity through Hermes ACP.
+- Shows the active conversation model beneath each agent name, using the model
+  reported by Hermes when that conversation is created or restored.
 - Gives each tile a persistent conversation tab strip when Hermes supports
   session loading: create blank tabs, replay earlier tabs, and close Circe's
-  bookmark without deleting the Hermes conversation.
+  bookmark without deleting the Hermes conversation. New conversations take a
+  short tab name from the first user prompt and retain it across launches.
+  Context handoffs retain the topic with numbered continuation names such as
+  `Plan the garden · 2`; older unnamed chats use a handoff excerpt.
+  A new tab can start while another conversation processes a turn; replaying,
+  closing, and clearing existing tabs still wait for outstanding turns to finish.
+  Approval cards name their conversation and remain visible across tab creation.
 - Shows friendly tool labels instead of raw tool-call identifiers.
 - Presents an inline permission card when Hermes asks for approval.
 - Supports allow-once, allow-for-session, and deny; it never selects permanent
   approval options. Missing UI, malformed requests, timeout, and window close
   all fail closed.
 - Builds an Apple Silicon `.app` and `.dmg`.
+- Includes an experimental Windows x64 NSIS installer configuration, native
+  Hermes path discovery, and Windows CI. Runtime validation on Windows is
+  still pending; see [WINDOWS.md](WINDOWS.md).
 
 ## Deliberate boundaries
 

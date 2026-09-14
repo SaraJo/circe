@@ -50,7 +50,7 @@ export const COPY = {
     // screen as literal characters — "type `hermes setup`" — on the one screen
     // in the flow whose whole job is a command the user has to type. `main.ts`
     // splits on the placeholder and puts the command in a real `<code>`.
-    lead: 'Your agent needs a model to think with, the same kind of thing that powers ChatGPT or Claude. Hermes handles the connection: open Terminal (an app already on your computer for typing commands), type {{COMMAND}}, and press enter. Once that\'s done, reopen Circe.',
+    lead: 'Your agent needs a model to think with, the same kind of thing that powers ChatGPT or Claude. Hermes handles the connection: open Terminal on macOS or PowerShell on Windows, type {{COMMAND}}, and press enter. Once that\'s done, reopen Circe.',
     command: 'hermes setup',
     // No `action` field: this screen has no button, because there is no
     // in-app "Connect" flow to send one to — connecting a model happens in

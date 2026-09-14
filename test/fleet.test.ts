@@ -137,6 +137,17 @@ describe('FleetWatch', () => {
     stop();
   });
 
+  it('discovers profiles from Windows file-watcher paths', async () => {
+    const hermes = new FakeHermes(configured());
+    const { watch, opened } = watcher(hermes);
+    const stop = watch.start();
+    hermes.scenarioModels.ford = 'claude-opus-5';
+    await hermes.writeHomeFile('profiles/ford/SOUL.md', '# Ford\n');
+    hermes.fireHomeChange('profiles\\ford\\SOUL.md');
+    await vi.waitFor(() => expect(opened).toEqual(['ford']));
+    stop();
+  });
+
   it('does not open an excluded profile when its files change', async () => {
     const hermes = new FakeHermes(configured());
     const { watch, opened } = watcher(hermes, () => false, ['default'], ['ford']);

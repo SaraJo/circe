@@ -72,11 +72,16 @@ export interface HermesProfile {
 
 /** Renderer-facing conversation tabs for one agent tile. */
 export interface TileTabsView {
-  /** Hermes session ids never cross the preload boundary; only their count does. */
+  /** Active conversation model reported by Hermes, or null when unavailable. */
+  model?: string | null;
+  titles?: string[];
+  /** Hermes session ids never cross the preload boundary; only their count and display titles do. */
   count: number;
   activeIndex: number;
   /** True while a turn, replay, or permission decision makes switching unsafe. */
   busy: boolean;
+  /** A new session can be created while another session processes a turn. */
+  canCreate?: boolean;
   /** Older ACP agents without session/load keep the existing one-conversation UI. */
   supported: boolean;
 }

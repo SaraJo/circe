@@ -1,9 +1,9 @@
-import { marked } from 'marked';
 import type { Character, TileTabsView } from '../../shared/types';
 import { DEFAULT_PALETTE, isPalette, paletteVars } from '../../main/palette';
 import { applyFace, initials } from '../face';
 import { nextToolTitle, toolLabel } from './toolLabel';
 import { commandPreview, permissionOutcomeLabel } from './permission';
+import { renderMarkdown } from './markdown';
 import {
   compactTokenCount,
   contextPressure,
@@ -64,7 +64,9 @@ const character = parseCharacter(params.get('character'));
 const isOrchestrator = params.get('orchestrator') === 'true';
 
 const log = document.getElementById('log')!;
+const permissions = document.getElementById('permissions')!;
 const input = document.getElementById('input') as HTMLTextAreaElement;
+const modelLabel = document.getElementById('model')!;
 const face = document.getElementById('face') as HTMLButtonElement;
 const tabs = document.getElementById('tabs')!;
 const tabList = document.getElementById('tab-list')!;
@@ -120,6 +122,10 @@ face.addEventListener('click', () => circe.replaceAvatar());
 
 /** The element the current streaming reply is accumulating into. */
 let streaming: HTMLElement | null = null;
+/** Markdown source for `streaming`; never recover it from rendered DOM text. */
+let streamingMarkdown = '';
+/** At most one Markdown parse per animation frame while token chunks arrive. */
+let markdownFrame: number | null = null;
 /** The single "⚙ …" bubble showing what the agent is doing this turn. */
 let toolBubble: HTMLElement | null = null;
 /**
@@ -145,11 +151,19 @@ function asTabsView(value: unknown): TileTabsView | null {
   if (!Number.isInteger(view.count) || (view.count ?? -1) < 0) return null;
   if (!Number.isInteger(view.activeIndex) || (view.activeIndex ?? -1) < 0) return null;
   if (typeof view.busy !== 'boolean' || typeof view.supported !== 'boolean') return null;
+  if (view.titles !== undefined && (!Array.isArray(view.titles) ||
+    !view.titles.every((title) => typeof title === 'string'))) return null;
+  if (view.canCreate !== undefined && typeof view.canCreate !== 'boolean') return null;
+  if (view.model != null && typeof view.model !== 'string') return null;
   return view as TileTabsView;
 }
 
 function renderTabs(view: TileTabsView): void {
   tabsView = view;
+  modelLabel.textContent = view.model || 'Unavailable';
+  modelLabel.title = view.model
+    ? `Conversation model reported by Hermes: ${view.model}`
+    : 'Hermes has not reported a model for this conversation.';
   tabs.hidden = !view.supported;
   if (!view.supported) return;
   tabList.replaceChildren();
@@ -160,7 +174,9 @@ function renderTabs(view: TileTabsView): void {
     const select = document.createElement('button');
     select.type = 'button';
     select.className = 'tab-select';
-    select.textContent = `Chat ${index + 1}`;
+    const title = view.titles?.[index] || `Chat ${index + 1}`;
+    select.textContent = title;
+    select.title = title;
     select.role = 'tab';
     select.setAttribute('aria-selected', String(index === view.activeIndex));
     select.disabled = view.busy;
@@ -171,13 +187,13 @@ function renderTabs(view: TileTabsView): void {
     close.className = 'tab-close';
     close.textContent = '×';
     close.title = 'Close conversation';
-    close.setAttribute('aria-label', `Close Chat ${index + 1}`);
+    close.setAttribute('aria-label', `Close ${title}`);
     close.disabled = view.busy;
     close.addEventListener('click', () => circe.closeTab(index));
     item.append(select, close);
     tabList.append(item);
   }
-  newTab.disabled = view.busy;
+  newTab.disabled = !(view.canCreate ?? !view.busy);
   renderContextHealth();
 }
 
@@ -242,10 +258,16 @@ function appendText(role: 'user' | 'agent' | 'error' | 'tool', text: string): HT
   return node;
 }
 
-function permissionCard(id: number, description: string, command: string): HTMLElement {
+function permissionCard(id: number, description: string, command: string, conversation?: string): HTMLElement {
   const card = document.createElement('section');
   card.className = 'permission';
   card.dataset.permission = String(id);
+  if (conversation) {
+    const source = document.createElement('div');
+    source.className = 'permission-heading';
+    source.textContent = `Approval for ${conversation}`;
+    card.append(source);
+  }
 
   const heading = document.createElement('div');
   heading.className = 'permission-heading';
@@ -298,24 +320,40 @@ function extractText(content: unknown): string {
 }
 
 /**
- * Ends the current turn: the streamed plain text becomes rendered Markdown,
- * and the tool bubble stops being the live one. Driven by `session/prompt`
- * *resolving* in the main process, which is how ACP signals turn completion
- * (it answers with `{ stopReason }`) — there is no `agent_message_complete`
- * update kind, and finalizing on one meant every reply concatenated into the
- * first bubble and the Markdown pass never ran at all.
+ * Draws the accumulated source as Markdown. The source lives separately from
+ * the DOM because `textContent` no longer contains Markdown delimiters after
+ * `innerHTML` has turned them into elements.
+ */
+function renderStreamingMarkdown(): void {
+  markdownFrame = null;
+  if (!streaming) return;
+  // The only place model output reaches `innerHTML` (Amendment 3). Contained
+  // by the tile's CSP (no `script-src 'unsafe-inline'`) and by the navigation
+  // guards in `windows.ts`.
+  streaming.innerHTML = renderMarkdown(streamingMarkdown);
+  streaming.classList.remove('plain');
+  streaming.classList.add('md');
+  log.scrollTop = log.scrollHeight;
+}
+
+function scheduleMarkdownRender(): void {
+  if (markdownFrame === null) markdownFrame = requestAnimationFrame(renderStreamingMarkdown);
+}
+
+/**
+ * Ends the current turn and flushes any chunk that has not painted yet.
+ * `session/prompt` resolving remains the authoritative bubble boundary, but
+ * Markdown is rendered during the stream too: a backend that delays that
+ * response must not leave completed-looking output full of raw `**` and `#`.
  */
 function endTurn(): void {
-  if (streaming) {
-    // The only place model output reaches `innerHTML` (Amendment 3) — a
-    // completed agent reply, converted from the plain text it streamed in
-    // as. Contained by the tile's CSP (no `script-src 'unsafe-inline'`) and
-    // by the navigation guards in `windows.ts`.
-    streaming.innerHTML = marked.parse(streaming.textContent ?? '') as string;
-    streaming.classList.remove('plain');
-    streaming.classList.add('md');
-    streaming = null;
+  if (markdownFrame !== null) {
+    cancelAnimationFrame(markdownFrame);
+    markdownFrame = null;
   }
+  if (streaming) renderStreamingMarkdown();
+  streaming = null;
+  streamingMarkdown = '';
   toolBubble = null;
   toolTitle = '';
   log.scrollTop = log.scrollHeight; // Markdown formatting can change the bubble's height.
@@ -362,7 +400,7 @@ handoff.addEventListener('click', () => {
 // Command-T is the native macOS convention; Control-T is supported too so the
 // shortcut the user asked for behaves identically to the visible `+` button.
 // The main process still owns the busy guard, so a shortcut cannot bypass the
-// safety lock while a turn, replay, or permission request is active.
+// lock during session creation, replay, handoff, or a pending permission request.
 document.addEventListener('keydown', (event) => {
   if (event.key.toLowerCase() !== 't' || (!event.metaKey && !event.ctrlKey)) return;
   if (event.altKey || event.shiftKey) return;
@@ -371,11 +409,15 @@ document.addEventListener('keydown', (event) => {
 });
 
 function resetTranscript(): void {
+  if (markdownFrame !== null) cancelAnimationFrame(markdownFrame);
+  markdownFrame = null;
   replaying = false;
   streaming = null;
+  streamingMarkdown = '';
   toolBubble = null;
   toolTitle = '';
   log.replaceChildren();
+  permissions.querySelectorAll('.resolved').forEach((card) => card.remove());
   resetContextHealth();
 }
 
@@ -403,9 +445,12 @@ circe.onUpdate((update) => {
     case 'agent_message_chunk': {
       const piece = extractText(u.content);
       if (!piece) return;
-      if (!streaming) streaming = appendText('agent', '');
-      streaming.textContent = (streaming.textContent ?? '') + piece;
-      log.scrollTop = log.scrollHeight;
+      if (!streaming) {
+        streaming = appendText('agent', '');
+        streamingMarkdown = '';
+      }
+      streamingMarkdown += piece;
+      scheduleMarkdownRender();
       return;
     }
     // One reused bubble per turn, overwritten as the agent moves between
@@ -480,22 +525,24 @@ circe.onUpdate((update) => {
       endTurn();
       return;
     case 'circe/permission': {
-      const request = update as { id?: unknown; description?: unknown; command?: unknown };
+      const request = update as { id?: unknown; description?: unknown; command?: unknown; conversation?: unknown };
       if (typeof request.id !== 'number' || typeof request.command !== 'string' || !request.command) return;
-      log.append(
+      permissions.querySelectorAll('.resolved').forEach((card) => card.remove());
+      permissions.append(
         permissionCard(
           request.id,
           typeof request.description === 'string' ? request.description : '',
           request.command,
+          typeof request.conversation === 'string' ? request.conversation : undefined,
         ),
       );
-      log.scrollTop = log.scrollHeight;
+      permissions.scrollTop = permissions.scrollHeight;
       return;
     }
     case 'circe/permission-resolved': {
       const result = update as { id?: unknown; outcome?: unknown };
       if (typeof result.id !== 'number') return;
-      const card = log.querySelector(`[data-permission="${result.id}"]`);
+      const card = permissions.querySelector(`[data-permission="${result.id}"]`);
       if (!card) return;
       card.classList.add('resolved');
       const outcome = document.createElement('div');

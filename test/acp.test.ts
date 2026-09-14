@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AcpClient, optionIdFor, parseFrames } from '../src/main/acp';
+import { AcpClient, optionIdFor, parseFrames, sessionModelName } from '../src/main/acp';
 
 // Reaches into the private `request` method the same way the idempotence test
 // below reaches into `doStart`: no subprocess, no faked ACP traffic. `request`'s
@@ -433,10 +433,10 @@ describe('requests against a client that is not running', () => {
   // is the actual wiring in `doStart` under test.
   it('drops a child that exited on its own, so later requests refuse instead of hanging', async () => {
     const prior = process.env.CIRCE_HERMES_BIN;
-    process.env.CIRCE_HERMES_BIN = '/bin/echo';
+    process.env.CIRCE_HERMES_BIN = process.execPath;
     try {
       const c = client();
-      await expect(c.start()).rejects.toThrow(/exited/);
+      await expect(c.start()).rejects.toThrow(/exited|connection failed/);
       await expect(c.newSession()).rejects.toThrow('ACP client is not running');
     } finally {
       if (prior === undefined) delete process.env.CIRCE_HERMES_BIN;
@@ -572,5 +572,47 @@ describe('AcpClient.stop', () => {
     await expect(pending).rejects.toThrow('ACP client stopped');
 
     expect(() => client.stop()).not.toThrow();
+  });
+});
+
+
+describe('conversation model metadata', () => {
+  const models = {
+    currentModelId: 'provider:active-model',
+    availableModels: [
+      { modelId: 'provider:other-model', name: 'Other model' },
+      { modelId: 'provider:active-model', name: 'Active model' },
+    ],
+  };
+
+  it('uses the selected model name, regardless of the available-model order', () => {
+    expect(sessionModelName({ models })).toBe('Active model');
+    expect(sessionModelName({ models: { currentModelId: 'custom/model' } })).toBe('custom/model');
+  });
+
+  it('does not invent a model when metadata is missing or malformed', () => {
+    for (const response of [null, {}, { models: null }, { models: { currentModelId: 3 } },
+      { models: { availableModels: models.availableModels } }]) {
+      expect(sessionModelName(response)).toBeNull();
+    }
+  });
+
+  it('records new-session models and refreshes them when a session is loaded', async () => {
+    const c = running(new AcpClient({ profileId: 'test', onUpdate: () => {}, onExit: () => {} }));
+    const request = vi.spyOn(c as unknown as WithRequest, 'request');
+    request.mockResolvedValueOnce({ agentCapabilities: { loadSession: true } });
+    await (c as unknown as WithHandshake).handshake();
+    request.mockResolvedValueOnce({ sessionId: 'one', models });
+    expect(await c.newSession()).toBe('one');
+    expect(c.modelForSession('one')).toBe('Active model');
+    expect(c.modelForSession('unknown')).toBeNull();
+    request.mockResolvedValueOnce({ models: { currentModelId: 'different-model' } });
+    expect(await c.loadSession('one')).toBe(true);
+    expect(c.modelForSession('one')).toBe('different-model');
+    request.mockResolvedValueOnce({});
+    await c.loadSession('one');
+    expect(c.modelForSession('one')).toBeNull();
+    (c as unknown as WithChild).child = null;
+    expect(c.modelForSession('one')).toBeNull();
   });
 });

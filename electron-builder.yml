@@ -17,6 +17,12 @@ mac:
 win:
   target: [nsis]
   icon: resources/icon-v4.png
+  artifactName: 'Circe-${version}-windows-${arch}-setup.${ext}'
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
 linux:
   target: [AppImage]
   category: Utility

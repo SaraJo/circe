@@ -32,9 +32,15 @@ For a small trusted test, use the guided [beta checklist](docs/BETA_TEST.md).
 9. Opens tiles for existing profiles and notices new profiles created while it
    is running.
 
-When Circe finds a character portrait during onboarding, it centre-crops the
-source into a 32×32 retro pixel-art avatar. The original article, image URL,
-licence, and local treatment remain recorded beside the stored image.
+During onboarding, Circe asks Hermes to generate a retro RPG pixel-art portrait
+with crossed arms, warm directional lighting, and a rust-to-burgundy background.
+Hermes inspects a character image from Wikipedia or Fandom when available and
+uses its visual details in the generation prompt; otherwise it uses the character
+name, universe, and description. This requires working image generation in Hermes.
+The result is cropped and sized to 1024×1536 and saved with its reference URLs and
+generated treatment recorded beside it. Generated-image licensing is recorded as
+unknown. If generation fails, Circe falls back to the sourced 32×32 avatar or
+initials. Existing saved avatars are preserved.
 
 Circe versions its own installed orchestrator resources. On launch it updates
 copies that still match what Circe previously installed and leaves customized
@@ -61,7 +67,8 @@ through the `hermes` binary.
 
 Prerequisites:
 
-- macOS on Apple Silicon
+- macOS on Apple Silicon, or the experimental Windows 10/11 x64 build
+  (see [Windows beta setup](docs/WINDOWS.md))
 - Node.js 20 or newer and npm
 - Hermes installed and a model provider configured
 
@@ -106,6 +113,8 @@ with no Hermes, a fresh Hermes install, and an install that already has seven
 configured agents. That is how the off-machine cases are covered.
 
 ## Building installers
+
+For the Windows beta, run `npm run dist:win`. See [Windows setup and testing](docs/WINDOWS.md).
 
 ```bash
 npm run dist

@@ -15,7 +15,7 @@
       <!-- No close button of our own: the window carries macOS's real
            close/minimise/zoom at the top left (`titleBarStyle: 'hiddenInset'`),
            and the card's top padding is the room they sit in. -->
-      <header id="bar"><button id="face" class="avatar" type="button" title="Replace avatar" aria-label="Replace avatar"></button><span id="who"></span></header>
+      <header id="bar"><button id="face" class="avatar" type="button" title="Replace avatar" aria-label="Replace avatar"></button><div class="agent-identity"><span id="who"></span><span id="model" title="Waiting for Hermes to report the conversation model">Connecting…</span></div></header>
       <div id="orchestrator-help" hidden>
         <button
           id="orchestrator-help-trigger"
@@ -47,6 +47,7 @@
         </div>
       </section>
       <div id="log"></div>
+      <div id="permissions" aria-label="Tool approvals" aria-live="polite"></div>
       <footer>
         <textarea id="input" rows="1" placeholder="Message…"></textarea>
         <button id="send" type="button">Send</button>

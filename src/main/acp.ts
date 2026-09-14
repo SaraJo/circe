@@ -13,6 +13,7 @@ export interface AcpUpdate {
 export type PermissionChoice = 'allow_once' | 'allow_session' | 'deny';
 
 export interface PermissionRequest {
+  sessionId?: string;
   id: number;
   description: string;
   command: string;
@@ -78,9 +79,27 @@ export function parseFrames(buffer: string): { frames: unknown[]; rest: string }
 /** initialize / session/new should answer quickly; a stall there is unambiguous. */
 const HANDSHAKE_TIMEOUT_MS = 30_000;
 
+/** Uses the model selected for this session, never the first available model. */
+export function sessionModelName(response: unknown): string | null {
+  if (!response || typeof response !== 'object') return null;
+  const models = (response as { models?: unknown }).models;
+  if (!models || typeof models !== 'object') return null;
+  const { currentModelId, availableModels } = models as {
+    currentModelId?: unknown; availableModels?: unknown;
+  };
+  if (typeof currentModelId !== 'string' || !currentModelId.trim()) return null;
+  if (Array.isArray(availableModels)) {
+    const selected = availableModels.find((entry) =>
+      entry && typeof entry === 'object' && entry.modelId === currentModelId);
+    if (typeof selected?.name === 'string' && selected.name.trim()) return selected.name.trim();
+  }
+  return currentModelId.trim();
+}
+
 export class AcpClient {
   private child: ChildProcess | null = null;
   private buffer = '';
+  private readonly sessionModels = new Map<string, string | null>();
   private nextId = 1;
   private pending = new Map<number, { resolve(v: unknown): void; reject(e: Error): void }>();
   private loadSessionSupported = false;
@@ -132,7 +151,7 @@ export class AcpClient {
   }
 
   private async doStart(): Promise<void> {
-    const { bin } = hermesPaths();
+    const { bin, home } = hermesPaths();
     // Captured locally so the `exit` closure below can tell whether it belongs
     // to the child that's still current by the time it fires. `kill()` is
     // asynchronous, so a superseded child's `exit` can arrive after a restart
@@ -141,11 +160,26 @@ export class AcpClient {
     // `onExit` for a session that's actually running fine.
     const child = spawn(bin, ['-p', this.opts.profileId, 'acp', '--accept-hooks'], {
       cwd: this.cwd,
-      env: { ...process.env, HERMES_ACCEPT_HOOKS: '1' },
+      env: { ...process.env, HERMES_HOME: home, HERMES_ACCEPT_HOOKS: '1' },
+      windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.child = child;
 
+    // A process can close its input before its exit event reaches us. Handle
+    // EPIPE (and spawn failures) so they cannot crash the desktop application.
+    const connectionFailed = (error: Error) => {
+      if (this.child !== child) return;
+      this.child = null;
+      for (const pending of this.pending.values()) {
+        pending.reject(new Error(`hermes acp connection failed (${error.message})`));
+      }
+      this.pending.clear();
+      child.kill();
+      this.opts.onExit(null);
+    };
+    child.on('error', connectionFailed);
+    child.stdin!.on('error', connectionFailed);
     child.stdout!.on('data', (b: Buffer) => this.onData(b.toString()));
     child.stderr!.on('data', (b: Buffer) =>
       process.stderr.write(`[acp:${this.opts.profileId}] ${b}`),
@@ -250,6 +284,11 @@ export class AcpClient {
     }
   }
 
+  /** Model reported by the live ACP process for this particular conversation. */
+  modelForSession(sessionId: string): string | null {
+    return this.child ? this.sessionModels.get(sessionId) ?? null : null;
+  }
+
   async newSession(): Promise<string> {
     this.assertRunning();
     const session = (await this.request(
@@ -257,6 +296,7 @@ export class AcpClient {
       { cwd: this.cwd, mcpServers: [] },
       HANDSHAKE_TIMEOUT_MS,
     )) as { sessionId: string };
+    this.sessionModels.set(session.sessionId, sessionModelName(session));
     return session.sessionId;
   }
 
@@ -282,13 +322,15 @@ export class AcpClient {
     if (!this.loadSessionSupported) return false;
     this.assertRunning();
     try {
-      await this.request(
+      const result = await this.request(
         'session/load',
         { cwd: this.cwd, sessionId, mcpServers: [] },
         HANDSHAKE_TIMEOUT_MS,
       );
+      this.sessionModels.set(sessionId, sessionModelName(result));
       return true;
     } catch (err) {
+      this.sessionModels.delete(sessionId);
       console.warn(`Could not resume ACP session ${sessionId}; starting a new one.`, err);
       return false;
     }
@@ -327,6 +369,7 @@ export class AcpClient {
     this.loadSessionSupported = false;
     this.listSessionsSupported = false;
     this.buffer = '';
+    this.sessionModels.clear();
     for (const p of this.pending.values()) p.reject(new Error('ACP client stopped'));
     this.pending.clear();
   }
@@ -369,6 +412,7 @@ export class AcpClient {
     if (msg.method === 'session/request_permission' && typeof msg.id === 'number') {
       const id = msg.id;
       const params = (msg.params ?? {}) as {
+        sessionId?: unknown;
         options?: PermissionOption[];
         toolCall?: {
           title?: unknown;
@@ -391,7 +435,10 @@ export class AcpClient {
       }
 
       const description = typeof raw.description === 'string' ? raw.description : '';
-      void this.opts.onPermission({ id, description, command }).then(
+      void this.opts.onPermission({
+        id, description, command,
+        ...(typeof params.sessionId === 'string' ? { sessionId: params.sessionId } : {}),
+      }).then(
         (choice) => {
           const optionId = optionIdFor(choice, params.options);
           if (!optionId) return cancel();

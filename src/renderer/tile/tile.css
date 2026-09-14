@@ -126,6 +126,7 @@ body {
 }
 #bar,
 #tabs,
+#permissions,
 #log,
 footer {
   -webkit-app-region: no-drag;
@@ -152,6 +153,20 @@ footer {
   align-items: center;
   gap: 12px;
   margin-bottom: 8px;
+}
+.agent-identity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 3px;
+}
+#model {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 #who {
   font-size: 16px;
@@ -324,6 +339,9 @@ footer {
   cursor: pointer;
 }
 .tab-select {
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   padding: 5px 4px 5px 8px;
   font-size: 11px;
   white-space: nowrap;
@@ -365,13 +383,25 @@ footer {
   margin-bottom: 10px;
   font-size: 13px;
   line-height: 1.4;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }
 #log::-webkit-scrollbar {
-  width: 6px;
+  width: 10px;
+}
+#log::-webkit-scrollbar-track {
+  background: transparent;
 }
 #log::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 3px;
+  min-height: 32px;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  background-clip: padding-box;
+}
+#log::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.32);
+  background-clip: padding-box;
 }
 
 .msg {
@@ -616,4 +646,14 @@ textarea:focus {
 #send:hover {
   background: var(--accent-soft);
   border-color: var(--accent-soft);
+}
+
+/* Approval requests remain visible even when a new conversation resets the log. */
+#permissions {
+  flex: 0 1 auto;
+  max-height: 45%;
+  overflow-y: auto;
+}
+#permissions:empty {
+  display: none;
 }

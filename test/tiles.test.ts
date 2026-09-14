@@ -158,6 +158,10 @@ class FakeWindow implements TileWindow {
 }
 
 class FakeClient implements TileClient {
+  readonly models = new Map<string, string>();
+  modelForSession(sessionId: string): string | null {
+    return this.models.get(sessionId) ?? null;
+  }
   canLoadSession = false;
   canListSessions = false;
   started = false;
@@ -173,7 +177,7 @@ class FakeClient implements TileClient {
    */
   constructor(readonly startError: Error | null = null) {}
   /** Resolves `prompt`; a test can hold a turn open by not calling it. */
-  private resolvePrompt: (() => void) | null = null;
+  private promptResolvers: Array<{ sessionId: string; resolve: () => void }> = [];
   /**
    * `start()` waits on this until `releaseStart()` is called, so a test can
    * keep a launch genuinely in flight — mid-`await` — while a second launch
@@ -219,12 +223,12 @@ class FakeClient implements TileClient {
   prompt(sessionId: string, text: string): Promise<void> {
     this.prompts.push({ sessionId, text });
     return new Promise((resolve) => {
-      this.resolvePrompt = resolve;
+      this.promptResolvers.push({ sessionId, resolve });
     });
   }
-  finishTurn(): void {
-    this.resolvePrompt?.();
-    this.resolvePrompt = null;
+  finishTurn(sessionId?: string): void {
+    const index = sessionId ? this.promptResolvers.findIndex((p) => p.sessionId === sessionId) : 0;
+    if (index >= 0) this.promptResolvers.splice(index, 1)[0]?.resolve();
   }
 }
 
@@ -367,10 +371,84 @@ describe('conversation tabs', () => {
 
     expect(h.windows[0]!.tabs().at(-1)).toEqual({
       count: 1,
+      canCreate: true,
+      titles: [''],
+      model: null,
       activeIndex: 0,
       busy: false,
       supported: true,
     });
+  });
+
+  it('shows the active conversation model and updates it on tab switches', async () => {
+    const h = harness();
+    const launch = h.registry.launch(character('default'), 'default');
+    h.clients[0]!.canLoadSession = true;
+    h.clients[0]!.models.set('session-1', 'First model');
+    h.clients[0]!.models.set('session-2', 'Second model');
+    h.windows[0]!.fireLoaded();
+    await launch;
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ model: 'First model' });
+    await h.registry.newTab('default');
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ model: 'Second model' });
+    await h.registry.switchTab('default', 0);
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ model: 'First model' });
+    await h.registry.newTab('default');
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ model: null });
+  });
+
+  it('names each tab from its first prompt and restores the name after reopening', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+    const first = h.registry.prompt('default', '  Plan a trip\n to London  ');
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ titles: ['Plan a trip to London'] });
+    h.clients[0]!.finishTurn();
+    await first;
+    const later = h.registry.prompt('default', 'Actually, Paris');
+    h.clients[0]!.finishTurn();
+    await later;
+    await h.registry.newTab('default');
+    const second = h.registry.prompt('default', 'Fix the kitchen sink');
+    h.clients[0]!.finishTurn();
+    await second;
+    await flushMicrotasks();
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({
+      titles: ['Plan a trip to London', 'Fix the kitchen sink'],
+    });
+    h.registry.close('default');
+    const reopened = h.registry.launch(character('default'), 'default');
+    h.clients[1]!.canLoadSession = true;
+    h.windows[1]!.fireLoaded();
+    await reopened;
+    expect(h.windows[1]!.tabs().at(-1)).toMatchObject({
+      titles: ['Plan a trip to London', 'Fix the kitchen sink'],
+    });
+  });
+
+  it('names a prompt queued during startup without losing the saved tab', async () => {
+    const h = harness();
+    h.armNext({ holdStart: true });
+    const launch = h.registry.launch(character('default'), 'default');
+    h.clients[0]!.canLoadSession = true;
+    h.windows[0]!.fireLoaded();
+    await h.registry.prompt('default', 'Review my first draft');
+    h.clients[0]!.releaseStart();
+    await flushMicrotasks();
+    h.clients[0]!.finishTurn();
+    await launch;
+    await flushMicrotasks();
+    expect(JSON.parse(h.hermes.files.get('circe/state.json')!).profiles.default).toMatchObject({
+      tabs: ['session-1'], titles: { 'session-1': 'Review my first draft' },
+    });
+  });
+
+  it('bounds long titles without cutting an emoji in half', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+    const sending = h.registry.prompt('default', '😀'.repeat(60));
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ titles: ['😀'.repeat(47) + '…'] });
+    h.clients[0]!.finishTurn();
+    await sending;
   });
 
   it('creates a blank conversation and persists both tabs', async () => {
@@ -409,9 +487,49 @@ describe('conversation tabs', () => {
     expect(h.windows[0]!.openings()).toContain('Started fresh with a handoff from Chat 1.');
     expect(h.clients[0]!.prompts[1]).toMatchObject({ sessionId: 'session-2' });
     expect(h.clients[0]!.prompts[1]!.text).toContain('Goal: finish the context meter');
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({
+      titles: ['', 'Goal: finish the context meter. Next: run · 2'],
+    });
 
     h.clients[0]!.finishTurn();
     await rollover;
+  });
+
+  it('names and persists successive context continuations without renaming them on the next prompt', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+    const initial = h.registry.prompt('default', 'Plan the garden');
+    h.clients[0]!.finishTurn();
+    await initial;
+
+    for (const [source, target, title] of [
+      ['session-1', 'session-2', 'Plan the garden · 2'],
+      ['session-2', 'session-3', 'Plan the garden · 3'],
+    ]) {
+      const rollover = h.registry.rollover('default');
+      h.clients[0]!.onUpdate(source!, {
+        sessionUpdate: 'agent_message_chunk', content: { text: 'Goal: choose plants. Next: measure the beds.' },
+      });
+      h.clients[0]!.finishTurn(source);
+      await flushMicrotasks();
+      expect(JSON.parse(h.hermes.files.get('circe/state.json')!).profiles.default.titles[target!]).toBe(title);
+      h.clients[0]!.finishTurn(target);
+      await rollover;
+    }
+    const next = h.registry.prompt('default', 'Use native plants');
+    h.clients[0]!.finishTurn();
+    await next;
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({
+      titles: ['Plan the garden', 'Plan the garden · 2', 'Plan the garden · 3'],
+    });
+    h.registry.close('default');
+    const reopening = h.registry.launch(character('default'), 'default');
+    h.clients[1]!.canLoadSession = true;
+    h.windows[1]!.fireLoaded();
+    await reopening;
+    expect(h.windows[1]!.tabs().at(-1)).toMatchObject({
+      titles: ['Plan the garden', 'Plan the garden · 2', 'Plan the garden · 3'],
+    });
   });
 
   it('keeps the current conversation when the agent produces no handoff', async () => {
@@ -500,6 +618,77 @@ describe('conversation tabs', () => {
     expect(JSON.parse(h.hermes.files.get('circe/state.json')!).profiles.default.tabs).toEqual([
       'session-2',
     ]);
+  });
+
+  it('starts and uses a new tab while the previous conversation keeps processing', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+    const first = h.registry.prompt('default', 'Research the garden');
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ busy: true, canCreate: true });
+    await h.registry.newTab('default');
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ count: 2, activeIndex: 1, canCreate: true });
+    const second = h.registry.prompt('default', 'Plan dinner');
+    expect(h.clients[0]!.prompts.map((p) => p.sessionId)).toEqual(['session-1', 'session-2']);
+    const before = h.windows[0]!.updates().length;
+    h.clients[0]!.onUpdate('session-1', { sessionUpdate: 'agent_message_chunk', content: { text: 'Background reply' } });
+    h.clients[0]!.finishTurn('session-1');
+    await first;
+    expect(h.windows[0]!.updates()).toHaveLength(before);
+    h.clients[0]!.finishTurn('session-2');
+    await second;
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ busy: false, canCreate: true });
+    await h.registry.switchTab('default', 0);
+    expect(h.clients[0]!.loads).toEqual(['session-1']);
+  });
+
+  it('keeps streaming the original conversation while a new session is being created', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+    const turn = h.registry.prompt('default', 'Keep going');
+    let create!: (id: string) => void;
+    h.clients[0]!.newSession = () => new Promise((resolve) => { create = resolve; });
+    const creating = h.registry.newTab('default');
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ canCreate: false });
+    const update = { sessionUpdate: 'agent_message_chunk', content: { text: 'Still here' } };
+    h.clients[0]!.onUpdate('session-1', update);
+    expect(h.windows[0]!.updates()).toContainEqual(update);
+    create('session-2');
+    await creating;
+    h.clients[0]!.finishTurn();
+    await turn;
+  });
+
+  it('labels background approvals and keeps them answerable after opening another tab', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+    const turn = h.registry.prompt('default', 'Research the garden');
+    await h.registry.newTab('default');
+    const answer = h.clients[0]!.onPermission({
+      id: 42, sessionId: 'session-1', description: 'Read file', command: 'cat notes.txt',
+    });
+    expect(h.windows[0]!.updates()).toContainEqual({
+      sessionUpdate: 'circe/permission', id: 42, description: 'Read file',
+      command: 'cat notes.txt', conversation: 'Research the garden',
+    });
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ canCreate: false });
+    await h.registry.newTab('default');
+    expect(h.clients[0]!.newSessionCalls).toBe(2);
+    h.registry.answerPermission('default', 42, 'allow_once');
+    expect(await answer).toBe('allow_once');
+    h.clients[0]!.finishTurn();
+    await turn;
+  });
+
+  it('identifies which background conversation failed', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+    let fail!: (error: Error) => void;
+    h.clients[0]!.prompt = () => new Promise((_resolve, reject) => { fail = reject; });
+    const turn = h.registry.prompt('default', 'Research the garden');
+    await h.registry.newTab('default');
+    fail(new Error('Connection lost'));
+    await turn;
+    expect(h.windows[0]!.openings()).toContain("In Research the garden: Your message wasn't sent. (Connection lost)");
   });
 
   it('does not switch conversations while a turn is still running', async () => {
