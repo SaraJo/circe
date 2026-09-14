@@ -31,12 +31,9 @@ export const COPY = {
     status: 'This usually takes only a few seconds.',
   },
   runtime: {
-    title: 'One thing to install first',
-    // C2: the button below this text opens a download page rather than
-    // confirming anything, so the lead has to say so plainly and tell the
-    // reader what to do once they're back (mirrors the provider-missing
-    // fix below).
-    lead: "Your agents run on Hermes, free open-source software that does the actual work of keeping them running. It isn't installed yet. The button below opens the page to get it. Once it's installed, reopen Circe.",
+    title: "Couldn't connect to Hermes",
+    lead: "Circe couldn't confirm that Hermes is available. If it's already installed, try checking again. If you need to install it, Get Hermes opens the setup guide; return here afterward and check again.",
+    retry: 'Check again',
     action: 'Get Hermes',
   },
   provider: {

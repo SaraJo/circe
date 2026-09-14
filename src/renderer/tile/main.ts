@@ -70,6 +70,8 @@ const modelLabel = document.getElementById('model')!;
 const face = document.getElementById('face') as HTMLButtonElement;
 const tabs = document.getElementById('tabs')!;
 const tabList = document.getElementById('tab-list')!;
+const tabsLeft = document.getElementById('tabs-left') as HTMLButtonElement;
+const tabsRight = document.getElementById('tabs-right') as HTMLButtonElement;
 const newTab = document.getElementById('new-tab') as HTMLButtonElement;
 const contextHealth = document.getElementById('context-health')!;
 const contextHealthLabel = document.getElementById('context-health-label')!;
@@ -158,7 +160,36 @@ function asTabsView(value: unknown): TileTabsView | null {
   return view as TileTabsView;
 }
 
+function updateTabScroll(): void {
+  // Compare against the room available without arrows, so hiding them cannot
+  // make the controls oscillate at the overflow boundary.
+  const gap = parseFloat(getComputedStyle(tabs).columnGap) || 0;
+  const available = tabs.clientWidth - newTab.getBoundingClientRect().width - gap;
+  const overflowing = tabList.scrollWidth > available + 1;
+  tabsLeft.hidden = !overflowing;
+  tabsRight.hidden = !overflowing;
+  tabsLeft.disabled = tabList.scrollLeft <= 1;
+  tabsRight.disabled = tabList.scrollLeft + tabList.clientWidth >= tabList.scrollWidth - 1;
+}
+for (const [button, direction] of [[tabsLeft, -1], [tabsRight, 1]] as const) {
+  button.addEventListener('click', () => tabList.scrollBy({
+    left: direction * Math.max(100, tabList.clientWidth * 0.75), behavior: 'smooth',
+  }));
+}
+tabList.addEventListener('scroll', updateTabScroll);
+new ResizeObserver(updateTabScroll).observe(tabList);
+tabList.addEventListener('wheel', (event) => {
+  if (tabList.scrollWidth <= tabList.clientWidth) return;
+  const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+  const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? tabList.clientWidth : 1;
+  tabList.scrollLeft += delta * scale;
+  event.preventDefault();
+}, { passive: false });
+
 function renderTabs(view: TileTabsView): void {
+  const revealActive = !tabsView || !tabsView.supported ||
+    tabsView.activeIndex !== view.activeIndex || tabsView.count !== view.count;
+  const scrollLeft = tabList.scrollLeft;
   tabsView = view;
   modelLabel.textContent = view.model || 'Unavailable';
   modelLabel.title = view.model
@@ -193,6 +224,18 @@ function renderTabs(view: TileTabsView): void {
     item.append(select, close);
     tabList.append(item);
   }
+  updateTabScroll();
+  tabList.scrollLeft = scrollLeft;
+  if (revealActive) {
+    const active = tabList.children[view.activeIndex];
+    if (active) {
+      const bounds = active.getBoundingClientRect();
+      const viewport = tabList.getBoundingClientRect();
+      if (bounds.right > viewport.right) tabList.scrollLeft += bounds.right - viewport.right;
+      else if (bounds.left < viewport.left) tabList.scrollLeft += bounds.left - viewport.left;
+    }
+  }
+  updateTabScroll();
   newTab.disabled = !(view.canCreate ?? !view.busy);
   renderContextHealth();
 }
@@ -544,6 +587,10 @@ circe.onUpdate((update) => {
       if (typeof result.id !== 'number') return;
       const card = permissions.querySelector(`[data-permission="${result.id}"]`);
       if (!card) return;
+      if (result.outcome === 'allow_once' || result.outcome === 'allow_session') {
+        card.remove();
+        return;
+      }
       card.classList.add('resolved');
       const outcome = document.createElement('div');
       outcome.className = 'permission-outcome';

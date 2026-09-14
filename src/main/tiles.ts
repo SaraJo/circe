@@ -1,3 +1,4 @@
+import { shortTabTitle } from './tabTitle';
 import type { Character, TileTabsView } from '../shared/types';
 import type { PermissionChoice, PermissionRequest } from './acp';
 import { readAvatarDataUrl } from './avatarStore';
@@ -267,9 +268,13 @@ export class TileRegistry {
       await client.start();
       if (!isCurrent()) return;
       const saved = stateFor(await readTileState(this.deps.hermes), profileId);
+      const renamed: string[] = [];
       if (saved.titles && typeof saved.titles === 'object') {
         for (const [id, title] of Object.entries(saved.titles)) {
-          if (typeof title === 'string' && title.trim()) newTile.titles[id] = title;
+          if (typeof title === 'string' && title.trim()) {
+            newTile.titles[id] = shortTabTitle(title);
+            if (newTile.titles[id] !== title) renamed.push(id);
+          }
         }
       }
       const restored = await restoreOrCreateSession({
@@ -283,6 +288,8 @@ export class TileRegistry {
         sendPrompt: (sessionId, text) => this.send(newTile, sessionId, text),
       });
       if (!isCurrent() || restored === null) return;
+      for (const id of renamed) await this.persistTitle(newTile, id);
+      if (!isCurrent()) return;
       newTile.tabs = restored.tabs;
       newTile.activeIndex = restored.activeIndex;
       newTile.tabBusy = false;
@@ -383,8 +390,7 @@ export class TileRegistry {
     // Older unnamed conversations use the handoff itself as a useful fallback.
     const previousTitle = tile.titles[sourceSessionId];
     const match = previousTitle?.match(/^(.*) · (\d{1,6})$/u);
-    const base = Array.from((match?.[1] ?? previousTitle ?? handoff).trim().replace(/\s+/gu, ' '))
-      .slice(0, 42).join('').trimEnd();
+    const base = shortTabTitle(match?.[1] ?? previousTitle ?? handoff);
     let part = match ? Number(match[2]) + 1 : 2;
     const existing = new Set(Object.values(tile.titles));
     while (existing.has(`${base} · ${part}`)) part++;
@@ -807,10 +813,7 @@ export class TileRegistry {
    */
   private send(tile: Tile, sessionId: string, text: string, nameTab = true): Promise<void> {
     if (nameTab && !tile.titles[sessionId] && text.trim()) {
-      const prompt = Array.from(text.trim().replace(/\s+/gu, ' '));
-      tile.titles[sessionId] = prompt.length > 48
-        ? prompt.slice(0, 47).join('').trimEnd() + '…'
-        : prompt.join('');
+      tile.titles[sessionId] = shortTabTitle(text);
       void this.persistTitle(tile, sessionId);
     }
     tile.turnsInFlight++;

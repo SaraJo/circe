@@ -401,7 +401,7 @@ describe('conversation tabs', () => {
     const h = harness();
     await launchedWithTabs(h);
     const first = h.registry.prompt('default', '  Plan a trip\n to London  ');
-    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ titles: ['Plan a trip to London'] });
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ titles: ['Plan trip'] });
     h.clients[0]!.finishTurn();
     await first;
     const later = h.registry.prompt('default', 'Actually, Paris');
@@ -413,7 +413,7 @@ describe('conversation tabs', () => {
     await second;
     await flushMicrotasks();
     expect(h.windows[0]!.tabs().at(-1)).toMatchObject({
-      titles: ['Plan a trip to London', 'Fix the kitchen sink'],
+      titles: ['Plan trip', 'Fix kitchen'],
     });
     h.registry.close('default');
     const reopened = h.registry.launch(character('default'), 'default');
@@ -421,8 +421,24 @@ describe('conversation tabs', () => {
     h.windows[1]!.fireLoaded();
     await reopened;
     expect(h.windows[1]!.tabs().at(-1)).toMatchObject({
-      titles: ['Plan a trip to London', 'Fix the kitchen sink'],
+      titles: ['Plan trip', 'Fix kitchen'],
     });
+  });
+
+  it('shortens saved titles and preserves continuation numbers on reopening', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+    h.registry.close('default');
+    const state = JSON.parse(h.hermes.files.get('circe/state.json')!);
+    state.profiles.default.titles = { 'session-1': 'Plan the garden for next spring · 3' };
+    h.hermes.files.set('circe/state.json', JSON.stringify(state));
+    const reopening = h.registry.launch(character('default'), 'default');
+    h.clients[1]!.canLoadSession = true;
+    h.windows[1]!.fireLoaded();
+    await reopening;
+    expect(h.windows[1]!.tabs().at(-1)).toMatchObject({ titles: ['Plan garden · 3'] });
+    expect(JSON.parse(h.hermes.files.get('circe/state.json')!).profiles.default.titles)
+      .toEqual({ 'session-1': 'Plan garden · 3' });
   });
 
   it('names a prompt queued during startup without losing the saved tab', async () => {
@@ -438,7 +454,7 @@ describe('conversation tabs', () => {
     await launch;
     await flushMicrotasks();
     expect(JSON.parse(h.hermes.files.get('circe/state.json')!).profiles.default).toMatchObject({
-      tabs: ['session-1'], titles: { 'session-1': 'Review my first draft' },
+      tabs: ['session-1'], titles: { 'session-1': 'Review first' },
     });
   });
 
@@ -446,7 +462,7 @@ describe('conversation tabs', () => {
     const h = harness();
     await launchedWithTabs(h);
     const sending = h.registry.prompt('default', '😀'.repeat(60));
-    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ titles: ['😀'.repeat(47) + '…'] });
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ titles: ['😀'.repeat(23) + '…'] });
     h.clients[0]!.finishTurn();
     await sending;
   });
@@ -488,7 +504,7 @@ describe('conversation tabs', () => {
     expect(h.clients[0]!.prompts[1]).toMatchObject({ sessionId: 'session-2' });
     expect(h.clients[0]!.prompts[1]!.text).toContain('Goal: finish the context meter');
     expect(h.windows[0]!.tabs().at(-1)).toMatchObject({
-      titles: ['', 'Goal: finish the context meter. Next: run · 2'],
+      titles: ['', 'Goal: finish · 2'],
     });
 
     h.clients[0]!.finishTurn();
@@ -503,8 +519,8 @@ describe('conversation tabs', () => {
     await initial;
 
     for (const [source, target, title] of [
-      ['session-1', 'session-2', 'Plan the garden · 2'],
-      ['session-2', 'session-3', 'Plan the garden · 3'],
+      ['session-1', 'session-2', 'Plan garden · 2'],
+      ['session-2', 'session-3', 'Plan garden · 3'],
     ]) {
       const rollover = h.registry.rollover('default');
       h.clients[0]!.onUpdate(source!, {
@@ -520,7 +536,7 @@ describe('conversation tabs', () => {
     h.clients[0]!.finishTurn();
     await next;
     expect(h.windows[0]!.tabs().at(-1)).toMatchObject({
-      titles: ['Plan the garden', 'Plan the garden · 2', 'Plan the garden · 3'],
+      titles: ['Plan garden', 'Plan garden · 2', 'Plan garden · 3'],
     });
     h.registry.close('default');
     const reopening = h.registry.launch(character('default'), 'default');
@@ -528,7 +544,7 @@ describe('conversation tabs', () => {
     h.windows[1]!.fireLoaded();
     await reopening;
     expect(h.windows[1]!.tabs().at(-1)).toMatchObject({
-      titles: ['Plan the garden', 'Plan the garden · 2', 'Plan the garden · 3'],
+      titles: ['Plan garden', 'Plan garden · 2', 'Plan garden · 3'],
     });
   });
 
@@ -668,7 +684,7 @@ describe('conversation tabs', () => {
     });
     expect(h.windows[0]!.updates()).toContainEqual({
       sessionUpdate: 'circe/permission', id: 42, description: 'Read file',
-      command: 'cat notes.txt', conversation: 'Research the garden',
+      command: 'cat notes.txt', conversation: 'Research garden',
     });
     expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ canCreate: false });
     await h.registry.newTab('default');
@@ -688,7 +704,7 @@ describe('conversation tabs', () => {
     await h.registry.newTab('default');
     fail(new Error('Connection lost'));
     await turn;
-    expect(h.windows[0]!.openings()).toContain("In Research the garden: Your message wasn't sent. (Connection lost)");
+    expect(h.windows[0]!.openings()).toContain("In Research garden: Your message wasn't sent. (Connection lost)");
   });
 
   it('does not switch conversations while a turn is still running', async () => {

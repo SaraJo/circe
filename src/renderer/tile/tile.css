@@ -331,6 +331,7 @@ footer {
 }
 .tab-select,
 .tab-close,
+.tab-scroll,
 #new-tab {
   border: 0;
   color: var(--text);
@@ -339,7 +340,7 @@ footer {
   cursor: pointer;
 }
 .tab-select {
-  max-width: 170px;
+  max-width: 110px;
   overflow: hidden;
   text-overflow: ellipsis;
   padding: 5px 4px 5px 8px;
@@ -352,6 +353,7 @@ footer {
   font-size: 15px;
   line-height: 1;
 }
+.tab-scroll,
 #new-tab {
   flex: none;
   width: 27px;
@@ -363,11 +365,13 @@ footer {
 }
 .tab-select:hover,
 .tab-close:hover,
+.tab-scroll:hover:not(:disabled),
 #new-tab:hover {
   background: rgba(255, 255, 255, 0.08);
 }
 .tab-select:disabled,
 .tab-close:disabled,
+.tab-scroll:disabled,
 #new-tab:disabled {
   cursor: default;
   opacity: 0.48;

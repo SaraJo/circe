@@ -201,10 +201,12 @@ function render(step: WizardStep): void {
           <h1>${COPY.runtime.title}</h1>
           <p class="lead">${COPY.runtime.lead}</p>
           <div class="actions">
-            <button class="primary" id="install">${COPY.runtime.action}</button>
+            <button class="primary" id="check-runtime">${COPY.runtime.retry}</button>
+            <button id="install">${COPY.runtime.action}</button>
           </div>
         </section>
       `);
+      node.querySelector('#check-runtime')!.addEventListener('click', () => window.circe.start());
       node
         .querySelector('#install')!
         .addEventListener('click', () =>
