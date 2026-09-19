@@ -338,6 +338,9 @@ function registerIpc(): void {
   });
   ipcMain.on('wizard:fleet-fandom', (_e, text: string) => void wizard?.submitFleetFandom(text));
   ipcMain.on('wizard:retry-fleet', () => void wizard?.retryFleetDerivation());
+  ipcMain.on('wizard:revise-fleet', (_e, feedback: unknown) => {
+    if (typeof feedback === 'string') void wizard?.reviseFleetSuggestions(feedback);
+  });
   ipcMain.on('wizard:accept-fleet-renames', (
     _e,
     choices: { renameProfileIds?: unknown; tileProfileIds?: unknown },

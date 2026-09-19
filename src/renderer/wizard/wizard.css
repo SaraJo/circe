@@ -85,6 +85,7 @@ code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; }
 
 input:not([type]),
 input[type='text'],
+textarea,
 select {
   background: var(--input-bg);
   border: 1px solid var(--line);
@@ -95,9 +96,11 @@ select {
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 input:not([type])::placeholder,
-input[type='text']::placeholder { color: var(--placeholder); }
+input[type='text']::placeholder,
+textarea::placeholder { color: var(--placeholder); }
 input:not([type]):focus,
 input[type='text']:focus,
+textarea:focus,
 select:focus {
   outline: none;
   border-color: var(--input-border-focus);
@@ -301,9 +304,9 @@ button:active { transform: translateY(1px); }
   accent-color: var(--ink);
 }
 
-.fleet-preview-screen { padding-top: 30px; gap: 12px; }
+.fleet-preview-screen { padding: 30px 40px 24px; gap: 10px; }
 .fleet-preview-screen .lead { font-size: 14px; }
-.fleet-proposals { max-height: 270px; }
+.fleet-proposals { max-height: 220px; }
 .proposal-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -317,6 +320,14 @@ button:active { transform: translateY(1px); }
 .proposal-copy strong,
 .proposal-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .proposal-copy small { color: var(--ink-faint); }
+.current-role {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.current-role strong { color: var(--ink); }
 .palette-preview { display: flex; }
 .palette-preview i {
   width: 20px;
@@ -333,6 +344,26 @@ button:active { transform: translateY(1px); }
   color: var(--ink-soft);
   font-size: 12px;
   cursor: pointer;
+}
+.alternate-character {
+  grid-column: 1 / -1;
+  justify-self: start;
+  padding: 0;
+  font-size: 12px;
+}
+.fleet-feedback {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+.fleet-feedback textarea {
+  width: 100%;
+  min-height: 44px;
+  resize: vertical;
+  box-sizing: border-box;
 }
 .rename-option > span { display: flex; flex-direction: column; min-width: 0; }
 .rename-option small { color: var(--ink-faint); }

@@ -82,6 +82,10 @@ export interface TileTabsView {
   busy: boolean;
   /** A new session can be created while another session processes a turn. */
   canCreate?: boolean;
+  /** Navigation remains available while turns run in other conversations. */
+  canSwitch?: boolean;
+  /** Tabs can close during turns or permission prompts, but not session transitions. */
+  canClose?: boolean;
   /** Older ACP agents without session/load keep the existing one-conversation UI. */
   supported: boolean;
 }
@@ -89,6 +93,8 @@ export interface TileTabsView {
 export interface FleetIdentityProposal {
   profile: HermesProfile;
   character: Character;
+  /** Short reminder derived from the agent's existing SOUL.md, before any rename. */
+  currentRole: string;
 }
 
 export type FleetFandomIntent = 'rename' | 'keep' | 'new-coordinator';
@@ -131,6 +137,7 @@ export type WizardStep =
       proposals: FleetIdentityProposal[];
       fandom: string;
       ignoredProfileIds: string[];
+      message?: string;
     }
   | {
       kind: 'fleet-saving';
@@ -142,6 +149,7 @@ export type WizardStep =
       profiles: HermesProfile[];
       fandom: string | null;
       ignoredProfileIds: string[];
+      avatarFailures?: string[];
     }
   | {
       kind: 'new-coordinator-preview';

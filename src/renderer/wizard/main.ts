@@ -21,6 +21,7 @@ declare global {
       acceptFleetSelection(profileIds: string[]): void;
       submitFleetFandom(text: string): void;
       retryFleet(): void;
+      reviseFleet(feedback: string): void;
       acceptFleetRenames(renameProfileIds: string[], tileProfileIds: string[]): void;
       chooseCoordinator(profileId: string | null): void;
       newCoordinator(): void;
@@ -402,7 +403,15 @@ function render(step: WizardStep): void {
           <h1>${COPY.fleetPreview.title}</h1>
           <p class="lead">${COPY.fleetPreview.lead}</p>
           <div class="fleet-proposals"></div>
-          <div class="actions"><button class="primary" id="apply-fleet">${COPY.fleetPreview.action}</button></div>
+          <label class="fleet-feedback">
+            <span>What would you like changed?</span>
+            <textarea id="fleet-feedback" rows="2" placeholder="${COPY.fleetPreview.feedbackPlaceholder}"></textarea>
+          </label>
+          <p class="status fleet-feedback-status" hidden></p>
+          <div class="actions">
+            <button id="revise-fleet">${COPY.fleetPreview.revise}</button>
+            <button class="primary" id="apply-fleet">${COPY.fleetPreview.action}</button>
+          </div>
         </section>
       `);
       const proposals = node.querySelector('.fleet-proposals')!;
@@ -411,16 +420,19 @@ function render(step: WizardStep): void {
           <div class="proposal-row">
             <span class="proposal-copy"><strong></strong><small></small></span>
             <span class="palette-preview"><i></i><i></i><i></i></span>
+            <p class="current-role"><strong>${COPY.fleetPreview.currentRole}</strong> <span></span></p>
             <label class="rename-option">
               <input class="rename-toggle" type="checkbox" checked />
               <span><strong></strong><small></small></span>
             </label>
+            <button class="link alternate-character" type="button"></button>
           </div>
         `);
         const renameToggle = row.querySelector<HTMLInputElement>('.rename-toggle')!;
         renameToggle.value = proposal.profile.id;
         row.querySelector('strong')!.textContent = `${proposal.profile.displayName} → ${proposal.character.name}`;
         row.querySelector('small')!.textContent = proposal.character.tagline;
+        row.querySelector<HTMLElement>('.current-role span')!.textContent = proposal.currentRole;
         const option = row.querySelector('.rename-option')!;
         option.querySelector('strong')!.textContent = `Use ${proposal.character.name}`;
         option.querySelector('small')!.textContent = `Uncheck to keep ${proposal.profile.displayName}`;
@@ -431,12 +443,29 @@ function render(step: WizardStep): void {
         renameToggle.addEventListener('change', () => {
           row.classList.toggle('kept', !renameToggle.checked);
         });
+        const alternate = row.querySelector<HTMLButtonElement>('.alternate-character')!;
+        alternate.textContent = COPY.fleetPreview.another;
+        alternate.addEventListener('click', () => window.circe.reviseFleet(
+          `Replace only the suggestion for ${proposal.profile.displayName} (${proposal.profile.id}) with a different, widely recognizable character. Keep every other suggestion the same.`,
+        ));
         const colours = [proposal.character.palette.bg, proposal.character.palette.border, proposal.character.palette.accent];
         row.querySelectorAll<HTMLElement>('.palette-preview i').forEach((swatch, index) => {
           swatch.style.background = colours[index]!;
         });
         proposals.append(row);
       }
+      const feedback = node.querySelector<HTMLTextAreaElement>('#fleet-feedback')!;
+      const feedbackStatus = node.querySelector<HTMLElement>('.fleet-feedback-status')!;
+      if (step.message) {
+        feedbackStatus.textContent = step.message;
+        feedbackStatus.hidden = false;
+      }
+      node.querySelector('#revise-fleet')!.addEventListener('click', () => {
+        const request = feedback.value.trim();
+        feedbackStatus.textContent = COPY.fleetPreview.feedbackRequired;
+        feedbackStatus.hidden = Boolean(request);
+        if (request) window.circe.reviseFleet(request);
+      });
       node.querySelector('#apply-fleet')!.addEventListener('click', () => {
         const renameIds = Array.from(
           node.querySelectorAll<HTMLInputElement>('.proposal-row .rename-toggle:checked'),
@@ -465,6 +494,7 @@ function render(step: WizardStep): void {
         <section class="screen coordinator-choice">
           <h1>${COPY.coordinatorChoice.title}</h1>
           <p class="lead">${COPY.coordinatorChoice.lead}</p>
+          <p class="status avatar-failures" hidden></p>
           <select id="coordinator"></select>
           <div class="actions coordinator-actions">
             <button class="primary" id="use-existing">${COPY.coordinatorChoice.existing}</button>
@@ -474,6 +504,13 @@ function render(step: WizardStep): void {
         </section>
       `);
       const select = node.querySelector<HTMLSelectElement>('#coordinator')!;
+      if (step.avatarFailures?.length) {
+        const failures = node.querySelector<HTMLElement>('.avatar-failures')!;
+        failures.textContent = fill(COPY.coordinatorChoice.avatarFailure, {
+          NAMES: step.avatarFailures.join(', '),
+        });
+        failures.hidden = false;
+      }
       for (const profile of step.profiles) {
         const option = document.createElement('option');
         option.value = profile.id;

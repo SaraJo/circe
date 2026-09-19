@@ -156,6 +156,8 @@ function asTabsView(value: unknown): TileTabsView | null {
   if (view.titles !== undefined && (!Array.isArray(view.titles) ||
     !view.titles.every((title) => typeof title === 'string'))) return null;
   if (view.canCreate !== undefined && typeof view.canCreate !== 'boolean') return null;
+  if (view.canSwitch !== undefined && typeof view.canSwitch !== 'boolean') return null;
+  if (view.canClose !== undefined && typeof view.canClose !== 'boolean') return null;
   if (view.model != null && typeof view.model !== 'string') return null;
   return view as TileTabsView;
 }
@@ -210,7 +212,7 @@ function renderTabs(view: TileTabsView): void {
     select.title = title;
     select.role = 'tab';
     select.setAttribute('aria-selected', String(index === view.activeIndex));
-    select.disabled = view.busy;
+    select.disabled = !(view.canSwitch ?? !view.busy);
     select.addEventListener('click', () => circe.switchTab(index));
 
     const close = document.createElement('button');
@@ -219,7 +221,7 @@ function renderTabs(view: TileTabsView): void {
     close.textContent = '×';
     close.title = 'Close conversation';
     close.setAttribute('aria-label', `Close ${title}`);
-    close.disabled = view.busy;
+    close.disabled = !(view.canClose ?? !view.busy);
     close.addEventListener('click', () => circe.closeTab(index));
     item.append(select, close);
     tabList.append(item);
@@ -269,6 +271,12 @@ function renderContextHealth(): void {
     pressure.level === 'critical' && tabsView?.supported === true && !handoffRunning;
   handoff.hidden = !canRollover;
   handoff.disabled = tabsView?.busy === true;
+  handoff.title = handoff.disabled
+    ? 'Available when this tile finishes its running turns, pending approvals, and conversation loading.'
+    : 'Summarize this conversation and continue in a fresh tab.';
+  if (canRollover && handoff.disabled) {
+    contextHealthMessage.textContent += ' Handoff is available once this tile is idle.';
+  }
 }
 
 function resetContextHealth(): void {
@@ -595,7 +603,15 @@ circe.onUpdate((update) => {
       const outcome = document.createElement('div');
       outcome.className = 'permission-outcome';
       outcome.textContent = permissionOutcomeLabel(result.outcome);
-      card.querySelector('.permission-actions')?.replaceWith(outcome);
+      const actions = document.createElement('div');
+      actions.className = 'permission-actions';
+      const dismiss = document.createElement('button');
+      dismiss.type = 'button';
+      dismiss.textContent = 'Dismiss';
+      dismiss.setAttribute('aria-label', 'Dismiss resolved approval');
+      dismiss.addEventListener('click', () => card.remove());
+      actions.append(dismiss);
+      card.querySelector('.permission-actions')?.replaceWith(outcome, actions);
       return;
     }
     // The agent process died. Without this the tile just goes quiet forever

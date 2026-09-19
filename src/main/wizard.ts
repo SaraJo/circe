@@ -73,6 +73,23 @@ const RETRY_ENTRY_STATES = new Set<WizardStep['kind']>([
   'claim-default',
 ]);
 
+/** Keeps the identity review useful without putting a whole persona on each card. */
+function currentRoleFor(input: FleetIdentityInput): string {
+  const firstInstruction = (input.instructions ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line && !/^#{1,6}\s/.test(line))
+    ?.replace(/^[-*]\s+/, '') ?? '';
+  const parts = [input.tagline, firstInstruction]
+    .map((part) => part.trim().replace(/[.?!]+$/, ''))
+    .filter((part, index, all) => part && all.indexOf(part) === index);
+  const role = parts.join('. ') || 'Existing instructions retained';
+  if (role.length <= 160) return role;
+  const shortened = role.slice(0, 157);
+  const lastSpace = shortened.lastIndexOf(' ');
+  return `${shortened.slice(0, lastSpace > 110 ? lastSpace : 157)}…`;
+}
+
 /**
  * The whole onboarding flow, with no Electron in it. The renderer observes
  * `state` and calls the transitions; nothing here knows a window exists.
@@ -263,9 +280,11 @@ export class Wizard {
         const characters = await deriveFleetCharacters(this.hermes, trimmed, inputs);
         if (gen !== this.generation) return;
         const byId = new Map(profiles.map((profile) => [profile.id, profile]));
+        const rolesById = new Map(inputs.map((input) => [input.profileId, currentRoleFor(input)]));
         const proposals: FleetIdentityProposal[] = characters.map((character) => ({
           profile: byId.get(character.profileId)!,
           character,
+          currentRole: rolesById.get(character.profileId)!,
         }));
         this.set({
           kind: 'fleet-preview',
@@ -302,6 +321,49 @@ export class Wizard {
     await this.submitFleetFandom(this.state.fandom);
   }
 
+  /** Reworks previewed identities from explicit user feedback without writing anything. */
+  async reviseFleetSuggestions(feedback: string): Promise<void> {
+    if (this.state.kind !== 'fleet-preview') return;
+    const request = feedback.trim();
+    if (!request) return;
+    const previous = this.state;
+    const profiles = previous.proposals.map((proposal) => proposal.profile);
+    const gen = ++this.generation;
+    this.set({
+      kind: 'fleet-deriving',
+      profiles,
+      intent: 'rename',
+      fandom: previous.fandom,
+      ignoredProfileIds: previous.ignoredProfileIds,
+    });
+    try {
+      const inputs = await this.fleetIdentityInputs(profiles);
+      const characters = await deriveFleetCharacters(this.hermes, previous.fandom, inputs, {
+        feedback: request,
+        currentCharacters: previous.proposals.map((proposal) => proposal.character),
+      });
+      if (gen !== this.generation) return;
+      const byId = new Map(profiles.map((profile) => [profile.id, profile]));
+      const rolesById = new Map(inputs.map((input) => [input.profileId, currentRoleFor(input)]));
+      this.set({
+        kind: 'fleet-preview',
+        proposals: characters.map((character) => ({
+          profile: byId.get(character.profileId)!,
+          character,
+          currentRole: rolesById.get(character.profileId)!,
+        })),
+        fandom: previous.fandom,
+        ignoredProfileIds: previous.ignoredProfileIds,
+      });
+    } catch (err) {
+      if (gen !== this.generation) return;
+      this.set({
+        ...previous,
+        message: `Couldn't revise those suggestions. ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  }
+
   async acceptFleetRenames(renameProfileIds: string[], tileProfileIds: string[]): Promise<void> {
     if (this.state.kind !== 'fleet-preview') return;
     const proposals = this.state.proposals;
@@ -317,6 +379,7 @@ export class Wizard {
     ];
     this.set({ kind: 'fleet-saving', proposals, selectedProfileIds: selected });
     try {
+      const accepted: FleetIdentityProposal[] = [];
       for (const proposal of proposals) {
         if (!selected.includes(proposal.profile.id)) continue;
         const rel = profileFilePath(proposal.profile.id, 'SOUL.md');
@@ -337,10 +400,17 @@ export class Wizard {
           backupExisting: true,
         });
         await writeProfileTheme(this.hermes, proposal.profile.id, proposal.character.palette);
-        // Identity approval includes the matching face. This runs in the
-        // background so a slow wiki cannot hold the adoption flow hostage;
-        // the fleet watcher refreshes the tile when avatar.png arrives.
-        void this.sourceAndWriteAvatar(proposal.profile.id, proposal.character);
+        accepted.push(proposal);
+      }
+      // Portrait generation drives the default Hermes profile. Run one at a
+      // time so several accepted identities cannot compete for that profile,
+      // and wait so onboarding never claims completion while portraits are
+      // still pending or silently failed.
+      const avatarFailures: string[] = [];
+      for (const proposal of accepted) {
+        if (!await this.sourceAndWriteAvatar(proposal.profile.id, proposal.character, true)) {
+          avatarFailures.push(proposal.character.name);
+        }
       }
       const profiles = adoptableProfiles(await this.hermes.listProfiles());
       this.set({
@@ -348,6 +418,7 @@ export class Wizard {
         profiles: profiles.filter((profile) => tiled.includes(profile.id)),
         fandom: proposals[0]?.character.fandom ?? null,
         ignoredProfileIds: [...new Set(ignoredProfileIds)],
+        avatarFailures,
       });
     } catch (err) {
       this.set({
@@ -646,13 +717,19 @@ export class Wizard {
   }
 
   /** Sources a face for an already-approved fleet identity, then stores it. */
-  private async sourceAndWriteAvatar(profileId: string, character: Character): Promise<void> {
+  private async sourceAndWriteAvatar(
+    profileId: string,
+    character: Character,
+    replaceExisting = false,
+  ): Promise<boolean> {
     try {
-      if (await this.hermes.readHomeFileBytes(avatarPath(profileId))) return;
+      if (!replaceExisting && await this.hermes.readHomeFileBytes(avatarPath(profileId))) return true;
       const found = await this.findPreparedAvatar(character);
-      if (found) await this.writeAvatar(profileId, found);
-    } catch {
-      // A face is optional. The profile and its initials remain fully usable.
+      if (!found) return false;
+      return await this.writeAvatar(profileId, found);
+    } catch (err) {
+      console.warn(`Could not update the avatar for profile "${profileId}".`, err);
+      return false;
     }
   }
 
@@ -661,12 +738,14 @@ export class Wizard {
    * for the late path and the accept path to disagree about where a face goes.
    * Swallowed because a profile with no face is a working profile (§10.7).
    */
-  private async writeAvatar(profileId: string, find: AvatarFind): Promise<void> {
-    if (!this.avatar) return;
+  private async writeAvatar(profileId: string, find: AvatarFind): Promise<boolean> {
+    if (!this.avatar) return false;
     try {
       await saveAvatar(this.hermes, profileId, find, this.avatar.toPng);
+      return true;
     } catch (err) {
       console.warn('Could not write the avatar for the new profile.', err);
+      return false;
     }
   }
 

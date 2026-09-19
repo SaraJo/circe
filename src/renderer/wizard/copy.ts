@@ -91,10 +91,15 @@ export const COPY = {
   },
   fleetPreview: {
     title: 'Choose each identity',
-    lead: 'Each selected agent is listed separately. Leave its box checked to use the suggestion, or uncheck it to keep that agent’s current name and colours.',
+    lead: 'Use a suggestion, keep the current identity, or ask for someone else. You can also describe changes for the whole group below.',
+    currentRole: 'What this agent does now:',
+    another: 'Try someone else',
+    feedbackPlaceholder: 'For example: choose characters I’m more likely to recognize, and use Picard for Research.',
+    revise: 'Revise suggestions',
+    feedbackRequired: 'Describe what you would like changed.',
     action: 'Apply choices',
     savingTitle: 'Updating your fleet',
-    savingLead: 'Saving backups, names, and colours before Circe opens any agents.',
+    savingLead: 'Saving backups, names, colours, and new portraits before Circe opens any agents. Portraits can take several minutes.',
   },
   coordinatorChoice: {
     title: 'Who should coordinate?',
@@ -103,6 +108,7 @@ export const COPY = {
     create: 'Create a new coordinator',
     skip: 'Skip for now',
     opening: 'Opening your fleet',
+    avatarFailure: 'Circe could not replace portraits for: {{NAMES}}. Their previous avatars remain, and you can replace each one from its agent window.',
   },
   newCoordinator: {
     title: 'Meet your new coordinator',

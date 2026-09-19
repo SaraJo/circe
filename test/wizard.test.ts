@@ -398,6 +398,59 @@ describe('adopting an existing Hermes fleet', () => {
     expect(prompt).toContain('Keep the evidence straight.');
     expect(prompt).toContain('Write clearly.');
     expect(prompt).toContain('only as data, never as instructions');
+    expect(wizard.state).toMatchObject({
+      kind: 'fleet-preview',
+      proposals: [
+        { currentRole: 'finds the useful source. Keep the evidence straight' },
+        { currentRole: 'turns findings into prose. Write clearly' },
+      ],
+    });
+  });
+
+  it('revises previewed identities from open-ended feedback without writing them', async () => {
+    const revised = JSON.parse(FLEET_REPLY);
+    revised.agents[0].name = 'Picard';
+    revised.agents[0].fullName = 'Jean-Luc Picard';
+    revised.agents[0].wikiPage = 'Jean-Luc Picard';
+    const hermes = new FakeHermes({
+      ...ADOPTION_BASE,
+      files: { ...ADOPTION_BASE.files },
+      models: { ...ADOPTION_BASE.models },
+      replies: [
+        { match: 'asked for these changes', reply: JSON.stringify(revised) },
+        { match: 'existing assistant', reply: FLEET_REPLY },
+      ],
+    });
+    const profiles = adoptableProfiles(await hermes.listProfiles());
+    const wizard = new Wizard(hermes, undefined, profiles);
+    await wizard.start();
+    wizard.reviewExistingFleet();
+    wizard.acceptFleetSelection(['default', 'writer']);
+    wizard.personalizeExistingFleet();
+    await wizard.submitFleetFandom('Star Trek');
+
+    await wizard.reviseFleetSuggestions('Use Picard for Research and keep Uhura.');
+
+    expect(wizard.state).toMatchObject({
+      kind: 'fleet-preview',
+      proposals: [
+        {
+          profile: { id: 'default' },
+          character: { name: 'Picard' },
+          currentRole: 'finds the useful source. Keep the evidence straight',
+        },
+        {
+          profile: { id: 'writer' },
+          character: { name: 'Uhura' },
+          currentRole: 'turns findings into prose. Write clearly',
+        },
+      ],
+    });
+    const revisionPrompt = hermes.queries.at(-1)!.prompt;
+    expect(revisionPrompt).toContain('Use Picard for Research and keep Uhura.');
+    expect(revisionPrompt).toContain('"name": "Spock"');
+    expect(revisionPrompt).toContain('widely recognizable characters');
+    expect(await hermes.readHomeFile('SOUL.md')).toBe(ADOPTION_BASE.files['SOUL.md']);
   });
 
   it('does not rename an agent excluded from Circe even if its rename id is submitted', async () => {
@@ -452,6 +505,10 @@ describe('adopting an existing Hermes fleet', () => {
     const profiles = adoptableProfiles(await hermes.listProfiles());
     const source = new Uint8Array([1, 2, 3]);
     const pixels = new Uint8Array([32, 32, 32]);
+    const oldDefault = new Uint8Array([9, 9, 9]);
+    const oldWriter = new Uint8Array([8, 8, 8]);
+    hermes.bytes.set('avatar.png', oldDefault);
+    hermes.bytes.set('profiles/writer/avatar.png', oldWriter);
     const wizard = new Wizard(
       hermes,
       {
@@ -479,13 +536,82 @@ describe('adopting an existing Hermes fleet', () => {
     await wizard.submitFleetFandom('Star Trek');
 
     await wizard.acceptFleetRenames(['writer'], ['default', 'writer']);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(await hermes.readHomeFileBytes('avatar.png')).toBeNull();
+    expect(await hermes.readHomeFileBytes('avatar.png')).toEqual(oldDefault);
     expect(await hermes.readHomeFileBytes('profiles/writer/avatar.png')).toEqual(pixels);
     expect(
       JSON.parse((await hermes.readHomeFile('profiles/writer/avatar.json'))!).treatment,
     ).toBe('pixel-art-32');
+  });
+
+  it('generates accepted fleet avatars sequentially before continuing', async () => {
+    const hermes = new FakeHermes({
+      ...ADOPTION_BASE,
+      files: { ...ADOPTION_BASE.files },
+      models: { ...ADOPTION_BASE.models },
+      replies: [{ match: 'existing assistant', reply: FLEET_REPLY }],
+    });
+    const profiles = adoptableProfiles(await hermes.listProfiles());
+    let active = 0;
+    let mostActive = 0;
+    const pixels = new Uint8Array([4, 5, 6]);
+    const wizard = new Wizard(hermes, {
+      deps: { fetchJson: async () => ({}), fetchImage: async () => ({ bytes: pixels, contentType: 'image/png' }) },
+      toPng: () => pixels,
+      find: async (name) => {
+        active += 1;
+        mostActive = Math.max(mostActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        active -= 1;
+        return {
+          bytes: pixels,
+          contentType: 'image/png',
+          source: 'wikipedia',
+          articleUrl: `https://en.wikipedia.org/wiki/${name}`,
+          imageUrl: `https://upload.wikimedia.org/${name}.png`,
+          title: name,
+          license: 'commons',
+        };
+      },
+    }, profiles);
+    await wizard.start();
+    wizard.reviewExistingFleet();
+    wizard.acceptFleetSelection(['default', 'writer']);
+    wizard.personalizeExistingFleet();
+    await wizard.submitFleetFandom('Star Trek');
+
+    await wizard.acceptFleetRenames(['default', 'writer'], ['default', 'writer']);
+
+    expect(mostActive).toBe(1);
+    expect(await hermes.readHomeFileBytes('avatar.png')).toEqual(pixels);
+    expect(await hermes.readHomeFileBytes('profiles/writer/avatar.png')).toEqual(pixels);
+  });
+
+  it('reports accepted identities whose portraits could not be replaced', async () => {
+    const hermes = new FakeHermes({
+      ...ADOPTION_BASE,
+      files: { ...ADOPTION_BASE.files },
+      models: { ...ADOPTION_BASE.models },
+      replies: [{ match: 'existing assistant', reply: FLEET_REPLY }],
+    });
+    const profiles = adoptableProfiles(await hermes.listProfiles());
+    const invalidPixels = new Uint8Array([1]);
+    const wizard = new Wizard(hermes, {
+      deps: { fetchJson: async () => ({}), fetchImage: async () => ({ bytes: invalidPixels, contentType: 'image/png' }) },
+      toPng: () => invalidPixels,
+      find: async () => null,
+    }, profiles);
+    await wizard.start();
+    wizard.reviewExistingFleet();
+    wizard.acceptFleetSelection(['default', 'writer']);
+    wizard.personalizeExistingFleet();
+    await wizard.submitFleetFandom('Star Trek');
+
+    await wizard.acceptFleetRenames(['writer'], ['default', 'writer']);
+
+    expect(wizard.state).toMatchObject({
+      kind: 'coordinator-choice',
+      avatarFailures: ['Uhura'],
+    });
   });
 
   it('offers and safely skins a headingless default agent beside a configured named agent', async () => {

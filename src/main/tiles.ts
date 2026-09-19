@@ -372,6 +372,7 @@ export class TileRegistry {
     const handoff = tile.handoff?.chunks.join('').trim().slice(0, HANDOFF_MAX_CHARS) ?? '';
     tile.handoff = null;
     if (!handoff) {
+      this.emitTabs(tile);
       this.emit(tile.win, { sessionUpdate: 'circe/handoff-failed' });
       this.say(tile, "I couldn't prepare a handoff, so I kept this conversation open.");
       return;
@@ -442,7 +443,7 @@ export class TileRegistry {
   /** Reopens one remembered Hermes conversation in this tile. */
   async switchTab(profileId: string, index: number): Promise<void> {
     const tile = this.tiles.get(profileId);
-    if (!tile || !this.canChangeTabs(tile) || index === tile.activeIndex) return;
+    if (!tile || !this.canSwitchTabs(tile) || index === tile.activeIndex) return;
     if (!Number.isInteger(index) || index < 0 || index >= tile.tabs.length) return;
     await this.changeActiveTab(tile, index);
   }
@@ -488,7 +489,7 @@ export class TileRegistry {
   /** Removes a tab from Circe. It deliberately does not delete the Hermes session. */
   async closeTab(profileId: string, index: number): Promise<void> {
     const tile = this.tiles.get(profileId);
-    if (!tile || !this.canChangeTabs(tile)) return;
+    if (!tile || !this.canCloseTab(tile)) return;
     if (!Number.isInteger(index) || index < 0 || index >= tile.tabs.length) return;
 
     if (index !== tile.activeIndex) {
@@ -677,6 +678,12 @@ export class TileRegistry {
       tile.pendingPermissions.size === 0 && tile.handoff === null;
   }
 
+  private canCloseTab(tile: Tile): boolean {
+    // Closing only removes the tab. Running turns retain their session ids,
+    // and existing permission cards remain answerable across transcript resets.
+    return tile.client.canLoadSession && !tile.tabBusy && tile.handoff === null;
+  }
+
   private tabName(tile: Tile, sessionId: string): string {
     return tile.titles[sessionId] || `Chat ${tile.tabs.indexOf(sessionId) + 1}`;
   }
@@ -685,9 +692,14 @@ export class TileRegistry {
     return (
       tile.client.canLoadSession &&
       !tile.tabBusy &&
+      tile.handoff === null &&
       tile.turnsInFlight === 0 &&
       tile.pendingPermissions.size === 0
     );
+  }
+
+  private canSwitchTabs(tile: Tile): boolean {
+    return tile.client.canLoadSession && !tile.tabBusy && tile.handoff === null;
   }
 
   /** Loads and replays a tab, retaining the previous one if Hermes cannot. */
@@ -791,6 +803,8 @@ export class TileRegistry {
     const view: TileTabsView = {
       count: tile.tabs.length,
       canCreate: this.canCreateTab(tile),
+      canSwitch: this.canSwitchTabs(tile),
+      canClose: this.canCloseTab(tile),
       model: tile.session.activeSessionId
         ? tile.client.modelForSession?.(tile.session.activeSessionId) ?? null
         : null,

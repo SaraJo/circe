@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('circe', {
     ipcRenderer.send('wizard:accept-fleet-selection', profileIds),
   submitFleetFandom: (text: string) => ipcRenderer.send('wizard:fleet-fandom', text),
   retryFleet: () => ipcRenderer.send('wizard:retry-fleet'),
+  reviseFleet: (feedback: string) => ipcRenderer.send('wizard:revise-fleet', feedback),
   acceptFleetRenames: (renameProfileIds: string[], tileProfileIds: string[]) =>
     ipcRenderer.send('wizard:accept-fleet-renames', { renameProfileIds, tileProfileIds }),
   chooseCoordinator: (profileId: string | null) =>

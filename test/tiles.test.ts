@@ -372,6 +372,8 @@ describe('conversation tabs', () => {
     expect(h.windows[0]!.tabs().at(-1)).toEqual({
       count: 1,
       canCreate: true,
+      canSwitch: true,
+      canClose: true,
       titles: [''],
       model: null,
       activeIndex: 0,
@@ -488,6 +490,7 @@ describe('conversation tabs', () => {
 
     const rollover = h.registry.rollover('default');
     expect(h.windows[0]!.updates()).toContainEqual({ sessionUpdate: 'circe/handoff-start' });
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ canSwitch: false });
     expect(h.clients[0]!.prompts).toEqual([
       { sessionId: 'session-1', text: HANDOFF_REQUEST },
     ]);
@@ -636,6 +639,43 @@ describe('conversation tabs', () => {
     ]);
   });
 
+  it.each(['inactive', 'active', 'last'] as const)('closes the %s tab during a running response', async (kind) => {
+    const h = harness();
+    await launchedWithTabs(h);
+    if (kind === 'active') await h.registry.newTab('default');
+    const turn = h.registry.prompt('default', 'Keep working');
+    if (kind === 'inactive') await h.registry.newTab('default');
+    const runningSession = kind === 'active' ? 'session-2' : 'session-1';
+    const closingIndex = kind === 'active' ? 1 : 0;
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ busy: true, canClose: true });
+
+    await h.registry.closeTab('default', closingIndex);
+
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ count: 1, activeIndex: 0, canClose: true });
+    const expectedSession = kind === 'active' ? 'session-1' : 'session-2';
+    expect(JSON.parse(h.hermes.files.get('circe/state.json')!).profiles.default.tabs).toEqual([expectedSession]);
+    const before = h.windows[0]!.updates().length;
+    h.clients[0]!.onUpdate(runningSession, { sessionUpdate: 'agent_message_chunk', content: { text: 'Still working' } });
+    h.clients[0]!.finishTurn(runningSession);
+    await turn;
+    expect(h.windows[0]!.updates()).toHaveLength(before);
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ busy: false, canClose: true });
+  });
+
+  it('keeps a pending permission answerable after closing its tab', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+    const answer = h.clients[0]!.onPermission({
+      id: 42, sessionId: 'session-1', description: 'Read file', command: 'cat notes.txt',
+    });
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ busy: true, canClose: true });
+    await h.registry.closeTab('default', 0);
+    expect(JSON.parse(h.hermes.files.get('circe/state.json')!).profiles.default.tabs).toEqual(['session-2']);
+    h.registry.answerPermission('default', 42, 'allow_once');
+    expect(await answer).toBe('allow_once');
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ busy: false, canClose: true });
+  });
+
   it('starts and uses a new tab while the previous conversation keeps processing', async () => {
     const h = harness();
     await launchedWithTabs(h);
@@ -664,7 +704,9 @@ describe('conversation tabs', () => {
     let create!: (id: string) => void;
     h.clients[0]!.newSession = () => new Promise((resolve) => { create = resolve; });
     const creating = h.registry.newTab('default');
-    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ canCreate: false });
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ canCreate: false, canClose: false, canSwitch: false });
+    await h.registry.closeTab('default', 0);
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ count: 1 });
     const update = { sessionUpdate: 'agent_message_chunk', content: { text: 'Still here' } };
     h.clients[0]!.onUpdate('session-1', update);
     expect(h.windows[0]!.updates()).toContainEqual(update);
@@ -707,7 +749,7 @@ describe('conversation tabs', () => {
     expect(h.windows[0]!.openings()).toContain("In Research garden: Your message wasn't sent. (Connection lost)");
   });
 
-  it('does not switch conversations while a turn is still running', async () => {
+  it('switches conversations while a turn runs and isolates background updates', async () => {
     const h = harness();
     await launchedWithTabs(h);
     await h.registry.newTab('default');
@@ -715,10 +757,13 @@ describe('conversation tabs', () => {
 
     await h.registry.switchTab('default', 0);
 
-    expect(h.clients[0]!.loads).toEqual([]);
-    expect(h.windows[0]!.tabs().at(-1)?.busy).toBe(true);
+    expect(h.clients[0]!.loads).toEqual(['session-1']);
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ activeIndex: 0, busy: true, canSwitch: true });
+    const before = h.windows[0]!.updates().length;
+    h.clients[0]!.onUpdate('session-2', { sessionUpdate: 'agent_message_chunk', content: { text: 'Background reply' } });
     h.clients[0]!.finishTurn();
     await turn;
+    expect(h.windows[0]!.updates()).toHaveLength(before);
     expect(h.windows[0]!.tabs().at(-1)?.busy).toBe(false);
   });
 

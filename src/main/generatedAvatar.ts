@@ -6,11 +6,12 @@ import type { AvatarFind } from './avatar';
 import type { HermesRuntime } from './hermes/runtime';
 import type { ToPng } from './avatarStore';
 
-export const AVATAR_ART_DIRECTION = `Create a high-detail retro pixel-art character portrait in a late-16-bit / early-32-bit 1990s RPG aesthetic. Painterly pixel rendering with deliberately visible pixel clusters, textured dithering, blocky hand-painted highlights and shadows, and crisp pixel-defined edges. Avoid modern smooth digital painting, vector-like edges, airbrushing, or photorealistic skin.
-Show the character from approximately mid-thigh/chest upward in a centered, commanding portrait composition. The character faces mostly forward with arms crossed across the chest. Strong, recognizable facial features and a serious, confident expression.
-Use dramatic warm directional lighting, with strongly modeled facial planes and high contrast. Deep blacks and dark navy in the clothing, rich saturated reds, warm orange/peach skin highlights, and small bright accent colors. Preserve fine costume details while rendering everything through chunky pixel clusters.
-Background: simple atmospheric gradient, glowing burnt orange/rust behind the head and upper body, fading into deep burgundy and nearly black toward the edges. No scenery, objects, text, or decorative elements.
-Format: vertical 2:3 composition, 1024 × 1536. Detailed retro RPG pixel art, painterly SNES/early PlayStation character-portrait aesthetic.`;
+export const AVATAR_ART_DIRECTION = `Create a personable classic RPG dialogue portrait in authentic chunky, low-resolution retro pixel art. Render as if drawn on a 64 × 96 pixel canvas, then enlarged with crisp nearest-neighbor square pixels. Use large coherent pixel clusters and restrained outlines.
+Show the character in a centered head-and-shoulders composition, facing mostly forward with relaxed shoulders and a subtle, friendly expression. Preserve recognizable hair, species, age, and signature costume details, simplified into clear shapes. Keep natural character proportions rather than chibi proportions; nonhuman characters should retain their own anatomy.
+Aim for a restrained palette of about 16 flat colors in total, with only three shades for skin or the equivalent main surface. Use simple eyes just a few pixels each and a simplified nose and mouth. Soft lighting should be expressed through clean blocks of shading. Retain characteristic costume colors with small accent colors.
+Background: flat muted, desaturated teal. No scenery, objects, text, borders, or decorative elements.
+Avoid realistic skin texture, fine wrinkles, glossy eyes, muscular exaggeration, painterly rendering, tiny dithering, smooth gradients, anti-aliasing, dramatic orange glow, and hard facial shadows.
+Format: vertical 2:3 composition, 1024 × 1536 output, preserving the chunky 64 × 96 pixel look.`;
 
 /** Stage each request separately so concurrent fleet portraits cannot cross identities. */
 export async function generateAvatar(
