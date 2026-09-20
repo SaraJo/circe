@@ -365,6 +365,36 @@ describe('conversation tabs', () => {
     await launch;
   }
 
+  it('routes image attachments to the active session', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+    await h.registry.newTab('default');
+    const prompt = vi.spyOn(h.clients[0]!, 'prompt').mockResolvedValue();
+    const image = { type: 'image' as const, mimeType: 'image/png', data: 'aGVsbG8=' };
+    await h.registry.prompt('default', { text: 'Describe this', images: [image] });
+    expect(prompt).toHaveBeenCalledWith('session-2', 'Describe this', [image]);
+  });
+
+  it('delivers an image typed before the session finishes opening', async () => {
+    const h = harness();
+    const launch = h.registry.launch(character('default'), 'default');
+    const prompt = vi.spyOn(h.clients[0]!, 'prompt').mockResolvedValue();
+    const image = { type: 'image' as const, mimeType: 'image/png', data: 'aGVsbG8=' };
+    await h.registry.prompt('default', { text: '', images: [image] });
+    expect(prompt).not.toHaveBeenCalled();
+    h.windows[0]!.fireLoaded();
+    await launch;
+    expect(prompt).toHaveBeenCalledWith('session-1', '', [image]);
+  });
+
+  it('rejects invalid image IPC payloads without sending a prompt', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+    await h.registry.prompt('default', { text: 'hi', images: [{ type: 'image', data: 'bad' }] });
+    expect(h.clients[0]!.prompts).toEqual([]);
+    expect(h.windows[0]!.openings().at(-1)).toContain('Your message was not sent');
+  });
+
   it('shows the restored conversation as the first tab', async () => {
     const h = harness();
     await launchedWithTabs(h);

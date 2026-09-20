@@ -1,3 +1,4 @@
+import { IMAGE_TYPES, MAX_IMAGE_BYTES, isImageAttachment, isTilePrompt, type ImageAttachment, type TilePrompt } from '../../shared/prompt';
 import type { Character, TileTabsView } from '../../shared/types';
 import { DEFAULT_PALETTE, isPalette, paletteVars } from '../../main/palette';
 import { applyFace, initials } from '../face';
@@ -24,7 +25,7 @@ interface TileApi {
   onCharacter(cb: (character: unknown) => void): void;
   onAvatar(cb: (dataUrl: string | null) => void): void;
   onTabs(cb: (tabs: unknown) => void): void;
-  send(text: string): void;
+  send(text: TilePrompt): void;
   newTab(): void;
   switchTab(index: number): void;
   clearTab(): void;
@@ -525,9 +526,11 @@ circe.onUpdate((update) => {
     case 'user_message_chunk': {
       if (!replaying) return; // live turns are drawn by the input handler
       const piece = extractText(u.content);
-      if (!piece) return;
+      const blocks = Array.isArray(u.content) ? u.content : [u.content];
+      const images = blocks.filter(isImageAttachment);
+      if (!piece && !images.length) return;
       endTurn();
-      appendText('user', piece);
+      appendUserPrompt({ text: piece, images });
       return;
     }
     case 'circe/replay-start':
@@ -539,6 +542,7 @@ circe.onUpdate((update) => {
       endTurn();
       return;
     case 'circe/tab-reset':
+      clearAttachment();
       resetTranscript();
       return;
     case 'circe/handoff-start':
@@ -568,7 +572,7 @@ circe.onUpdate((update) => {
       appendText('agent', "Couldn't reopen the previous conversation, so I'm starting a new one.");
       const held = (update as { held?: unknown }).held;
       if (Array.isArray(held)) {
-        for (const text of held) if (typeof text === 'string') appendText('user', text);
+        for (const message of held) if (isTilePrompt(message)) appendUserPrompt(message);
       }
       return;
     }
@@ -646,12 +650,91 @@ log.addEventListener('click', (e) => {
  * cannot drift apart — two copies of this is how one of them ends up not
  * resetting the streaming bubble.
  */
+const imageFile = document.getElementById('image-file') as HTMLInputElement;
+const attachButton = document.getElementById('attach-image') as HTMLButtonElement;
+const attachmentPreview = document.getElementById('attachment-preview')!;
+const attachmentStatus = document.getElementById('attachment-status')!;
+let attachedImage: ImageAttachment | null = null;
+let imageLoading = false;
+let attachmentGeneration = 0;
+
+function appendImage(parent: HTMLElement, attachment: ImageAttachment, alt: string): void {
+  const image = document.createElement('img');
+  image.className = 'conversation-image';
+  image.src = `data:${attachment.mimeType};base64,${attachment.data}`;
+  image.alt = alt;
+  parent.append(image);
+}
+
+function appendUserPrompt(message: TilePrompt): void {
+  const bubble = appendText('user', typeof message === 'string' ? message : message.text);
+  if (typeof message !== 'string') {
+    for (const image of message.images) appendImage(bubble, image, 'Attached image');
+  }
+  log.scrollTop = log.scrollHeight;
+}
+
+function clearAttachment(): void {
+  attachmentGeneration++;
+  attachedImage = null;
+  imageLoading = false;
+  attachButton.disabled = false;
+  imageFile.value = '';
+  attachmentPreview.replaceChildren();
+  attachmentPreview.hidden = true;
+  attachmentStatus.hidden = true;
+}
+
+attachButton.addEventListener('click', () => imageFile.click());
+imageFile.addEventListener('change', async () => {
+  const file = imageFile.files?.[0];
+  if (!file) return;
+  clearAttachment();
+  const generation = attachmentGeneration;
+  imageLoading = true;
+  attachButton.disabled = true;
+  attachmentStatus.textContent = 'Loading image…';
+  attachmentStatus.hidden = false;
+  try {
+    if (!IMAGE_TYPES.includes(file.type) || file.size > MAX_IMAGE_BYTES || file.size === 0) {
+      throw new Error('Choose a PNG, JPEG, WebP, or GIF image up to 5 MB.');
+    }
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error('Could not read this image. Please try again.'));
+      reader.readAsDataURL(file);
+    });
+    const decoded = new Image();
+    decoded.src = dataUrl;
+    await decoded.decode();
+    if (generation !== attachmentGeneration) return;
+    attachedImage = { type: 'image', mimeType: file.type, data: dataUrl.slice(dataUrl.indexOf(',') + 1) };
+    appendImage(attachmentPreview, attachedImage, file.name);
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = 'Remove image';
+    remove.addEventListener('click', clearAttachment);
+    attachmentPreview.append(remove);
+    attachmentPreview.hidden = false;
+    attachmentStatus.hidden = true;
+  } catch (error) {
+    if (generation !== attachmentGeneration) return;
+    attachmentStatus.textContent = error instanceof Error ? error.message : 'Could not load this image.';
+  } finally {
+    if (generation === attachmentGeneration) {
+      imageLoading = false;
+      attachButton.disabled = false;
+    }
+  }
+});
+
 function sendCurrentInput(): void {
   const text = input.value.trim();
-  if (!text) return;
+  if (imageLoading || (!text && !attachedImage)) return;
   // A local convenience command, not an agent prompt. It replaces the Hermes
   // conversation behind this tab, so the tab count and selection stay put.
-  if (text.toLowerCase() === '/clear') {
+  if (!attachedImage && text.toLowerCase() === '/clear') {
     if (!tabsView?.supported || tabsView.busy) return;
     circe.clearTab();
     input.value = '';
@@ -664,8 +747,10 @@ function sendCurrentInput(): void {
   streaming = null;
   toolBubble = null;
   toolTitle = '';
-  appendText('user', text);
-  circe.send(text);
+  const message: TilePrompt = attachedImage ? { text, images: [attachedImage] } : text;
+  appendUserPrompt(message);
+  circe.send(message);
+  clearAttachment();
   input.value = '';
   input.focus();
 }

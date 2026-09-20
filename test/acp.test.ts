@@ -367,6 +367,28 @@ describe('AcpClient session lifecycle', () => {
     await expect(c.newSession()).resolves.toBe('sess-9');
   });
 
+  it.each(['Describe this', ''])('sends image blocks with optional text: %s', async (text) => {
+    const c = running(client());
+    const request = vi.spyOn(c as unknown as WithRequest, 'request').mockResolvedValue({
+      agentCapabilities: { promptCapabilities: { image: true } },
+    });
+    await (c as unknown as WithHandshake).handshake();
+    const image = { type: 'image' as const, mimeType: 'image/png', data: 'aGVsbG8=' };
+    await c.prompt('image-session', text, [image]);
+    expect(request).toHaveBeenLastCalledWith('session/prompt', {
+      sessionId: 'image-session',
+      prompt: [...(text ? [{ type: 'text', text }] : []), image],
+    });
+  });
+
+  it('rejects images when the agent did not advertise support', async () => {
+    const c = running(client());
+    const request = vi.spyOn(c as unknown as WithRequest, 'request').mockResolvedValue({});
+    await expect(c.prompt('s1', '', [{ type: 'image', mimeType: 'image/png', data: 'aGVsbG8=' }]))
+      .rejects.toThrow('does not support image attachments');
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it('prompts the session it was given, not an implicit one', async () => {
     const c = running(client());
     const request = vi

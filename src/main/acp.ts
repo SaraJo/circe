@@ -1,3 +1,4 @@
+import type { ImageAttachment } from '../shared/prompt';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { homedir } from 'node:os';
 import { hermesPaths } from './hermes/runtime';
@@ -103,6 +104,7 @@ export class AcpClient {
   private nextId = 1;
   private pending = new Map<number, { resolve(v: unknown): void; reject(e: Error): void }>();
   private loadSessionSupported = false;
+  private imagePromptSupported = false;
   private listSessionsSupported = false;
   private startPromise: Promise<void> | null = null;
 
@@ -216,8 +218,9 @@ export class AcpClient {
       },
       HANDSHAKE_TIMEOUT_MS,
     )) as {
-      agentCapabilities?: { loadSession?: unknown; sessionCapabilities?: { list?: unknown } };
+      agentCapabilities?: { promptCapabilities?: { image?: boolean }; loadSession?: unknown; sessionCapabilities?: { list?: unknown } };
     } | null;
+    this.imagePromptSupported = init?.agentCapabilities?.promptCapabilities?.image === true;
     this.loadSessionSupported = init?.agentCapabilities?.loadSession === true;
     // Not a sibling of `loadSession` and not a boolean: Hermes 0.14.0 answers
     // `sessionCapabilities: { fork: {}, list: {}, resume: {} }` (spec §2), so
@@ -342,11 +345,12 @@ export class AcpClient {
   // wouldn't catch anything — killing a working agent mid-thought is worse than
   // the hang it would prevent. If the process actually dies, the `exit` handler
   // above still rejects every pending request, prompt included.
-  async prompt(sessionId: string, text: string): Promise<void> {
+  async prompt(sessionId: string, text: string, images: ImageAttachment[] = []): Promise<void> {
     this.assertRunning();
+    if (images.length && !this.imagePromptSupported) throw new Error('This Hermes agent does not support image attachments. Update Hermes or use an agent with image support.');
     await this.request('session/prompt', {
       sessionId,
-      prompt: [{ type: 'text', text }],
+      prompt: [...(text ? [{ type: 'text', text }] : []), ...images.map(({ data, mimeType }) => ({ type: 'image', data, mimeType }))],
     });
   }
 
@@ -367,6 +371,7 @@ export class AcpClient {
     this.child = null;
     this.startPromise = null;
     this.loadSessionSupported = false;
+    this.imagePromptSupported = false;
     this.listSessionsSupported = false;
     this.buffer = '';
     this.sessionModels.clear();

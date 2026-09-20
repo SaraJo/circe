@@ -1,3 +1,4 @@
+import { isTilePrompt, type TilePrompt, type ImageAttachment } from '../shared/prompt';
 import { shortTabTitle } from './tabTitle';
 import type { Character, TileTabsView } from '../shared/types';
 import type { PermissionChoice, PermissionRequest } from './acp';
@@ -33,7 +34,7 @@ export interface TileClient extends SessionClient {
   modelForSession?(sessionId: string): string | null;
   start(): Promise<void>;
   stop(): void;
-  prompt(sessionId: string, text: string): Promise<void>;
+  prompt(sessionId: string, text: string, images?: ImageAttachment[]): Promise<void>;
 }
 
 export interface TileClientOptions {
@@ -87,7 +88,7 @@ interface Tile {
   readonly profileId: string;
   readonly win: TileWindow;
   readonly client: TileClient;
-  readonly session: TileSession;
+  readonly session: TileSession<TilePrompt>;
   /**
    * What this tile is currently showing. Kept so `retheme` can tell a real
    * change from the constant noise of an agent writing memory and session
@@ -167,7 +168,7 @@ export class TileRegistry {
       return;
     }
 
-    const session = new TileSession();
+    const session = new TileSession<TilePrompt>();
     // Opened before the window exists, so there is no instant in which the tile
     // is on screen with an enabled input and nowhere for a message to go.
     session.beginLaunch();
@@ -335,9 +336,13 @@ export class TileRegistry {
    * see: the renderer has already drawn their bubble, so returning quietly is
    * not one of the options.
    */
-  async prompt(profileId: string, text: string): Promise<void> {
+  async prompt(profileId: string, text: unknown): Promise<void> {
     const tile = this.tiles.get(profileId);
     if (!tile) return;
+    if (!isTilePrompt(text)) {
+      this.say(tile, 'Your message was not sent. Attach one PNG, JPEG, WebP, or GIF image up to 5 MB.');
+      return;
+    }
     const route = tile.session.route(text);
     // Held: a launch is in flight and will either send this or, if it fails,
     // say so in the tile. Either way the user hears back.
@@ -791,7 +796,7 @@ export class TileRegistry {
     await write;
   }
 
-  private async deliverHeld(tile: Tile, sessionId: string, held: string[]): Promise<void> {
+  private async deliverHeld(tile: Tile, sessionId: string, held: TilePrompt[]): Promise<void> {
     for (const text of held) {
       if (this.tiles.get(tile.profileId) !== tile) return;
       await this.send(tile, sessionId, text);
@@ -825,14 +830,16 @@ export class TileRegistry {
    * Never rejects: `restore.ts` awaits this to deliver held messages one at a
    * time, and a rejection there is not a launch failure.
    */
-  private send(tile: Tile, sessionId: string, text: string, nameTab = true): Promise<void> {
+  private send(tile: Tile, sessionId: string, message: TilePrompt, nameTab = true): Promise<void> {
+    const text = typeof message === 'string' ? message : message.text;
+    const images = typeof message === 'string' ? undefined : message.images;
     if (nameTab && !tile.titles[sessionId] && text.trim()) {
       tile.titles[sessionId] = shortTabTitle(text);
       void this.persistTitle(tile, sessionId);
     }
     tile.turnsInFlight++;
     this.emitTabs(tile);
-    return tile.client.prompt(sessionId, text).then(
+    return tile.client.prompt(sessionId, text, images).then(
       () => {
         if (tile.session.activeSessionId === sessionId) {
           this.emit(tile.win, { sessionUpdate: 'circe/turn-end' });

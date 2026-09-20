@@ -1,9 +1,34 @@
 # Circe
 
-Circe creates or adopts a Hermes fleet and gives each usable profile a tile on
-your desktop. New users can make a fandom-themed coordinator; existing users
-can keep their setup, selectively rename and skin agents from a fandom, and
-choose whether an existing or new agent should coordinate.
+**Your agent crew, at home on your desktop.**
+
+![Circe agent tiles arranged around an Apple Notes packing checklist, with a tool approval request visible in Scully's tile.](docs/images/circe-desktop.png)
+
+Circe brings your [Hermes](https://hermes-agent.nousresearch.com) AI agents onto
+your desktop as individual chat windows that live alongside the apps you already
+use. Put one agent on trip planning, another on research, and another on everyday
+logistics. Keep their conversations in view, switch between tasks while agents
+work, and respond to tool approval requests right where they appear.
+
+Give your crew personalities from a favorite fandom, universe, or community,
+complete with character names, pixel-art portraits, and individual colors. Bring
+your existing Hermes agents or start with a coordinator to help organize your
+crew. You choose which agents get tiles and which identities to keep or change.
+
+- **Work alongside your agents.** Keep their tiles beside your notes, browser,
+  or editor, with separate conversation tabs for different tasks.
+- **Keep long-running work moving.** Switch tabs while an agent is thinking,
+  monitor context usage, and start a fresh conversation with a handoff when a
+  chat gets too long.
+- **See what needs your approval.** Review requested tool actions in the tile
+  and allow them once, allow them for the session, or deny them.
+
+Hermes supplies the models, tools, and integrations; Circe gives that crew a
+visible home on your desktop. What your agents can do depends on your Hermes
+setup.
+
+**[Download the beta for macOS or Windows](https://github.com/SaraJo/circe/releases)**
+· Requires Hermes and a connected model provider. Builds are unsigned.
 
 For the authoritative implementation status and near-term roadmap, see
 [docs/CURRENT_BUILD.md](docs/CURRENT_BUILD.md). Dated plans and specs are
@@ -53,6 +78,12 @@ onboarding record and preserves agents, personas, conversations, and tab history
 When Hermes requests approval for a tool action, Circe shows the command in the
 tile and offers allow-once, allow-for-session, or deny. Circe never chooses a
 permanent approval option.
+
+Use the **＋** beside a tile's message field to attach one PNG, JPEG, WebP, or
+GIF image up to 5 MB. Review the preview, add an optional message, and select
+**Send**. Images require a Hermes agent and model that support image input.
+Image previews in reopened conversations depend on what Hermes returns during
+history replay; some Hermes versions replay only the text.
 
 Circe never wires up an MCP server itself. That is a conversation you have with
 your orchestrator, which is what the skill teaches it to do.

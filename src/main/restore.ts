@@ -59,10 +59,10 @@ export type PromptRoute =
  * gap would interleave with the replay while the renderer's `replaying` flag is
  * still true, and the user's own message would be drawn twice.
  */
-export class TileSession {
+export class TileSession<T = string> {
   private active: string | null = null;
   private launching = false;
-  private held: string[] = [];
+  private held: T[] = [];
 
   /** The session whose updates this tile draws. Updates for any other are dropped. */
   get activeSessionId(): string | null {
@@ -76,7 +76,7 @@ export class TileSession {
    * `openSession`/`failLaunch` remain the only ways to take the messages out,
    * so nothing can drain the pen by looking at it.
    */
-  get heldMessages(): readonly string[] {
+  get heldMessages(): readonly T[] {
     return this.held;
   }
 
@@ -93,14 +93,14 @@ export class TileSession {
   }
 
   /** A session is live. Returns whatever was held during the launch window. */
-  openSession(sessionId: string): string[] {
+  openSession(sessionId: string): T[] {
     this.active = sessionId;
     this.launching = false;
     return this.held.splice(0);
   }
 
   /** The launch failed. Returns the messages that were never sent. */
-  failLaunch(): string[] {
+  failLaunch(): T[] {
     this.launching = false;
     return this.held.splice(0);
   }
@@ -113,7 +113,7 @@ export class TileSession {
   }
 
   /** Classifies a prompt, holding it when there is nowhere to send it yet. */
-  route(text: string): PromptRoute {
+  route(text: T): PromptRoute {
     if (this.launching) {
       this.held.push(text);
       return { kind: 'held' };
@@ -123,11 +123,11 @@ export class TileSession {
   }
 }
 
-export interface RestoreDeps {
+export interface RestoreDeps<T = string> {
   hermes: HermesRuntime;
   client: SessionClient;
   profileId: string;
-  session: TileSession;
+  session: TileSession<T>;
   /** Sends a synthetic `circe/*` update to the tile. */
   emit(update: Record<string, unknown>): void;
   /** Resolves when the renderer has registered its listeners. */
@@ -145,7 +145,7 @@ export interface RestoreDeps {
    * (see `deliver`), so an implementation that reports failures itself should
    * resolve rather than reject — a rejection here is not a launch failure.
    */
-  sendPrompt(sessionId: string, text: string): Promise<void>;
+  sendPrompt(sessionId: string, text: T): Promise<void>;
 }
 
 export interface RestoredTabs {
@@ -175,7 +175,7 @@ export interface RestoredTabs {
  * be tested for real: the previous shape reached for module-level state and
  * could only be checked by a test that reimplemented it.
  */
-export async function restoreOrCreateSession(deps: RestoreDeps): Promise<RestoredTabs | null> {
+export async function restoreOrCreateSession<T>(deps: RestoreDeps<T>): Promise<RestoredTabs | null> {
   const { hermes, client, profileId, session, emit, isCurrent } = deps;
   const file = await readTileState(hermes);
   const saved = stateFor(file, profileId);
@@ -267,7 +267,7 @@ async function savedSessionIsGone(client: SessionClient, sessionId: string): Pro
  * reopened, which stops this launch's client. Anything still queued belongs to
  * a launch that no longer owns the tile.
  */
-async function deliver(deps: RestoreDeps, sessionId: string, held: string[]): Promise<void> {
+async function deliver<T>(deps: RestoreDeps<T>, sessionId: string, held: T[]): Promise<void> {
   for (const text of held) {
     if (!deps.isCurrent()) return;
     try {

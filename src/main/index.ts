@@ -364,7 +364,7 @@ function registerIpc(): void {
   // Routed by sender, never by a profile id the renderer supplies: a tile
   // renders unsanitized agent output into a window holding `send()`, so a
   // renderer that could name its own profile could name someone else's.
-  ipcMain.on('tile:prompt', (e, text: string) => {
+  ipcMain.on('tile:prompt', (e, text: unknown) => {
     const profileId = tiles.profileForSender(e.sender);
     if (profileId === null) return;
     void tiles.prompt(profileId, text);
