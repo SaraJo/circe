@@ -11,15 +11,14 @@ const ROOT = join(import.meta.dirname, '..');
  * each of which is one careless commit away from being untrue.
  */
 describe('avatar provenance (spec §10.7)', () => {
-  // The repo ships no likenesses. Every face is fetched for one user, on their
-  // machine, or drawn locally from initials. Downloaded avatars live in the
-  // user's scratch directory and are never committed.
-  it('bundles no character images', () => {
-    // Ask git what is tracked, not what happens to be on this developer's disk.
-    // This prevents gitignored scratch, build output, and screenshots from
-    // creating spurious test failures or requiring an ever-growing exclusion list.
-    const ls = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' });
-    const tracked = ls.split('\n').filter((line) => line.length > 0);
+  // Standalone character avatars are sourced per user, not bundled with the app.
+  // Explicitly reviewed documentation screenshots may show the app in use.
+  it('keeps repository images limited to app icons and approved documentation', () => {
+    // Include new files before they are staged, so local checks agree with CI
+    // after commit. Gitignored build output and scratch files stay excluded.
+    const ls = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'],
+      { cwd: ROOT, encoding: 'utf8' });
+    const files = ls.split('\0').filter((file) => file.length > 0);
 
     // Image files in the repo. allowlist is explicit with comments on why.
     // Application icon concepts, not character likenesses.
@@ -28,9 +27,11 @@ describe('avatar provenance (spec §10.7)', () => {
       'resources/icon-v2.png',
       'resources/icon-v3.png',
       'resources/icon-v4.png',
+      // User-provided README screenshot; docs/ is not packaged in the app.
+      'docs/images/circe-desktop.png',
     ];
 
-    const images = tracked.filter((file) => /\.(png|jpe?g|gif|webp)$/i.test(file));
+    const images = files.filter((file) => /\.(png|jpe?g|gif|webp)$/i.test(file));
     const offenders = images.filter((file) => !allowlist.includes(file));
 
     expect(offenders).toEqual([]);
