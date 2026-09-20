@@ -1,3 +1,4 @@
+import { withoutFleetIdentity } from '../src/main/fleetIdentity';
 import { describe, expect, it } from 'vitest';
 import { Wizard } from '../src/main/wizard';
 import {
@@ -483,7 +484,8 @@ describe('adopting an existing Hermes fleet', () => {
     await wizard.acceptFleetRenames(['writer'], ['default', 'writer']);
 
     expect(wizard.state.kind).toBe('coordinator-choice');
-    expect(await hermes.readHomeFile('SOUL.md')).toBe(defaultBefore);
+    expect(withoutFleetIdentity((await hermes.readHomeFile('SOUL.md'))!)).toBe(defaultBefore);
+    expect(await hermes.readHomeFile('SOUL.md')).toContain('\"name\": \"Uhura\"');
     expect(await hermes.readHomeFile('circe.json')).toBeNull();
     expect(await hermes.readHomeFile('profiles/writer/SOUL.md')).toContain(
       '# Uhura — the voice that makes meaning clear',
@@ -641,7 +643,7 @@ describe('adopting an existing Hermes fleet', () => {
     await wizard.submitFleetFandom('Star Trek');
     await wizard.acceptFleetRenames(['default'], ['default', 'writer']);
 
-    expect(await hermes.readHomeFile('SOUL.md')).toBe(
+    expect(withoutFleetIdentity((await hermes.readHomeFile('SOUL.md'))!)).toBe(
       '# Spock — the one who tests every premise\n\nKeep my root-agent instructions intact.\n',
     );
     expect(await hermes.readHomeFile('circe.json')).toContain('#65c7e8');

@@ -91,7 +91,7 @@ export const COPY = {
   },
   fleetPreview: {
     title: 'Choose each identity',
-    lead: 'Use a suggestion, keep the current identity, or ask for someone else. You can also describe changes for the whole group below.',
+    lead: 'Use a suggestion, keep the current identity, or ask for someone else. You can also describe changes for the whole group below. Applying a rename updates the shown agents’ name roster so they can refer to each other consistently.',
     currentRole: 'What this agent does now:',
     another: 'Try someone else',
     feedbackPlaceholder: 'For example: choose characters I’m more likely to recognize, and use Picard for Research.',

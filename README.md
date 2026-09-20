@@ -113,7 +113,10 @@ in the tab strip starts a new conversation.
    made its Circe choices.
 3. Existing users choose agents individually for Circe tiles, then accept or
    reject each fandom-based name and colour suggestion independently. Excluded
-   agents stay untouched in Hermes, and profile ids never change.
+   agents stay untouched in Hermes, and profile ids never change. Accepted names
+   update the agent's Hermes persona and explicit self-introduction. Shown agents
+   receive a shared roster of current names and old-name aliases so they can
+   refer to each other consistently.
 4. New users are asked what fandom, universe, or community they love.
 5. Asks your model to pick the coordinator from that world, and three colours
    drawn from them.

@@ -1,6 +1,6 @@
 # Circe operating guide
 
-Bundled guide version: 5. Circe refreshes an installed guide when it is still
+Bundled guide version: 6. Circe refreshes an installed guide when it is still
 byte-for-byte Circe-managed. If the user or agent edits the guide, Circe leaves
 that copy alone.
 
@@ -85,8 +85,9 @@ decisions separate for every agent:
 
 - **Show in Circe** controls whether the profile receives a tile. Turning it off
   does not delete, disable, or edit the Hermes profile.
-- **Use suggested identity** changes the visible H1 and palette after the user
-  confirms it. Turning it off preserves the agent's existing name and persona.
+- **Use suggested identity** updates the H1, explicit self-introduction, and palette
+  after the user confirms it. Shown agents receive a current-name roster so they
+  can resolve older names in instructions and conversations. Turning it off preserves the agent's existing name and persona.
 
 Name suggestions are based on the chosen fandom and a bounded excerpt of the
 agent's existing persona, so the proposed character should fit the work the
@@ -120,8 +121,11 @@ time it launches.
 
 The profile id is stable and is not the tile's display name.
 
-- To rename a tile, change only the first H1 in that profile's `SOUL.md`. Preserve
-  the rest of the file and make a backup before writing.
+- To rename an agent, update its first H1 and explicit self-introduction in
+  `SOUL.md`. Keep its roles and responsibilities intact and back up the file first.
+  Update the current-name roster in the shown agents' SOUL files, retaining old
+  names as aliases. Use current names in conversation and stable profile ids in
+  commands and paths. Do not blindly replace names inside commands or memories.
 - To recolour it, write a profile-local `circe.json`:
 
   ```json

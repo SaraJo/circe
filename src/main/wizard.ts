@@ -1,3 +1,4 @@
+import { fleetIdentity, withFleetIdentity, withoutFleetIdentity } from './fleetIdentity';
 import type {
   Character,
   FleetFandomIntent,
@@ -14,7 +15,7 @@ import {
   type FleetIdentityInput,
 } from './derive';
 import { adoptableProfiles, hasConfiguredDefault } from './profiles';
-import { parseSoulHeading, withSoulHeading, writeSoul } from './soul';
+import { parseSoulHeading, writeSoul } from './soul';
 import { loadTemplate, renderOrchestratorSoul } from './orchestrator/soulTemplate';
 import { installOrchestratorSkill } from './orchestrator/skill';
 import { LAST_LAUNCH_PATH, serializeLastLaunch } from './startup';
@@ -380,27 +381,38 @@ export class Wizard {
     this.set({ kind: 'fleet-saving', proposals, selectedProfileIds: selected });
     try {
       const accepted: FleetIdentityProposal[] = [];
-      for (const proposal of proposals) {
-        if (!selected.includes(proposal.profile.id)) continue;
-        const rel = profileFilePath(proposal.profile.id, 'SOUL.md');
-        const existing = await this.hermes.readHomeFile(rel);
-        if (existing === null) {
-          throw new Error(`Could not find ${rel}; nothing was changed for that agent.`);
+      // Read every participating persona before writing so the roster is built
+      // from the old names, and unreadable files cannot leave a partial roster.
+      const souls = new Map<string, string>();
+      if (selected.length > 0) {
+        for (const proposal of proposals.filter((item) => tiled.includes(item.profile.id))) {
+          const rel = profileFilePath(proposal.profile.id, 'SOUL.md');
+          const existing = await this.hermes.readHomeFile(rel);
+          if (existing === null) throw new Error(`Could not find ${rel}; no identities were changed.`);
+          souls.set(proposal.profile.id, existing);
         }
-        const renamed = withSoulHeading(existing, {
-          name: proposal.character.name,
-          tagline: proposal.character.tagline,
-        });
-        await writeSoul({
-          hermes: this.hermes,
-          profileId: proposal.profile.id,
-          contents: renamed,
-          // Adoption can encounter a real default persona without Circe's H1
-          // convention. Preserve it just as carefully as a recognised one.
-          backupExisting: true,
-        });
-        await writeProfileTheme(this.hermes, proposal.profile.id, proposal.character.palette);
-        accepted.push(proposal);
+      }
+      const roster = proposals.filter((item) => souls.has(item.profile.id)).map((proposal) => {
+        const existing = souls.get(proposal.profile.id)!;
+        const name = selected.includes(proposal.profile.id) ? proposal.character.name
+          : parseSoulHeading(existing)?.name ?? proposal.profile.displayName;
+        return fleetIdentity(proposal.profile.id, existing, name);
+      });
+      for (const proposal of proposals) {
+        const existing = souls.get(proposal.profile.id);
+        if (existing === undefined) continue;
+        const rename = selected.includes(proposal.profile.id);
+        const contents = withFleetIdentity(existing, proposal.profile.id, roster, rename ? {
+          name: proposal.character.name, tagline: proposal.character.tagline,
+        } : undefined);
+        if (contents !== existing) {
+          await writeSoul({ hermes: this.hermes, profileId: proposal.profile.id,
+            contents, backupExisting: true });
+        }
+        if (rename) {
+          await writeProfileTheme(this.hermes, proposal.profile.id, proposal.character.palette);
+          accepted.push(proposal);
+        }
       }
       // Portrait generation drives the default Hermes profile. Run one at a
       // time so several accepted identities cannot compete for that profile,
@@ -534,7 +546,7 @@ export class Wizard {
           profileId: profile.id,
           name: heading?.name ?? profile.displayName,
           tagline: heading?.tagline ?? '',
-          instructions: (soul ?? '').trim().slice(0, 1200),
+          instructions: withoutFleetIdentity(soul ?? '').trim().slice(0, 1200),
         };
       }),
     );
