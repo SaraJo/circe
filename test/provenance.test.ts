@@ -27,8 +27,9 @@ describe('avatar provenance (spec §10.7)', () => {
       'resources/icon-v2.png',
       'resources/icon-v3.png',
       'resources/icon-v4.png',
-      // User-provided README screenshot; docs/ is not packaged in the app.
+      // User-provided README screenshots; docs/ is not packaged in the app.
       'docs/images/circe-desktop.png',
+      'docs/images/circe-tile-closeup.png',
     ];
 
     const images = files.filter((file) => /\.(png|jpe?g|gif|webp)$/i.test(file));
