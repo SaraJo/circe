@@ -97,9 +97,9 @@ historical records, not an implementation backlog.
 
 For a small trusted test, use the guided [beta checklist](docs/BETA_TEST.md).
 
-## A tile up close
+## Tiles up close
 
-<img src="docs/images/circe-tile-closeup.png" alt="A close-up of Scully's Circe tile, showing conversation tabs, context usage, a reply about an Apple Notes packing list, and the image attachment button beside the message field." width="360" />
+<img src="docs/images/circe-tile-closeup.png" alt="Scully and Mulder's Circe tiles side by side, discussing packing and home logistics, with conversation tabs, context meters, and image attachment buttons." width="800" />
 
 Each tile keeps an agent's conversations, context meter, and message composer
 within reach. The **＋** beside the message field attaches an image; the **+**
