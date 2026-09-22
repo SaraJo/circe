@@ -638,3 +638,64 @@ describe('conversation model metadata', () => {
     expect(c.modelForSession('one')).toBeNull();
   });
 });
+
+describe('follow-up interruption', () => {
+  function harness() {
+    const onUpdate = vi.fn();
+    const client = running(new AcpClient({ profileId: 'test', onUpdate, onExit: () => {} }));
+    const send = vi.spyOn(client as unknown as { send(frame: unknown): void }, 'send').mockImplementation(() => {});
+    const finishes: Array<() => void> = [];
+    const request = vi.spyOn(client as unknown as WithRequest, 'request').mockImplementation(() =>
+      new Promise((resolve) => finishes.push(() => resolve({ stopReason: 'end_turn' }))),
+    );
+    return { client, send, request, finishes, onUpdate };
+  }
+
+  it('cancels an active turn before sending the follow-up and suppresses late chunks', async () => {
+    const h = harness();
+    const first = h.client.prompt('one', 'Start work');
+    const followup = h.client.prompt('one', 'Change direction');
+    expect(h.send).toHaveBeenCalledWith({ jsonrpc: '2.0', method: 'session/cancel', params: { sessionId: 'one' } });
+    expect(h.request).toHaveBeenCalledTimes(1);
+    (h.client as unknown as WithHandle).handle({ method: 'session/update', params: {
+      sessionId: 'one', update: { sessionUpdate: 'agent_message_chunk', content: { text: 'Late output' } },
+    } });
+    expect(h.onUpdate).not.toHaveBeenCalled();
+    h.finishes[0]!();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(h.request).toHaveBeenLastCalledWith('session/prompt', { sessionId: 'one', prompt: [{ type: 'text', text: 'Change direction' }] });
+    h.finishes[1]!();
+    await Promise.all([first, followup]);
+  });
+
+  it('preserves rapid corrections and images while cancellation is pending', async () => {
+    const h = harness();
+    (h.client as unknown as { imagePromptSupported: boolean }).imagePromptSupported = true;
+    const first = h.client.prompt('one', 'Start');
+    const second = h.client.prompt('one', 'Use this', [{ type: 'image', data: 'image-data', mimeType: 'image/png' }]);
+    const third = h.client.prompt('one', 'And make it blue');
+    expect(h.send).toHaveBeenCalledTimes(1);
+    h.finishes[0]!();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(h.request).toHaveBeenLastCalledWith('session/prompt', { sessionId: 'one', prompt: [
+      { type: 'text', text: 'Use this' }, { type: 'image', data: 'image-data', mimeType: 'image/png' },
+      { type: 'text', text: 'And make it blue' },
+    ] });
+    h.finishes[1]!();
+    await Promise.all([first, second, third]);
+  });
+
+  it('keeps other conversations running independently', async () => {
+    const h = harness();
+    const first = h.client.prompt('one', 'First tab');
+    const other = h.client.prompt('two', 'Other tab');
+    expect(h.send).not.toHaveBeenCalled();
+    const followup = h.client.prompt('one', 'Correction');
+    expect(h.send).toHaveBeenCalledTimes(1);
+    h.finishes[0]!();
+    await new Promise((resolve) => setImmediate(resolve));
+    h.finishes[1]!();
+    h.finishes[2]!();
+    await Promise.all([first, other, followup]);
+  });
+});

@@ -727,7 +727,7 @@ describe('conversation tabs', () => {
     expect(h.clients[0]!.loads).toEqual(['session-1']);
   });
 
-  it('keeps streaming the original conversation while a new session is being created', async () => {
+  it('shows the new tab immediately and keeps background replies out while it starts', async () => {
     const h = harness();
     await launchedWithTabs(h);
     const turn = h.registry.prompt('default', 'Keep going');
@@ -736,14 +736,49 @@ describe('conversation tabs', () => {
     const creating = h.registry.newTab('default');
     expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ canCreate: false, canClose: false, canSwitch: false });
     await h.registry.closeTab('default', 0);
-    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ count: 1 });
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ count: 2, activeIndex: 1, titles: ['Keep going', 'Starting…'] });
     const update = { sessionUpdate: 'agent_message_chunk', content: { text: 'Still here' } };
     h.clients[0]!.onUpdate('session-1', update);
-    expect(h.windows[0]!.updates()).toContainEqual(update);
+    expect(h.windows[0]!.updates()).not.toContainEqual(update);
     create('session-2');
     await creating;
     h.clients[0]!.finishTurn();
     await turn;
+  });
+
+  it('queues prompts for the new session without clearing their bubbles when ready', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+    let create!: (id: string) => void;
+    h.clients[0]!.newSession = () => new Promise((resolve) => { create = resolve; });
+    const creating = h.registry.newTab('default');
+    const resets = h.windows[0]!.updates().filter((u) => u.sessionUpdate === 'circe/tab-reset').length;
+    await h.registry.prompt('default', 'New topic');
+    expect(h.clients[0]!.prompts).toEqual([]);
+    expect(JSON.parse(h.hermes.files.get('circe/state.json')!).profiles.default.tabs).toEqual(['session-1']);
+    create('session-2');
+    await flushMicrotasks();
+    expect(h.clients[0]!.prompts).toEqual([{ sessionId: 'session-2', text: 'New topic' }]);
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ count: 2, activeIndex: 1, canCreate: true });
+    expect(h.windows[0]!.updates().filter((u) => u.sessionUpdate === 'circe/tab-reset')).toHaveLength(resets);
+    h.clients[0]!.finishTurn('session-2');
+    await creating;
+  });
+
+  it('restores the previous tab on creation failure without sending queued prompts to it', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+    let reject!: (error: Error) => void;
+    h.clients[0]!.newSession = () => new Promise((_, fail) => { reject = fail; });
+    const creating = h.registry.newTab('default');
+    await h.registry.prompt('default', 'Only for the new conversation');
+    reject(new Error('offline'));
+    await creating;
+    expect(h.clients[0]!.prompts).toEqual([]);
+    expect(h.clients[0]!.loads).toEqual(['session-1']);
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ count: 1, activeIndex: 0, canCreate: true });
+    expect(h.windows[0]!.updates()).toContainEqual({ sessionUpdate: 'circe/unsent-prompts', held: ['Only for the new conversation'] });
+    expect(h.windows[0]!.openings().at(-1)).toContain('were not sent');
   });
 
   it('labels background approvals and keeps them answerable after opening another tab', async () => {
@@ -1356,20 +1391,51 @@ describe('permission requests', () => {
     await expect(answer).resolves.toBe('deny');
   });
 
-  it('expires a request after 60 seconds instead of leaving a live approval behind', async () => {
+  it('keeps an approval pending until the user returns and decides', async () => {
     vi.useFakeTimers();
     const h = harness();
     await launched(h);
 
     const answer = h.clients[0]!.onPermission(request);
-    await vi.advanceTimersByTimeAsync(60_000);
+    const resolved = vi.fn();
+    void answer.then(resolved);
+    await vi.advanceTimersByTimeAsync(24 * 60 * 60_000);
+    expect(resolved).not.toHaveBeenCalled();
+    expect(h.windows[0]!.updates().some((u) => u.sessionUpdate === 'circe/permission-resolved')).toBe(false);
 
-    await expect(answer).resolves.toBe('deny');
+    h.registry.answerPermission('default', 7, 'allow_once');
+    await expect(answer).resolves.toBe('allow_once');
     expect(h.windows[0]!.updates()).toContainEqual({
       sessionUpdate: 'circe/permission-resolved',
       id: 7,
-      outcome: 'expired',
+      outcome: 'allow_once',
     });
+  });
+
+  it('denies pending approvals when the agent connection exits', async () => {
+    const h = harness();
+    await launched(h);
+    const answer = h.clients[0]!.onPermission(request);
+    h.clients[0]!.onExit(1);
+    await expect(answer).resolves.toBe('deny');
+  });
+
+  it('clears approvals for a finished turn without dismissing another conversation’s request', async () => {
+    const h = harness();
+    await launched(h);
+    h.clients[0]!.canLoadSession = true;
+    const turn = h.registry.prompt('default', 'Wait for approval');
+    await h.registry.newTab('default');
+    const first = h.clients[0]!.onPermission({ ...request, sessionId: 'session-1' });
+    const second = h.clients[0]!.onPermission({ ...request, id: 8, sessionId: 'session-2' });
+    const secondResolved = vi.fn();
+    void second.then(secondResolved);
+    h.clients[0]!.finishTurn('session-1');
+    await turn;
+    await expect(first).resolves.toBe('deny');
+    expect(secondResolved).not.toHaveBeenCalled();
+    h.registry.answerPermission('default', 8, 'allow_once');
+    await expect(second).resolves.toBe('allow_once');
   });
 
   it('ignores answers from another tile or for a stale id', async () => {
@@ -1382,5 +1448,17 @@ describe('permission requests', () => {
     h.registry.answerPermission('default', 7, 'deny');
 
     await expect(answer).resolves.toBe('deny');
+  });
+
+  it('dismisses an interrupted action’s approval when a follow-up arrives', async () => {
+    const h = harness();
+    await launched(h);
+    const first = h.registry.prompt('default', 'Do the work');
+    const approval = h.clients[0]!.onPermission({ ...request, sessionId: 'session-1' });
+    const followup = h.registry.prompt('default', 'Stop and change direction');
+    await expect(approval).resolves.toBe('deny');
+    h.clients[0]!.finishTurn('session-1');
+    h.clients[0]!.finishTurn('session-1');
+    await Promise.all([first, followup]);
   });
 });

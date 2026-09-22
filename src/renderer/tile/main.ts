@@ -579,6 +579,12 @@ circe.onUpdate((update) => {
     case 'circe/turn-end':
       endTurn();
       return;
+    case 'circe/unsent-prompts':
+      if (Array.isArray(update.held)) {
+        for (const message of update.held) if (isTilePrompt(message)) appendUserPrompt(message);
+      }
+      endTurn();
+      return;
     case 'circe/permission': {
       const request = update as { id?: unknown; description?: unknown; command?: unknown; conversation?: unknown };
       if (typeof request.id !== 'number' || typeof request.command !== 'string' || !request.command) return;

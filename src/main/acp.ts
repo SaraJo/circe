@@ -98,6 +98,11 @@ export function sessionModelName(response: unknown): string | null {
 }
 
 export class AcpClient {
+  private readonly promptRuns = new Map<string, {
+    blocks: Array<Record<string, string>>;
+    interrupting: boolean;
+    completion: Promise<void>;
+  }>();
   private child: ChildProcess | null = null;
   private buffer = '';
   private readonly sessionModels = new Map<string, string | null>();
@@ -173,6 +178,7 @@ export class AcpClient {
     const connectionFailed = (error: Error) => {
       if (this.child !== child) return;
       this.child = null;
+      this.promptRuns.clear();
       for (const pending of this.pending.values()) {
         pending.reject(new Error(`hermes acp connection failed (${error.message})`));
       }
@@ -194,6 +200,7 @@ export class AcpClient {
       // request into a write that goes nowhere — the exact hang the guard
       // exists to prevent, reached without anyone ever calling `stop()`.
       this.child = null;
+      this.promptRuns.clear();
       for (const p of this.pending.values()) p.reject(new Error(`hermes acp exited (${code})`));
       this.pending.clear();
       this.opts.onExit(code);
@@ -294,13 +301,18 @@ export class AcpClient {
 
   async newSession(): Promise<string> {
     this.assertRunning();
-    const session = (await this.request(
-      'session/new',
-      { cwd: this.cwd, mcpServers: [] },
-      HANDSHAKE_TIMEOUT_MS,
-    )) as { sessionId: string };
-    this.sessionModels.set(session.sessionId, sessionModelName(session));
-    return session.sessionId;
+    const started = performance.now();
+    try {
+      const session = (await this.request(
+        'session/new',
+        { cwd: this.cwd, mcpServers: [] },
+        HANDSHAKE_TIMEOUT_MS,
+      )) as { sessionId: string };
+      this.sessionModels.set(session.sessionId, sessionModelName(session));
+      return session.sessionId;
+    } finally {
+      console.info(`[acp:${this.opts.profileId}] session/new settled after ${Math.round(performance.now() - started)}ms`);
+    }
   }
 
   /**
@@ -348,10 +360,39 @@ export class AcpClient {
   async prompt(sessionId: string, text: string, images: ImageAttachment[] = []): Promise<void> {
     this.assertRunning();
     if (images.length && !this.imagePromptSupported) throw new Error('This Hermes agent does not support image attachments. Update Hermes or use an agent with image support.');
-    await this.request('session/prompt', {
-      sessionId,
-      prompt: [...(text ? [{ type: 'text', text }] : []), ...images.map(({ data, mimeType }) => ({ type: 'image', data, mimeType }))],
-    });
+    const blocks = [...(text ? [{ type: 'text', text }] : []), ...images.map(({ data, mimeType }) => ({ type: 'image', data, mimeType }))];
+    const existing = this.promptRuns.get(sessionId);
+    if (existing) {
+      existing.blocks.push(...blocks);
+      if (!existing.interrupting) {
+        existing.interrupting = true;
+        this.send({ jsonrpc: '2.0', method: 'session/cancel', params: { sessionId } });
+      }
+      return existing.completion;
+    }
+
+    const run = { blocks, interrupting: false, completion: Promise.resolve() };
+    const child = this.child;
+    this.promptRuns.set(sessionId, run);
+    run.completion = (async () => {
+      try {
+        do {
+          // Hermes must acknowledge cancellation before the next prompt, or it
+          // queues that prompt behind the old turn. Preserve rapid corrections
+          // (including images) together while the cancelled turn winds down.
+          if (this.child !== child) throw new Error('ACP connection changed during interruption');
+          this.assertRunning();
+          const prompt = run.blocks.splice(0);
+          run.interrupting = false;
+          await this.request('session/prompt', { sessionId, prompt });
+        } while (run.blocks.length);
+      } finally {
+        if (this.promptRuns.get(sessionId) === run) this.promptRuns.delete(sessionId);
+      }
+    })();
+    // All callers finish with the latest turn, so a cancelled turn cannot
+    // clear the renderer's busy state or approvals for its replacement.
+    return run.completion;
   }
 
   // Returns the client to a genuinely restartable state and leaves nothing behind
@@ -369,6 +410,7 @@ export class AcpClient {
   stop(): void {
     this.child?.kill();
     this.child = null;
+    this.promptRuns.clear();
     this.startPromise = null;
     this.loadSessionSupported = false;
     this.imagePromptSupported = false;
@@ -408,6 +450,7 @@ export class AcpClient {
       const params = (msg.params ?? {}) as { sessionId?: unknown; update?: unknown };
       const { sessionId, update } = params;
       if (typeof sessionId === 'string' && update && typeof update === 'object') {
+        if (this.promptRuns.get(sessionId)?.interrupting) return;
         this.opts.onUpdate(sessionId, update as AcpUpdate);
       }
       return;
@@ -426,6 +469,10 @@ export class AcpClient {
       };
       const cancel = () =>
         this.send({ jsonrpc: '2.0', id, result: { outcome: { outcome: 'cancelled' } } });
+      if (typeof params.sessionId === 'string' && this.promptRuns.get(params.sessionId)?.interrupting) {
+        cancel();
+        return;
+      }
       const raw = params.toolCall?.rawInput ?? {};
       const command =
         typeof raw.command === 'string' && raw.command.trim()

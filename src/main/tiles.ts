@@ -98,16 +98,15 @@ interface Tile {
   loaded: boolean;
   queue: string[];
   ready: Promise<void>;
-  pendingPermissions: Map<number, (choice: PermissionChoice, outcome?: string) => void>;
+  pendingPermissions: Map<number, ((choice: PermissionChoice, outcome?: string) => void) & { sessionId?: string }>;
   tabs: string[];
   titles: Record<string, string>;
   activeIndex: number;
   tabBusy: boolean;
+  startingTab?: boolean;
   turnsInFlight: number;
   handoff: { sessionId: string; chunks: string[] } | null;
 }
-
-export const PERMISSION_TIMEOUT_MS = 60_000;
 
 export class TileRegistry {
   private readonly tiles = new Map<string, Tile>();
@@ -207,6 +206,7 @@ export class TileRegistry {
       },
       onExit: (code) => {
         if (!isCurrent()) return; // the exit belongs to an already-replaced client
+        for (const answer of tile!.pendingPermissions.values()) answer('deny');
         this.emit(win, { sessionUpdate: 'circe/exited', code });
         if (tile) this.emitTabs(tile);
       },
@@ -418,31 +418,49 @@ export class TileRegistry {
     if (!tile || !this.canCreateTab(tile)) return;
     const previousId = tile.session.activeSessionId;
     tile.tabBusy = true;
+    tile.startingTab = true;
+    tile.session.beginLaunch();
+    this.emit(tile.win, { sessionUpdate: 'circe/tab-reset' });
     this.emitTabs(tile);
+    let pending: { sessionId: string; held: TilePrompt[] } | undefined;
     try {
       const sessionId = await tile.client.newSession();
       if (this.tiles.get(profileId) !== tile) return;
-      this.emit(tile.win, { sessionUpdate: 'circe/tab-reset' });
-      const held = tile.session.openSession(sessionId);
+      tile.startingTab = false;
       tile.tabs.push(sessionId);
       tile.activeIndex = tile.tabs.length - 1;
       await this.persistTabs(tile);
-      await this.deliverHeld(tile, sessionId, held);
+      if (this.tiles.get(profileId) !== tile) return;
+      const held = tile.session.openSession(sessionId);
+      pending = { sessionId, held };
     } catch (err) {
+      if (this.tiles.get(profileId) !== tile) return;
       const message = err instanceof Error ? err.message : String(err);
-      this.say(tile, `I couldn't start a new conversation. (${message})`);
       if (previousId) {
-        const held = tile.session.openSession(previousId);
-        await this.deliverHeld(tile, previousId, held);
-      } else {
-        tile.session.failLaunch();
+        tile.session.expectReplay(previousId);
+        this.emit(tile.win, { sessionUpdate: 'circe/tab-reset' });
+        this.emit(tile.win, { sessionUpdate: 'circe/replay-start' });
+        try {
+          await tile.client.loadSession(previousId);
+        } catch {
+          // Preserve the previous session even if its history cannot be replayed.
+        }
+        if (this.tiles.get(profileId) !== tile) return;
+        this.emit(tile.win, { sessionUpdate: 'circe/replay-end' });
       }
+      const unsent = tile.session.failLaunch();
+      if (previousId) tile.session.openSession(previousId);
+      this.emit(tile.win, { sessionUpdate: 'circe/unsent-prompts', held: unsent });
+      this.say(tile, `I couldn't start a new conversation. (${message})` +
+        (unsent.length ? '\nThe messages you typed while it was starting were not sent. Please resend them in the conversation you want.' : ''));
     } finally {
       if (this.tiles.get(profileId) === tile) {
+        tile.startingTab = false;
         tile.tabBusy = false;
         this.emitTabs(tile);
       }
     }
+    if (pending) await this.deliverHeld(tile, pending.sessionId, pending.held);
   }
 
   /** Reopens one remembered Hermes conversation in this tile. */
@@ -566,7 +584,6 @@ export class TileRegistry {
       const finish = (choice: PermissionChoice, outcome: string = choice) => {
         if (finished) return;
         finished = true;
-        clearTimeout(timer);
         tile.pendingPermissions.delete(request.id);
         this.emit(tile.win, {
           sessionUpdate: 'circe/permission-resolved',
@@ -576,8 +593,7 @@ export class TileRegistry {
         resolve(choice);
         this.emitTabs(tile);
       };
-      const timer = setTimeout(() => finish('deny', 'expired'), PERMISSION_TIMEOUT_MS);
-      tile.pendingPermissions.set(request.id, finish);
+      tile.pendingPermissions.set(request.id, Object.assign(finish, { sessionId: request.sessionId }));
       this.emitTabs(tile);
       this.emit(tile.win, {
         sessionUpdate: 'circe/permission',
@@ -806,15 +822,15 @@ export class TileRegistry {
   private emitTabs(tile: Tile): void {
     if (!tile.loaded || tile.win.isDestroyed()) return;
     const view: TileTabsView = {
-      count: tile.tabs.length,
+      count: tile.tabs.length + (tile.startingTab ? 1 : 0),
       canCreate: this.canCreateTab(tile),
       canSwitch: this.canSwitchTabs(tile),
       canClose: this.canCloseTab(tile),
       model: tile.session.activeSessionId
         ? tile.client.modelForSession?.(tile.session.activeSessionId) ?? null
         : null,
-      titles: tile.tabs.map((id) => tile.titles[id] ?? ''),
-      activeIndex: tile.activeIndex,
+      titles: [...tile.tabs.map((id) => tile.titles[id] ?? ''), ...(tile.startingTab ? ['Starting…'] : [])],
+      activeIndex: tile.startingTab ? tile.tabs.length : tile.activeIndex,
       busy: tile.tabBusy || tile.turnsInFlight > 0 || tile.pendingPermissions.size > 0,
       supported: tile.client.canLoadSession,
     };
@@ -838,6 +854,11 @@ export class TileRegistry {
       void this.persistTitle(tile, sessionId);
     }
     tile.turnsInFlight++;
+    // A follow-up replaces the pending work in this conversation, including
+    // approvals for actions that the user is now interrupting.
+    for (const answer of tile.pendingPermissions.values()) {
+      if (answer.sessionId === sessionId) answer('deny');
+    }
     this.emitTabs(tile);
     return tile.client.prompt(sessionId, text, images).then(
       () => {
@@ -858,6 +879,9 @@ export class TileRegistry {
         this.say(tile, `${context}Your message wasn't sent. (${message})`);
       },
     ).finally(() => {
+      for (const answer of tile.pendingPermissions.values()) {
+        if (answer.sessionId === sessionId) answer('deny');
+      }
       tile.turnsInFlight = Math.max(0, tile.turnsInFlight - 1);
       this.emitTabs(tile);
     });
