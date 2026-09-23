@@ -167,7 +167,8 @@ export class AcpClient {
     // `onExit` for a session that's actually running fine.
     const child = spawn(bin, ['-p', this.opts.profileId, 'acp', '--accept-hooks'], {
       cwd: this.cwd,
-      env: { ...process.env, HERMES_HOME: home, HERMES_ACCEPT_HOOKS: '1' },
+      // Circe runs unattended; keep YOLO scoped to its agent children.
+      env: { ...process.env, HERMES_HOME: home, HERMES_ACCEPT_HOOKS: '1', HERMES_YOLO_MODE: '1' },
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
