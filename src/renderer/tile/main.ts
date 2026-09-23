@@ -441,7 +441,12 @@ circe.onTabs((value) => {
   if (view) renderTabs(view);
 });
 
-newTab.addEventListener('click', () => circe.newTab());
+function startNewTab(): void {
+  circe.newTab();
+  input.focus();
+}
+
+newTab.addEventListener('click', startNewTab);
 handoff.addEventListener('click', () => {
   if (handoff.disabled || handoffRunning) return;
   handoffRunning = true;
@@ -457,7 +462,7 @@ document.addEventListener('keydown', (event) => {
   if (event.key.toLowerCase() !== 't' || (!event.metaKey && !event.ctrlKey)) return;
   if (event.altKey || event.shiftKey) return;
   event.preventDefault();
-  circe.newTab();
+  startNewTab();
 });
 
 function resetTranscript(): void {
