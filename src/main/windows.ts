@@ -33,6 +33,7 @@ function pinToItsOwnDocument(win: BrowserWindow): void {
 
 export function createWizardWindow(): BrowserWindow {
   const win = new BrowserWindow({
+    autoHideMenuBar: process.platform === 'linux',
     width: WIZARD_W,
     height: WIZARD_H,
     resizable: false,
@@ -56,6 +57,8 @@ export function createTileWindow(
   const { workArea } = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   const { x, y } = tilePosition(workArea, index);
   const win = new BrowserWindow({
+    autoHideMenuBar: process.platform === 'linux',
+    title: `Circe [${profileId}] — ${character.name}`,
     width: TILE_W,
     height: TILE_H,
     x,
@@ -87,6 +90,7 @@ export function createTileWindow(
     webPreferences: { preload: join(__dirname, '../preload/tile.js') },
   });
   pinToItsOwnDocument(win);
+  win.on('page-title-updated', (event) => event.preventDefault());
   win.loadFile(join(__dirname, '../renderer/tile/index.html'), {
     query: {
       profile: profileId,
