@@ -56,6 +56,8 @@ export function createTileWindow(
   const { workArea } = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   const { x, y } = tilePosition(workArea, index);
   const win = new BrowserWindow({
+    // Stable profile identity lets window managers place tiles across restarts.
+    title: `Circe [${profileId}] — ${character.name}`,
     width: TILE_W,
     height: TILE_H,
     x,
@@ -87,6 +89,8 @@ export function createTileWindow(
     webPreferences: { preload: join(__dirname, '../preload/tile.js') },
   });
   pinToItsOwnDocument(win);
+  // The renderer's shared <title> must not erase the per-profile identity.
+  win.on('page-title-updated', (event) => event.preventDefault());
   win.loadFile(join(__dirname, '../renderer/tile/index.html'), {
     query: {
       profile: profileId,
