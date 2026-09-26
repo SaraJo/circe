@@ -31,6 +31,17 @@ configured. See https://hermes-agent.nousresearch.com/docs.
 - `npm run lint` if the project has it wired up
 - A short note in the PR about what a user would see change
 
+## Release notes
+
+Add a short entry to [CHANGELOG.md](CHANGELOG.md) under **Unreleased** for
+user-visible changes. Describe the resulting behavior rather than the internal
+implementation.
+
+When publishing an installer, move the shipped entries into a dated version
+section and use them in the GitHub release notes. Include supported platforms,
+installation caveats, and relevant validation. Leave changes that did not ship
+under **Unreleased**.
+
 ## Design docs
 
 Larger changes get a spec in `docs/superpowers/specs/` and a plan in

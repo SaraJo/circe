@@ -1,11 +1,14 @@
 # Documentation
 
-Start with [CURRENT_BUILD.md](CURRENT_BUILD.md). It is the source of truth for
-what Circe is, what is implemented, and what comes next.
+- [Install Circe](../INSTALL.md): downloads, platform requirements, and first launch.
+- [Onboarding and agent behavior](ONBOARDING.md): fleet selection, identities, portraits, approvals, and image attachments.
+- [Windows beta setup](WINDOWS.md): Windows paths, troubleshooting, and limitations.
+- [Release notes](../CHANGELOG.md): published changes and work awaiting release.
+- [Current build](CURRENT_BUILD.md): the source of truth for what is implemented and what comes next.
+- [Beta checklist](BETA_TEST.md): a guided walkthrough for trusted testers.
+- [Contributing](../CONTRIBUTING.md): development setup and contribution guidelines.
 
-Use [BETA_TEST.md](BETA_TEST.md) when giving the current build to a trusted tester.
-
-Everything else in this directory is historical design and implementation
-record. Those files are retained for context, not as an active specification or
-task list. An unchecked item, “approved” label, or “ready for implementation”
-status in a dated document does not authorize work.
+Dated design and implementation records in this directory are retained for
+context, not as an active specification or task list. An unchecked item,
+“approved” label, or “ready for implementation” status in a dated document does
+not authorize work.
