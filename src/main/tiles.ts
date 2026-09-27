@@ -98,7 +98,8 @@ interface Tile {
   loaded: boolean;
   queue: string[];
   ready: Promise<void>;
-  pendingPermissions: Map<number, ((choice: PermissionChoice, outcome?: string) => void) & { sessionId?: string }>;
+  pendingPermissions: Map<number, ((choice: PermissionChoice, outcome?: string) => void) & { sessionId?: string; canAllowTask?: boolean }>;
+  approvalTasks: Map<string, { yolo: boolean }>;
   tabs: string[];
   titles: Record<string, string>;
   activeIndex: number;
@@ -206,11 +207,12 @@ export class TileRegistry {
       },
       onExit: (code) => {
         if (!isCurrent()) return; // the exit belongs to an already-replaced client
+        tile!.approvalTasks.clear();
         for (const answer of tile!.pendingPermissions.values()) answer('deny');
         this.emit(win, { sessionUpdate: 'circe/exited', code });
         if (tile) this.emitTabs(tile);
       },
-      onPermission: (request) => this.askPermission(profileId, request),
+      onPermission: (request) => isCurrent() ? this.askPermission(profileId, request) : Promise.resolve('deny'),
     });
 
     const newTile: Tile = {
@@ -227,6 +229,7 @@ export class TileRegistry {
       queue: greeting === null ? [] : [greeting],
       ready: Promise.resolve(),
       pendingPermissions: new Map(),
+      approvalTasks: new Map(),
       tabs: [],
       titles: Object.create(null),
       activeIndex: 0,
@@ -260,6 +263,7 @@ export class TileRegistry {
     // path stopping the client leaks a `hermes acp` process per close.
     // `stop()` tolerates a second call, so no dedup is needed.
     win.onceClosed(() => {
+      newTile.approvalTasks.clear();
       for (const answer of newTile.pendingPermissions.values()) answer('deny');
       client.stop();
       if (isCurrent()) this.tiles.delete(profileId);
@@ -579,10 +583,23 @@ export class TileRegistry {
     // A repeated protocol id cannot leave the older request hanging.
     tile.pendingPermissions.get(request.id)?.('deny');
 
+    const task = request.sessionId ? tile.approvalTasks.get(request.sessionId) : undefined;
+    const canAllowTask = request.canAllowTask === true && !!task;
+    if (canAllowTask && task.yolo) return Promise.resolve('allow_task');
+
     return new Promise((resolve) => {
       let finished = false;
       const finish = (choice: PermissionChoice, outcome: string = choice) => {
         if (finished) return;
+        const enablingYolo = choice === 'allow_task' && !task?.yolo;
+        if (choice === 'allow_task') {
+          if (!canAllowTask || tile.approvalTasks.get(request.sessionId!) !== task) {
+            choice = 'deny';
+            outcome = 'deny';
+          } else {
+            task.yolo = true;
+          }
+        }
         finished = true;
         tile.pendingPermissions.delete(request.id);
         this.emit(tile.win, {
@@ -591,15 +608,21 @@ export class TileRegistry {
           outcome,
         });
         resolve(choice);
+        if (choice === 'allow_task' && enablingYolo) {
+          for (const answer of [...tile.pendingPermissions.values()]) {
+            if (answer.sessionId === request.sessionId && answer.canAllowTask) answer('allow_task');
+          }
+        }
         this.emitTabs(tile);
       };
-      tile.pendingPermissions.set(request.id, Object.assign(finish, { sessionId: request.sessionId }));
+      tile.pendingPermissions.set(request.id, Object.assign(finish, { sessionId: request.sessionId, canAllowTask }));
       this.emitTabs(tile);
       this.emit(tile.win, {
         sessionUpdate: 'circe/permission',
         id: request.id,
         description: request.description,
         command: request.command,
+        ...(canAllowTask ? { canAllowTask: true } : {}),
         ...(request.sessionId ? { conversation: this.tabName(tile, request.sessionId) } : {}),
       });
       this.raiseTile(tile);
@@ -833,6 +856,7 @@ export class TileRegistry {
       activeIndex: tile.startingTab ? tile.tabs.length : tile.activeIndex,
       busy: tile.tabBusy || tile.turnsInFlight > 0 || tile.pendingPermissions.size > 0,
       supported: tile.client.canLoadSession,
+      yolo: !!tile.approvalTasks.get(tile.session.activeSessionId ?? '')?.yolo,
     };
     tile.win.send('tile:tabs', view);
   }
@@ -853,6 +877,8 @@ export class TileRegistry {
       tile.titles[sessionId] = shortTabTitle(text);
       void this.persistTitle(tile, sessionId);
     }
+    const task = { yolo: false };
+    tile.approvalTasks.set(sessionId, task);
     tile.turnsInFlight++;
     // A follow-up replaces the pending work in this conversation, including
     // approvals for actions that the user is now interrupting.
@@ -879,8 +905,11 @@ export class TileRegistry {
         this.say(tile, `${context}Your message wasn't sent. (${message})`);
       },
     ).finally(() => {
-      for (const answer of tile.pendingPermissions.values()) {
-        if (answer.sessionId === sessionId) answer('deny');
+      if (tile.approvalTasks.get(sessionId) === task) {
+        tile.approvalTasks.delete(sessionId);
+        for (const answer of tile.pendingPermissions.values()) {
+          if (answer.sessionId === sessionId) answer('deny');
+        }
       }
       tile.turnsInFlight = Math.max(0, tile.turnsInFlight - 1);
       this.emitTabs(tile);

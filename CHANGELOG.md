@@ -6,6 +6,13 @@ builds from [GitHub Releases](https://github.com/SaraJo/circe/releases).
 
 ## Unreleased
 
+### Added
+
+- Choose **YOLO this task** on a tool approval to approve subsequent actions in
+  that conversation automatically. A visible indicator stays on until the task
+  finishes, fails, disconnects, or you send a new message. Consent is never saved
+  for another task or conversation.
+
 ### Fixed
 
 - Opening a conversation with **+** or **Cmd/Ctrl-T** focuses the message box so

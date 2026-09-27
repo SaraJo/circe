@@ -72,6 +72,8 @@ export interface HermesProfile {
 
 /** Renderer-facing conversation tabs for one agent tile. */
 export interface TileTabsView {
+  /** Auto-approval for the active conversation’s current task only. */
+  yolo?: boolean;
   /** Active conversation model reported by Hermes, or null when unavailable. */
   model?: string | null;
   titles?: string[];

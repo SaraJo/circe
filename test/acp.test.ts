@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AcpClient, optionIdFor, parseFrames, sessionModelName } from '../src/main/acp';
+import { type PermissionChoice, AcpClient, optionIdFor, parseFrames, sessionModelName } from '../src/main/acp';
 
 // Reaches into the private `request` method the same way the idempotence test
 // below reaches into `doStart`: no subprocess, no faked ACP traffic. `request`'s
@@ -127,6 +127,58 @@ describe('session/request_permission', () => {
     expect(optionIdFor('allow_once', options)).toBe('allow_once');
     expect(optionIdFor('allow_session', options)).toBe('allow_session');
     expect(optionIdFor('deny', options)).toBe('deny');
+  });
+
+  it('maps task consent only to a one-time option', () => {
+    expect(optionIdFor('allow_task', options)).toBe('allow_once');
+    expect(optionIdFor('allow_task', options.filter(o => o.optionId !== 'allow_once'))).toBeNull();
+  });
+
+  it('sends one-time approval for task consent and rejects consent without an active task', async () => {
+    const onPermission = vi.fn(async () => 'allow_task' as const);
+    const client = running(new AcpClient({ profileId: 'test', onUpdate: () => {}, onExit: () => {}, onPermission }));
+    let finish!: () => void;
+    vi.spyOn(client as unknown as WithRequest, 'request').mockImplementation(() => new Promise(resolve => { finish = () => resolve({}); }));
+    const send = vi.spyOn(client as unknown as { send(frame: unknown): void }, 'send').mockImplementation(() => {});
+    const turn = client.prompt('one', 'Work');
+    const frame = { id: 72, method: 'session/request_permission', params: {
+      sessionId: 'one', options, toolCall: { rawInput: { command: 'test' } },
+    } };
+    (client as unknown as WithHandle).handle(frame);
+    await Promise.resolve();
+    expect(send).toHaveBeenLastCalledWith({ jsonrpc: '2.0', id: 72, result: { outcome: { outcome: 'selected', optionId: 'allow_once' } } });
+    finish();
+    await turn;
+    (client as unknown as WithHandle).handle(frame);
+    await Promise.resolve();
+    expect(send).toHaveBeenLastCalledWith({ jsonrpc: '2.0', id: 72, result: { outcome: { outcome: 'cancelled' } } });
+  });
+
+  it.each(['complete', 'interrupt', 'replace connection'] as const)('rejects stale task approval after %s', async (ending) => {
+    let answer!: (choice: PermissionChoice) => void;
+    const onPermission = vi.fn(() => new Promise<PermissionChoice>(resolve => { answer = resolve; }));
+    const client = running(new AcpClient({ profileId: 'test', onUpdate: () => {}, onExit: () => {}, onPermission }));
+    const finishes: Array<() => void> = [];
+    vi.spyOn(client as unknown as WithRequest, 'request').mockImplementation(() => new Promise(resolve => finishes.push(() => resolve({}))));
+    const send = vi.spyOn(client as unknown as { send(frame: unknown): void }, 'send').mockImplementation(() => {});
+    const turn = client.prompt('one', 'Work');
+    (client as unknown as WithHandle).handle({ id: 71, method: 'session/request_permission', params: {
+      sessionId: 'one', options, toolCall: { rawInput: { command: 'test' } },
+    } });
+    expect(onPermission).toHaveBeenCalledWith(expect.objectContaining({ canAllowTask: true }));
+    let followup: Promise<void> | undefined;
+    if (ending === 'complete') { finishes[0]!(); await turn; }
+    if (ending === 'interrupt') followup = client.prompt('one', 'New direction');
+    if (ending === 'replace connection') (client as unknown as WithChild).child = {};
+    answer('allow_task');
+    await Promise.resolve();
+    expect(send.mock.calls.some(([frame]) => (frame as { result?: { outcome?: { outcome?: string } } }).result?.outcome?.outcome === 'selected')).toBe(false);
+    if (ending !== 'complete') {
+      finishes[0]!();
+      await new Promise(resolve => setImmediate(resolve));
+      if (followup) finishes[1]!();
+      await Promise.all([turn, followup]);
+    }
   });
 
   it('asks the caller and sends the selected non-persistent option', async () => {

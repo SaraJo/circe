@@ -470,6 +470,7 @@ footer {
 }
 .permission-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 5px;
   margin-top: 9px;
 }
@@ -680,3 +681,7 @@ textarea:focus {
 #attachment-status { color: var(--muted); font-size: 12px; padding: 4px 0; }
 .conversation-image { display: block; max-width: 100%; max-height: 240px; object-fit: contain; border-radius: 6px; margin-top: 4px; }
 footer textarea { min-width: 0; }
+
+#task-approval-status {
+  padding: 6px 12px;
+}

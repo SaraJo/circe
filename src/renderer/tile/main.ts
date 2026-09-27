@@ -310,7 +310,7 @@ function appendText(role: 'user' | 'agent' | 'error' | 'tool', text: string): HT
   return node;
 }
 
-function permissionCard(id: number, description: string, command: string, conversation?: string): HTMLElement {
+function permissionCard(id: number, description: string, command: string, conversation?: string, canAllowTask = false): HTMLElement {
   const card = document.createElement('section');
   card.className = 'permission';
   card.dataset.permission = String(id);
@@ -352,6 +352,17 @@ function permissionCard(id: number, description: string, command: string, conver
     if (choice === 'deny') button.className = 'deny';
     button.addEventListener('click', () => circe.answerPermission(id, choice));
     actions.append(button);
+  }
+  if (canAllowTask) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = 'YOLO this task';
+    button.addEventListener('click', () => circe.answerPermission(id, 'allow_task'));
+    actions.append(button);
+    const explanation = document.createElement('div');
+    explanation.className = 'permission-more';
+    explanation.textContent = 'YOLO approves this and following actions in this conversation until the task ends or you send a new message.';
+    card.append(explanation);
   }
   card.append(actions);
   return card;
@@ -438,7 +449,10 @@ circe.onCharacter((c) => {
 
 circe.onTabs((value) => {
   const view = asTabsView(value);
-  if (view) renderTabs(view);
+  if (view) {
+    renderTabs(view);
+    document.getElementById('task-approval-status')!.hidden = !view.yolo;
+  }
 });
 
 function startNewTab(): void {
@@ -591,7 +605,7 @@ circe.onUpdate((update) => {
       endTurn();
       return;
     case 'circe/permission': {
-      const request = update as { id?: unknown; description?: unknown; command?: unknown; conversation?: unknown };
+      const request = update as { id?: unknown; description?: unknown; command?: unknown; conversation?: unknown; canAllowTask?: unknown };
       if (typeof request.id !== 'number' || typeof request.command !== 'string' || !request.command) return;
       permissions.querySelectorAll('.resolved').forEach((card) => card.remove());
       permissions.append(
@@ -600,6 +614,7 @@ circe.onUpdate((update) => {
           typeof request.description === 'string' ? request.description : '',
           request.command,
           typeof request.conversation === 'string' ? request.conversation : undefined,
+          request.canAllowTask === true,
         ),
       );
       permissions.scrollTop = permissions.scrollHeight;
@@ -610,7 +625,7 @@ circe.onUpdate((update) => {
       if (typeof result.id !== 'number') return;
       const card = permissions.querySelector(`[data-permission="${result.id}"]`);
       if (!card) return;
-      if (result.outcome === 'allow_once' || result.outcome === 'allow_session') {
+      if (result.outcome === 'allow_once' || result.outcome === 'allow_session' || result.outcome === 'allow_task') {
         card.remove();
         return;
       }

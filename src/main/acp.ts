@@ -11,10 +11,11 @@ export interface AcpUpdate {
   [key: string]: unknown;
 }
 
-export type PermissionChoice = 'allow_once' | 'allow_session' | 'deny';
+export type PermissionChoice = 'allow_once' | 'allow_session' | 'allow_task' | 'deny';
 
 export interface PermissionRequest {
   sessionId?: string;
+  canAllowTask?: boolean;
   id: number;
   description: string;
   command: string;
@@ -27,16 +28,17 @@ interface PermissionOption {
 }
 
 export function isPermissionChoice(value: unknown): value is PermissionChoice {
-  return value === 'allow_once' || value === 'allow_session' || value === 'deny';
+  return value === 'allow_once' || value === 'allow_session' || value === 'allow_task' || value === 'deny';
 }
 
-/** Maps only Circe's three non-persistent answers to options Hermes offered. */
+/** Maps only Circe's non-persistent answers to options Hermes offered. */
 export function optionIdFor(
   choice: PermissionChoice,
   options: PermissionOption[] = [],
 ): string | null {
   const ids = new Set(options.map((option) => option.optionId).filter(Boolean));
   const order: Record<PermissionChoice, string[]> = {
+    allow_task: ['allow_once'], // Task consent must never grant session-wide permission.
     allow_once: ['allow_once', 'allow_session'],
     allow_session: ['allow_session', 'allow_once'],
     deny: ['deny'],
@@ -56,7 +58,7 @@ export interface AcpOptions {
    */
   onUpdate(sessionId: string, update: AcpUpdate): void;
   onExit(code: number | null): void;
-  /** Missing handlers deny by default; permission requests are never auto-approved. */
+  /** Missing handlers deny by default; task auto-approval requires explicit user consent in the handler. */
   onPermission?(request: PermissionRequest): Promise<PermissionChoice>;
 }
 
@@ -101,6 +103,7 @@ export class AcpClient {
   private readonly promptRuns = new Map<string, {
     blocks: Array<Record<string, string>>;
     interrupting: boolean;
+    permissionEpoch: object;
     completion: Promise<void>;
   }>();
   private child: ChildProcess | null = null;
@@ -363,6 +366,7 @@ export class AcpClient {
     const blocks = [...(text ? [{ type: 'text', text }] : []), ...images.map(({ data, mimeType }) => ({ type: 'image', data, mimeType }))];
     const existing = this.promptRuns.get(sessionId);
     if (existing) {
+      existing.permissionEpoch = {};
       existing.blocks.push(...blocks);
       if (!existing.interrupting) {
         existing.interrupting = true;
@@ -371,7 +375,7 @@ export class AcpClient {
       return existing.completion;
     }
 
-    const run = { blocks, interrupting: false, completion: Promise.resolve() };
+    const run = { blocks, interrupting: false, permissionEpoch: {}, completion: Promise.resolve() };
     const child = this.child;
     this.promptRuns.set(sessionId, run);
     run.completion = (async () => {
@@ -486,12 +490,21 @@ export class AcpClient {
         return;
       }
 
+      const sessionId = typeof params.sessionId === 'string' ? params.sessionId : undefined;
+      const run = sessionId ? this.promptRuns.get(sessionId) : undefined;
+      const epoch = run?.permissionEpoch;
+      const child = this.child;
+      const canAllowTask = !!run && optionIdFor('allow_task', params.options) !== null;
       const description = typeof raw.description === 'string' ? raw.description : '';
       void this.opts.onPermission({
         id, description, command,
+        ...(canAllowTask ? { canAllowTask: true } : {}),
         ...(typeof params.sessionId === 'string' ? { sessionId: params.sessionId } : {}),
       }).then(
         (choice) => {
+          if (this.child !== child) return; // Never reply to a replacement connection.
+          if (run && (this.promptRuns.get(sessionId!) !== run || run.interrupting || run.permissionEpoch !== epoch)) return cancel();
+          if (choice === 'allow_task' && !canAllowTask) return cancel();
           const optionId = optionIdFor(choice, params.options);
           if (!optionId) return cancel();
           this.send({

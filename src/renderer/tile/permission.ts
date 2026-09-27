@@ -16,6 +16,8 @@ export function permissionOutcomeLabel(outcome: unknown): string {
   switch (outcome) {
     case 'allow_once':
       return 'Allowed once';
+    case 'allow_task':
+      return 'Allowed for this task';
     case 'allow_session':
       return 'Allowed for this session';
     case 'deny':

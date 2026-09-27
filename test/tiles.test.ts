@@ -405,6 +405,7 @@ describe('conversation tabs', () => {
       canSwitch: true,
       canClose: true,
       titles: [''],
+      yolo: false,
       model: null,
       activeIndex: 0,
       busy: false,
@@ -1361,6 +1362,109 @@ describe('re-theming an open tile', () => {
 
 describe('permission requests', () => {
   const request = { id: 7, description: 'Delete build output', command: 'rm -rf build' };
+
+  it('auto-approves this task, including waiting requests, and resets for the next task', async () => {
+    const h = harness();
+    await launched(h);
+    const client = h.clients[0]!;
+    const turn = h.registry.prompt('default', 'Do several things');
+    const scoped = { ...request, sessionId: 'session-1', canAllowTask: true };
+    const first = client.onPermission(scoped);
+    const waiting = client.onPermission({ ...scoped, id: 8 });
+    h.registry.answerPermission('default', 7, 'allow_task');
+    await expect(first).resolves.toBe('allow_task');
+    await expect(waiting).resolves.toBe('allow_task');
+    await expect(client.onPermission({ ...scoped, id: 9, command: 'different command' })).resolves.toBe('allow_task');
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ yolo: true });
+    client.finishTurn();
+    await turn;
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ yolo: false });
+    const next = h.registry.prompt('default', 'A new task');
+    const nextAnswer = client.onPermission({ ...scoped, id: 10 });
+    const resolved = vi.fn();
+    void nextAnswer.then(resolved);
+    await Promise.resolve();
+    expect(resolved).not.toHaveBeenCalled();
+    h.registry.answerPermission('default', 10, 'deny');
+    await expect(nextAnswer).resolves.toBe('deny');
+    client.finishTurn();
+    await next;
+  });
+
+  it('does not grant task consent without a running task and a one-time option', async () => {
+    const h = harness();
+    await launched(h);
+    const idle = h.clients[0]!.onPermission({ ...request, sessionId: 'session-1', canAllowTask: true });
+    h.registry.answerPermission('default', 7, 'allow_task');
+    await expect(idle).resolves.toBe('deny');
+    const turn = h.registry.prompt('default', 'Work');
+    const unsupported = h.clients[0]!.onPermission({ ...request, sessionId: 'session-1' });
+    h.registry.answerPermission('default', 7, 'allow_task');
+    await expect(unsupported).resolves.toBe('deny');
+    h.clients[0]!.finishTurn();
+    await turn;
+  });
+
+  it('keeps YOLO scoped to one conversation and revokes it on interruption and exit', async () => {
+    const h = harness();
+    await launched(h);
+    const client = h.clients[0]!;
+    client.canLoadSession = true;
+    const turn = h.registry.prompt('default', 'Work');
+    const scoped = { ...request, sessionId: 'session-1', canAllowTask: true };
+    const first = client.onPermission(scoped);
+    h.registry.answerPermission('default', 7, 'allow_task');
+    await first;
+    await h.registry.newTab('default');
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ yolo: false });
+    const otherTurn = h.registry.prompt('default', 'Other work');
+    const other = client.onPermission({ ...scoped, sessionId: 'session-2', id: 8 });
+    const resolved = vi.fn();
+    void other.then(resolved);
+    await Promise.resolve();
+    expect(resolved).not.toHaveBeenCalled();
+    h.registry.answerPermission('default', 8, 'deny');
+    await other;
+    await h.registry.switchTab('default', 0);
+    const followup = h.registry.prompt('default', 'Change direction');
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ yolo: false });
+    const revised = client.onPermission({ ...scoped, id: 9 });
+    h.registry.answerPermission('default', 9, 'allow_task');
+    await revised;
+    // The older prompt finishing must not revoke consent for its replacement.
+    client.finishTurn('session-1');
+    await turn;
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ yolo: true });
+    client.onExit(1);
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ yolo: false });
+    client.finishTurn('session-1');
+    client.finishTurn('session-2');
+    await Promise.all([followup, otherTurn]);
+  });
+
+  it('revokes task approval when a prompt fails', async () => {
+    const h = harness();
+    await launched(h);
+    const client = h.clients[0]!;
+    let reject!: (error: Error) => void;
+    vi.spyOn(client, 'prompt').mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+    const turn = h.registry.prompt('default', 'Work');
+    const answer = client.onPermission({ ...request, sessionId: 'session-1', canAllowTask: true });
+    h.registry.answerPermission('default', 7, 'allow_task');
+    await answer;
+    reject(new Error('Connection failed'));
+    await turn;
+    expect(h.windows[0]!.tabs().at(-1)).toMatchObject({ yolo: false });
+  });
+
+  it('rejects a permission callback from a closed client after relaunch', async () => {
+    const h = harness();
+    await launched(h);
+    const old = h.clients[0]!;
+    h.registry.close('default');
+    await launched(h);
+    await expect(old.onPermission(request)).resolves.toBe('deny');
+  });
 
   it('draws a request and waits for the matching answer', async () => {
     const h = harness();

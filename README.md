@@ -41,7 +41,7 @@ to keep or change.
 | --- | --- |
 | **Keep separate tasks in view** | Put one agent on trip planning, another on research, and another on everyday logistics. Keep their tiles beside your notes, browser, or editor. |
 | **Make room for ongoing work** | Use separate conversation tabs, switch tabs while an agent is thinking, and start a fresh conversation with a handoff when a chat gets too long. |
-| **Respond where work happens** | Review tool approval requests in the agent's tile. Allow an action once, allow it for the session, or deny it. |
+| **Respond where work happens** | Review tool approval requests in the agent's tile. Allow an action once, allow it for the session, or choose **YOLO this task** to approve subsequent actions until the task finishes or you send a new message. |
 | **Share what you're looking at** | Attach an image to a conversation when your Hermes agent and model support image input. |
 
 ## Your desktop, with company
