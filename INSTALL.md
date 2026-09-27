@@ -29,8 +29,8 @@ not currently supplied.
    [Windows guide](https://hermes-agent.nousresearch.com/docs/user-guide/windows-native).
    Open a new PowerShell window and run `hermes setup` to connect a model provider.
    Circe's Windows build does not use WSL-hosted Hermes profiles.
-2. Open the [Windows beta release](https://github.com/SaraJo/circe/releases/tag/v0.2.10) and download
-   `Circe-0.2.10-windows-x64-setup.exe` from **Assets**.
+2. Open the [Windows beta release](https://github.com/SaraJo/circe/releases/tag/v0.2.12) and download
+   `Circe-0.2.12-windows-x64-setup.exe` from **Assets**.
 3. Run the installer and choose your installation location. If SmartScreen
    shows an unrecognized-app warning, verify that you downloaded it from this
    repository; for a download you trust, choose **More info → Run anyway** if

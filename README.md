@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/SaraJo/circe/releases"><img src="docs/images/download-macos.svg" alt="Download for macOS — Apple Silicon beta" width="280" height="80" /></a>
-  <a href="https://github.com/SaraJo/circe/releases/tag/v0.2.10"><img src="docs/images/download-windows.svg" alt="Download for Windows — x64 experimental beta" width="280" height="80" /></a>
+  <a href="https://github.com/SaraJo/circe/releases/tag/v0.2.12"><img src="docs/images/download-windows.svg" alt="Download for Windows — x64 experimental beta" width="280" height="80" /></a>
 </p>
 
 <p align="center">
@@ -78,8 +78,7 @@ how portraits are created, and how to revisit your choices.
 | macOS on Apple Silicon | `Circe-<version>-arm64.dmg` |
 | Windows 10/11 x64 (experimental) | `Circe-<version>-windows-x64-setup.exe` |
 
-The latest Mac installer is in [0.2.11](https://github.com/SaraJo/circe/releases/tag/v0.2.11);
-the Windows installer is in [0.2.10](https://github.com/SaraJo/circe/releases/tag/v0.2.10).
+Both installers are available in [0.2.12 beta](https://github.com/SaraJo/circe/releases/tag/v0.2.12).
 See the [release notes](CHANGELOG.md) for changes and platform availability.
 
 Install Hermes and connect a model provider before opening Circe. The beta is

@@ -6,6 +6,12 @@ builds from [GitHub Releases](https://github.com/SaraJo/circe/releases).
 
 ## Unreleased
 
+No changes yet.
+
+## 0.2.12 — 2026-09-26
+
+**macOS beta and Windows experimental beta.** [Downloads and full release notes](https://github.com/SaraJo/circe/releases/tag/v0.2.12).
+
 ### Added
 
 - Choose **YOLO this task** on a tool approval to approve subsequent actions in
@@ -21,6 +27,9 @@ builds from [GitHub Releases](https://github.com/SaraJo/circe/releases).
   character names, making them easier to identify in window tools.
 - Linux menu bars stay hidden until requested when running from source. Linux
   does not have a supported public installer.
+
+- Installers include only production build output, excluding leftover local
+  preview and media-editing files.
 
 ### Documentation
 
