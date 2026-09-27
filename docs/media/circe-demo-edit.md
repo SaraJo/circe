@@ -1,22 +1,25 @@
 # Circe demo edit
 
-Source: `circedemo.mov` (79.33 seconds). The original recording is unchanged.
+Source: `better video.mov` on the Desktop (64.73 seconds). Original unchanged.
+Export: 28.75 seconds, 1210×740, H.264 MP4 at 24 fps; looping GIF at
+960 pixels wide and 12 fps. Silent. Captions are editorial titles, not a
+transcript; the SRT contains matching titles for reuse.
 
-The silent edit shows flight research and packing preparation happening in two
-agent tiles alongside your everyday apps. It ends on a follow-up question, not a completed
-checklist or an approval interaction. Captions are burned into both exports; the
-SRT file contains the same copy for reuse. Suggested accompanying description: “Flight research and packing preparation
-with your Circe crew. Edited for length.”
+Cream caption band below the interface; plum serif headlines, peach and sage
+pixel accents. “Edited for length” appears in the README caption, not in the
+video. No app-specific
+names in the captions. All footage comes from the new recording, with no
+fabricated interface, actions, or results. The completed list plays at normal
+speed. This edit is used for the README demo.
 
 | Source seconds | Playback speed |
 | --- | --- |
-| 10–16 | 2× |
-| 16–20 | 2× |
-| 25–40 | 5× |
-| 40–44 | 2× |
-| 52–55 | 1.5× |
-| 67–71 | 2× |
-| 73–79.2 | 1× |
+| 0–3 | 1× |
+| 3–27 | 4× |
+| 27–31 | 2× |
+| 31–51 | 5× |
+| 51–64.7333 | 1× |
 
-Export: H.264 MP4 at 1210×712 / 24 fps; looping GIF at 960 pixels wide / 12 fps.
-Captions sit outside the recorded interface so they do not cover the conversations.
+Editable caption artwork is in `captions/caption-0.svg` through
+`captions/caption-3.svg`. The SRT contains the same wording and timing.
+The closing caption reads “Your plans, coming together.”

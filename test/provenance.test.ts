@@ -30,6 +30,10 @@ describe('avatar provenance (spec §10.7)', () => {
       // User-provided README screenshots; docs/ is not packaged in the app.
       'docs/images/circe-desktop.png',
       'docs/images/circe-tile-closeup.png',
+      // Original generated README illustration; not bundled character avatars.
+      'docs/images/circe-header.png',
+      // Captioned edit of the user-provided recording, approved for the README.
+      'docs/media/circe-demo.gif',
     ];
 
     const images = files.filter((file) => /\.(png|jpe?g|gif|webp)$/i.test(file));

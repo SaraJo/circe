@@ -1,22 +1,33 @@
-# Circe
+<h1 align="center">
+  <img src="docs/images/circe-header.png" alt="Circe — a pixel-art crew in desktop conversation windows" width="800" />
+</h1>
 
-**Your agent crew, at home on your desktop.**
+<p align="center"><strong>Your agent crew, at home on your desktop.</strong></p>
 
-[Download](#download) · [Install guide](INSTALL.md) · [Run from source](#running-from-source) · [Release notes](CHANGELOG.md) · [Docs](docs/README.md) · [Contributing](CONTRIBUTING.md)
+<p align="center">
+  <a href="https://github.com/SaraJo/circe/releases"><img src="docs/images/download-macos.svg" alt="Download for macOS — Apple Silicon beta" width="280" height="80" /></a>
+  <a href="https://github.com/SaraJo/circe/releases/tag/v0.2.10"><img src="docs/images/download-windows.svg" alt="Download for Windows — x64 experimental beta" width="280" height="80" /></a>
+</p>
+
+<p align="center">
+  <a href="#download">Download</a> ·
+  <a href="INSTALL.md">Install guide</a> ·
+  <a href="#running-from-source">Run from source</a> ·
+  <a href="CHANGELOG.md">Release notes</a> ·
+  <a href="docs/README.md">Docs</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a>
+</p>
+
+<p align="center"><sub>Requires Hermes and a connected model provider. Builds are unsigned.</sub></p>
 
 Circe brings your [Hermes](https://hermes-agent.nousresearch.com) AI agents onto
 your desktop as individual chat windows that live alongside the apps you already
 use. Give your crew familiar names, pixel-art portraits, and their own colors.
 Keep their work in view while you get on with yours.
 
-[![Download for macOS — Apple Silicon](docs/images/download-macos.svg)](https://github.com/SaraJo/circe/releases)
-[![Download for Windows — x64 beta](docs/images/download-windows.svg)](https://github.com/SaraJo/circe/releases/tag/v0.2.10)
+![Circe agent conversations beside a document, showing a packing request and the completed list.](docs/media/circe-demo.gif)
 
-Requires Hermes and a connected model provider. Builds are unsigned.
-
-![Circe demo showing two agents researching flights and discussing packing in separate desktop tiles.](docs/media/circe-demo.gif)
-
-*Flight research and packing preparation with your Circe crew. Edited for length.*
+*Planning a trip with your Circe crew. Edited for length.*
 [Watch the video](docs/media/circe-demo.mp4)
 
 ## A crew you recognize

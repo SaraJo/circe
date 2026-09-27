@@ -1,8 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="248" height="64" viewBox="0 0 248 64" role="img" aria-label="Download for macOS: APPLE SILICON">
-  <title>Download for macOS: APPLE SILICON</title>
-  <path d="M8 0H240V8H248V56H240V64H8V56H0V8H8Z" fill="#efb474"/>
-  <path d="M10 2H238V10H246V54H238V62H10V54H2V10H10Z" fill="#241b2e"/>
-  <path d="M24 18H30V32H36V38H30V44H24V38H18V32H24ZM16 46H38V50H16Z" fill="#efb474"/>
-  <text x="52" y="28" fill="#fff7ed" font-family="Verdana, sans-serif" font-size="15" font-weight="bold">Download for macOS</text>
-  <text x="52" y="47" fill="#efb474" font-family="monospace" font-size="11" letter-spacing="1">APPLE SILICON</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="280" height="80" viewBox="0 0 280 80" role="img" aria-labelledby="title desc">
+  <title id="title">Download Circe for macOS</title>
+  <desc id="desc">Apple Silicon beta. Opens the Circe releases page.</desc>
+  <rect x="1" y="5" width="278" height="74" rx="14" fill="#302734"/>
+  <rect x="1" y="1" width="278" height="72" rx="14" fill="#efb474" stroke="#302734" stroke-width="2"/>
+  <path d="M15 5H265" stroke="#ffe0b6" stroke-width="2" stroke-linecap="round"/>
+  <rect x="17" y="17" width="40" height="40" rx="10" fill="#302734"/>
+  <path d="M37 25V41M31 35L37 41L43 35M27 43V49H47V43" fill="none" stroke="#fff7ed" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="70" y="33" fill="#302734" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="16" font-weight="700">Download for macOS</text>
+  <text x="70" y="53" fill="#463649" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12">Apple Silicon · Beta</text>
 </svg>

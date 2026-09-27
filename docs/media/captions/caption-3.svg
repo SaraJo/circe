@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1210" height="124" viewBox="0 0 1210 124">
+ <rect width="1210" height="124" fill="#f7f2e8"/>
+ <path d="M0 1H1210" stroke="#302734" stroke-width="2"/>
+ <path d="M26 1H202" stroke="#efb474" stroke-width="4"/>
+ <path d="M208 1H264" stroke="#b7c9a1" stroke-width="4"/>
+ <path d="M35 43H43V51H51V59H43V67H35V59H27V51H35Z" fill="#efb474"/>
+ <rect x="35" y="51" width="8" height="8" fill="#f7f2e8"/>
+ <text x="72" y="59" fill="#302734" font-family="Georgia, serif" font-size="36" font-weight="bold">Your plans, coming together.</text>
+ <text x="73" y="93" fill="#534858" font-family="Helvetica, Arial, sans-serif" font-size="22">Your crew, alongside the apps you already use.</text>
+ <path d="M996 26V100" stroke="#ddd5cb" stroke-width="1"/>
+ <rect x="1052" y="35" width="8" height="8" fill="#ddd5cb"/><rect x="1072" y="35" width="8" height="8" fill="#ddd5cb"/><rect x="1092" y="35" width="8" height="8" fill="#ddd5cb"/><rect x="1112" y="35" width="8" height="8" fill="#302734"/>
+ <text x="1090" y="79" text-anchor="middle" fill="#302734" font-family="Georgia, serif" font-weight="bold" font-size="29" letter-spacing="3">CIRCE</text>
+ </svg>
