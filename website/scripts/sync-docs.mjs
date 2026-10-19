@@ -58,7 +58,6 @@ await mkdir(imgDir, { recursive: true });
 const imageSources = [
   ...(await readdir(path.join(repoDir, 'docs/images'))).map((f) => `docs/images/${f}`),
   'docs/media/circe-demo.mp4',
-  'resources/icon-v4.png',
 ];
 for (const src of imageSources) {
   await copyFile(path.join(repoDir, src), path.join(imgDir, path.basename(src)));

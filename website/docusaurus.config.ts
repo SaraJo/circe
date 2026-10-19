@@ -7,7 +7,21 @@ const repoUrl = 'https://github.com/SaraJo/circe';
 const config: Config = {
   title: 'Circe',
   tagline: 'Your agent crew, at home on your desktop.',
-  favicon: 'img/synced/icon-v4.png',
+  favicon: 'img/favicon.png',
+
+  stylesheets: [
+    {
+      href: 'https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&display=swap',
+      type: 'text/css',
+    },
+  ],
+  headTags: [
+    {tagName: 'link', attributes: {rel: 'preconnect', href: 'https://fonts.googleapis.com'}},
+    {
+      tagName: 'link',
+      attributes: {rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: 'anonymous'},
+    },
+  ],
 
   // GitHub Pages project site: https://sarajo.github.io/circe/
   url: 'https://sarajo.github.io',
@@ -48,7 +62,7 @@ const config: Config = {
   ],
 
   themeConfig: {
-    image: 'img/synced/circe-header.png',
+    image: 'img/circe-social.jpg',
     colorMode: {
       respectPrefersColorScheme: true,
     },
@@ -56,14 +70,21 @@ const config: Config = {
       title: 'Circe',
       logo: {
         alt: 'Circe app icon',
-        src: 'img/synced/icon-v4.png',
+        src: 'img/circe-icon.png',
+        width: 32,
+        height: 32,
       },
       items: [
         {type: 'docSidebar', sidebarId: 'docs', position: 'left', label: 'Docs'},
         {to: '/docs/install', label: 'Install', position: 'left'},
         {to: '/docs/release-notes', label: 'Release notes', position: 'left'},
-        {href: `${repoUrl}/releases`, label: 'Download', position: 'right'},
         {href: repoUrl, label: 'GitHub', position: 'right'},
+        {
+          href: `${repoUrl}/releases`,
+          label: 'Download',
+          position: 'right',
+          className: 'navbar-download',
+        },
       ],
     },
     footer: {
@@ -94,7 +115,7 @@ const config: Config = {
     },
     prism: {
       theme: prismThemes.github,
-      darkTheme: prismThemes.dracula,
+      darkTheme: prismThemes.vsDark,
       additionalLanguages: ['bash', 'powershell'],
     },
   } satisfies Preset.ThemeConfig,
