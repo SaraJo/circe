@@ -3,6 +3,7 @@ import Link from '@docusaurus/Link';
 import useBaseUrl from '@docusaurus/useBaseUrl';
 import Layout from '@theme/Layout';
 import Heading from '@theme/Heading';
+import DemoVideo from '@site/src/components/DemoVideo';
 
 import styles from './index.module.css';
 
@@ -56,11 +57,7 @@ export default function Home(): ReactNode {
       </header>
       <main>
         <section className="container margin-vert--xl">
-          <img
-            className={styles.demo}
-            src={useBaseUrl('/img/synced/circe-demo.gif')}
-            alt="Circe agent conversations beside a document, showing a packing request and the completed list."
-          />
+          <DemoVideo className={styles.demo} />
         </section>
         <section className="container margin-bottom--xl">
           <Heading as="h2" className="text--center margin-bottom--lg">

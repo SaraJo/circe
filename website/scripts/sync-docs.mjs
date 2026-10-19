@@ -22,7 +22,7 @@ const pages = [
   { src: 'CONTRIBUTING.md', out: 'contributing.md', position: 7 },
 ];
 const routes = new Map(pages.map((p) => [p.src, p.out]));
-routes.set('README.md', 'intro.md');
+routes.set('README.md', 'intro.mdx');
 
 function rewriteLink(target, srcFile) {
   if (/^([a-z]+:|#|\/)/i.test(target)) return target;
@@ -46,7 +46,7 @@ function transform(markdown, srcFile, position) {
 
 await mkdir(docsDir, { recursive: true });
 for (const entry of await readdir(docsDir)) {
-  if (entry !== 'intro.md') await rm(path.join(docsDir, entry), { recursive: true });
+  if (entry !== 'intro.mdx') await rm(path.join(docsDir, entry), { recursive: true });
 }
 for (const page of pages) {
   const source = await readFile(path.join(repoDir, page.src), 'utf8');
@@ -57,7 +57,7 @@ await rm(imgDir, { recursive: true, force: true });
 await mkdir(imgDir, { recursive: true });
 const imageSources = [
   ...(await readdir(path.join(repoDir, 'docs/images'))).map((f) => `docs/images/${f}`),
-  'docs/media/circe-demo.gif',
+  'docs/media/circe-demo.mp4',
   'resources/icon-v4.png',
 ];
 for (const src of imageSources) {
