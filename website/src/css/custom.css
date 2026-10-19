@@ -1,0 +1,42 @@
+/* Palette taken from the Circe header art: cream, plum, peach, sage. */
+:root {
+  --ifm-color-primary: #a85a33;
+  --ifm-color-primary-dark: #97512e;
+  --ifm-color-primary-darker: #8f4c2b;
+  --ifm-color-primary-darkest: #763f24;
+  --ifm-color-primary-light: #b96338;
+  --ifm-color-primary-lighter: #be6a40;
+  --ifm-color-primary-lightest: #c7805c;
+  --ifm-background-color: #faf6ee;
+  --ifm-navbar-background-color: #f4ede0;
+  --ifm-footer-background-color: #2e2230;
+  --ifm-font-color-base: #2e2230;
+  --ifm-code-font-size: 95%;
+  --circe-hero-background: #f4ede0;
+  --circe-sage: #9fae8e;
+  --docusaurus-highlighted-code-line-bg: rgba(46, 34, 48, 0.08);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #e8a274;
+  --ifm-color-primary-dark: #e38d56;
+  --ifm-color-primary-darker: #e18347;
+  --ifm-color-primary-darkest: #d1651f;
+  --ifm-color-primary-light: #edb792;
+  --ifm-color-primary-lighter: #efc1a1;
+  --ifm-color-primary-lightest: #f6dccb;
+  --ifm-background-color: #1d161e;
+  --ifm-navbar-background-color: #241b26;
+  --ifm-footer-background-color: #150f16;
+  --ifm-font-color-base: #efe7da;
+  --circe-hero-background: #2e2230;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}
+
+.navbar__logo img {
+  border-radius: 6px;
+}
+
+.markdown img {
+  border-radius: 8px;
+}
