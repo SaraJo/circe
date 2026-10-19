@@ -9,20 +9,6 @@ const config: Config = {
   tagline: 'Your agent crew, at home on your desktop.',
   favicon: 'img/favicon.png',
 
-  stylesheets: [
-    {
-      href: 'https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&display=swap',
-      type: 'text/css',
-    },
-  ],
-  headTags: [
-    {tagName: 'link', attributes: {rel: 'preconnect', href: 'https://fonts.googleapis.com'}},
-    {
-      tagName: 'link',
-      attributes: {rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: 'anonymous'},
-    },
-  ],
-
   // GitHub Pages project site: https://sarajo.github.io/circe/
   url: 'https://sarajo.github.io',
   baseUrl: '/circe/',
@@ -55,7 +41,13 @@ const config: Config = {
         },
         blog: false,
         theme: {
-          customCss: './src/css/custom.css',
+          // Open-source (OFL) variable fonts, bundled with the site.
+          customCss: [
+            require.resolve('@fontsource-variable/bricolage-grotesque'),
+            require.resolve('@fontsource-variable/instrument-sans'),
+            require.resolve('@fontsource-variable/jetbrains-mono'),
+            './src/css/custom.css',
+          ],
         },
       } satisfies Preset.Options,
     ],

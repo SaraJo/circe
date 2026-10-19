@@ -24,9 +24,11 @@
   --ifm-color-primary-lighter: #df4416;
   --ifm-color-primary-lightest: #ea5a2f;
 
-  --ifm-font-family-base: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --ifm-heading-font-family: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --ifm-font-family-monospace: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --ifm-font-family-base: 'Instrument Sans Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --ifm-heading-font-family: 'Bricolage Grotesque Variable', 'Instrument Sans Variable', system-ui,
+    sans-serif;
+  --ifm-font-family-monospace: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo,
+    monospace;
   --ifm-heading-font-weight: 650;
   --ifm-font-weight-bold: 650;
   --ifm-line-height-base: 1.65;
@@ -95,6 +97,13 @@ h3 {
   letter-spacing: -0.035em;
 }
 
+/* Show code exactly as typed: no `->` or `-<` ligatures. */
+code,
+pre {
+  font-variant-ligatures: none;
+  font-feature-settings: 'liga' 0, 'calt' 0;
+}
+
 .markdown p,
 .markdown li {
   text-wrap: pretty;
@@ -114,6 +123,7 @@ h3 {
 }
 
 .navbar__brand {
+  font-family: var(--ifm-heading-font-family);
   font-weight: 700;
   letter-spacing: -0.02em;
 }
