@@ -1,4 +1,4 @@
-import { isTilePrompt, type TilePrompt, type ImageAttachment } from '../shared/prompt';
+import { isTilePrompt, promptText, type TilePrompt, type ImageAttachment } from '../shared/prompt';
 import { shortTabTitle } from './tabTitle';
 import type { Character, TileTabsView } from '../shared/types';
 import type { PermissionChoice, PermissionRequest } from './acp';
@@ -100,6 +100,7 @@ interface Tile {
   ready: Promise<void>;
   pendingPermissions: Map<number, ((choice: PermissionChoice, outcome?: string) => void) & { sessionId?: string; canAllowTask?: boolean }>;
   approvalTasks: Map<string, { yolo: boolean }>;
+  retryablePermissions: Map<number, PermissionRequest>;
   tabs: string[];
   titles: Record<string, string>;
   activeIndex: number;
@@ -208,7 +209,8 @@ export class TileRegistry {
       onExit: (code) => {
         if (!isCurrent()) return; // the exit belongs to an already-replaced client
         tile!.approvalTasks.clear();
-        for (const answer of tile!.pendingPermissions.values()) answer('deny');
+        for (const answer of tile!.pendingPermissions.values()) answer('deny', 'cancelled');
+        tile!.retryablePermissions.clear();
         this.emit(win, { sessionUpdate: 'circe/exited', code });
         if (tile) this.emitTabs(tile);
       },
@@ -230,6 +232,7 @@ export class TileRegistry {
       ready: Promise.resolve(),
       pendingPermissions: new Map(),
       approvalTasks: new Map(),
+      retryablePermissions: new Map(),
       tabs: [],
       titles: Object.create(null),
       activeIndex: 0,
@@ -344,7 +347,7 @@ export class TileRegistry {
     const tile = this.tiles.get(profileId);
     if (!tile) return;
     if (!isTilePrompt(text)) {
-      this.say(tile, 'Your message was not sent. Attach one PNG, JPEG, WebP, or GIF image up to 5 MB.');
+      this.say(tile, 'Your message was not sent. Attach one local file, or a PNG, JPEG, WebP, or GIF image up to 5 MB.');
       return;
     }
     const route = tile.session.route(text);
@@ -582,10 +585,13 @@ export class TileRegistry {
 
     // A repeated protocol id cannot leave the older request hanging.
     tile.pendingPermissions.get(request.id)?.('deny');
+    // The renderer replaces resolved cards when a new approval arrives.
+    tile.retryablePermissions.clear();
 
     const task = request.sessionId ? tile.approvalTasks.get(request.sessionId) : undefined;
     const canAllowTask = request.canAllowTask === true && !!task;
     if (canAllowTask && task.yolo) return Promise.resolve('allow_task');
+    const sessionId = request.sessionId ?? tile.session.activeSessionId;
 
     return new Promise((resolve) => {
       let finished = false;
@@ -602,10 +608,13 @@ export class TileRegistry {
         }
         finished = true;
         tile.pendingPermissions.delete(request.id);
+        const canRetry = (outcome === 'deny' || outcome === 'expired') && !!sessionId;
+        if (canRetry) tile.retryablePermissions.set(request.id, { ...request, sessionId });
         this.emit(tile.win, {
           sessionUpdate: 'circe/permission-resolved',
           id: request.id,
           outcome,
+          ...(canRetry ? { canRetry: true } : {}),
         });
         resolve(choice);
         if (choice === 'allow_task' && enablingYolo) {
@@ -632,6 +641,21 @@ export class TileRegistry {
   /** Answers only a request owned by this tile; unknown and stale ids are ignored. */
   answerPermission(profileId: string, id: number, choice: PermissionChoice): void {
     this.tiles.get(profileId)?.pendingPermissions.get(id)?.(choice);
+  }
+
+  /** Retry through the agent so it performs a fresh check rather than reusing consent. */
+  async retryPermission(profileId: string, id: number): Promise<void> {
+    const tile = this.tiles.get(profileId);
+    const request = tile?.retryablePermissions.get(id);
+    if (!tile || !request?.sessionId || tile.win.isDestroyed()) return;
+    if (tile.tabBusy || tile.handoff || tile.session.activeSessionId !== request.sessionId) {
+      this.say(tile, 'Return to the original conversation to retry this action.');
+      return;
+    }
+    tile.retryablePermissions.delete(id);
+    const text = 'I missed the approval dialog. Please retry the following action and ask for approval again if needed:\n\n' + request.command;
+    this.emit(tile.win, { sessionUpdate: 'circe/permission-retrying', id, text });
+    await this.send(tile, request.sessionId, text);
   }
 
   /** Closes a tile from inside the app. The native close path lands in the same handler. */
@@ -871,13 +895,20 @@ export class TileRegistry {
    * time, and a rejection there is not a launch failure.
    */
   private send(tile: Tile, sessionId: string, message: TilePrompt, nameTab = true): Promise<void> {
-    const text = typeof message === 'string' ? message : message.text;
+    const text = promptText(message);
     const images = typeof message === 'string' ? undefined : message.images;
-    if (nameTab && !tile.titles[sessionId] && text.trim()) {
-      tile.titles[sessionId] = shortTabTitle(text);
+    const title = typeof message === 'string' ? message : message.text.trim() || message.files?.[0]?.name || text;
+    if (nameTab && !tile.titles[sessionId] && title.trim()) {
+      tile.titles[sessionId] = shortTabTitle(title);
       void this.persistTitle(tile, sessionId);
     }
     const task = { yolo: false };
+    for (const [id, request] of tile.retryablePermissions) {
+      if (request.sessionId === sessionId) {
+        tile.retryablePermissions.delete(id);
+        this.emit(tile.win, { sessionUpdate: 'circe/permission-dismissed', id });
+      }
+    }
     tile.approvalTasks.set(sessionId, task);
     tile.turnsInFlight++;
     // A follow-up replaces the pending work in this conversation, including

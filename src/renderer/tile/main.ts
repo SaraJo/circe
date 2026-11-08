@@ -1,4 +1,4 @@
-import { IMAGE_TYPES, MAX_IMAGE_BYTES, isImageAttachment, isTilePrompt, type ImageAttachment, type TilePrompt } from '../../shared/prompt';
+import { IMAGE_TYPES, MAX_IMAGE_BYTES, isFileAttachment, isImageAttachment, isTilePrompt, type FileAttachment, type ImageAttachment, type TilePrompt } from '../../shared/prompt';
 import type { Character, TileTabsView } from '../../shared/types';
 import { DEFAULT_PALETTE, isPalette, paletteVars } from '../../main/palette';
 import { applyFace, initials } from '../face';
@@ -26,6 +26,7 @@ interface TileApi {
   onAvatar(cb: (dataUrl: string | null) => void): void;
   onTabs(cb: (tabs: unknown) => void): void;
   send(text: TilePrompt): void;
+  filePath(file: File): string;
   newTab(): void;
   switchTab(index: number): void;
   clearTab(): void;
@@ -34,6 +35,7 @@ interface TileApi {
   closeTab(index: number): void;
   close(): void;
   answerPermission(id: number, choice: string): void;
+  retryPermission(id: number): void;
   openExternal(url: string): void;
 }
 const circe = (window as unknown as { circe: TileApi }).circe;
@@ -620,8 +622,20 @@ circe.onUpdate((update) => {
       permissions.scrollTop = permissions.scrollHeight;
       return;
     }
+    case 'circe/permission-dismissed':
+      if (typeof update.id === 'number') {
+        permissions.querySelector(`[data-permission="${update.id}"]`)?.remove();
+      }
+      return;
+    case 'circe/permission-retrying': {
+      if (typeof update.id !== 'number' || typeof update.text !== 'string') return;
+      permissions.querySelector(`[data-permission="${update.id}"]`)?.remove();
+      endTurn();
+      appendUserPrompt(update.text);
+      return;
+    }
     case 'circe/permission-resolved': {
-      const result = update as { id?: unknown; outcome?: unknown };
+      const result = update as { id?: unknown; outcome?: unknown; canRetry?: unknown };
       if (typeof result.id !== 'number') return;
       const card = permissions.querySelector(`[data-permission="${result.id}"]`);
       if (!card) return;
@@ -635,6 +649,14 @@ circe.onUpdate((update) => {
       outcome.textContent = permissionOutcomeLabel(result.outcome);
       const actions = document.createElement('div');
       actions.className = 'permission-actions';
+      if (result.canRetry === true) {
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.textContent = 'Retry';
+        retry.title = 'Ask the agent to try this action again and request fresh approval';
+        retry.addEventListener('click', () => circe.retryPermission(result.id as number));
+        actions.append(retry);
+      }
       const dismiss = document.createElement('button');
       dismiss.type = 'button';
       dismiss.textContent = 'Dismiss';
@@ -648,6 +670,7 @@ circe.onUpdate((update) => {
     // and the user has no way to tell a dead agent from a thinking one.
     case 'circe/exited': {
       endTurn();
+      permissions.querySelectorAll('.resolved').forEach((card) => card.remove());
       const code = (update as { code?: number | null }).code;
       appendText('error', `The agent stopped (exit code ${code ?? 'unknown'}).`);
       return;
@@ -676,12 +699,13 @@ log.addEventListener('click', (e) => {
  * cannot drift apart — two copies of this is how one of them ends up not
  * resetting the streaming bubble.
  */
-const imageFile = document.getElementById('image-file') as HTMLInputElement;
-const attachButton = document.getElementById('attach-image') as HTMLButtonElement;
+const attachmentFile = document.getElementById('attachment-file') as HTMLInputElement;
+const attachButton = document.getElementById('attach-file') as HTMLButtonElement;
 const attachmentPreview = document.getElementById('attachment-preview')!;
 const attachmentStatus = document.getElementById('attachment-status')!;
 let attachedImage: ImageAttachment | null = null;
-let imageLoading = false;
+let attachedFile: FileAttachment | null = null;
+let attachmentLoading = false;
 let attachmentGeneration = 0;
 
 function appendImage(parent: HTMLElement, attachment: ImageAttachment, alt: string): void {
@@ -696,71 +720,107 @@ function appendUserPrompt(message: TilePrompt): void {
   const bubble = appendText('user', typeof message === 'string' ? message : message.text);
   if (typeof message !== 'string') {
     for (const image of message.images) appendImage(bubble, image, 'Attached image');
+    for (const file of message.files ?? []) appendFile(bubble, file);
   }
   log.scrollTop = log.scrollHeight;
+}
+
+function appendFile(parent: HTMLElement, file: FileAttachment): void {
+  const label = document.createElement('div');
+  label.className = 'file-attachment';
+  label.textContent = file.name;
+  label.title = file.path;
+  parent.append(label);
 }
 
 function clearAttachment(): void {
   attachmentGeneration++;
   attachedImage = null;
-  imageLoading = false;
+  attachedFile = null;
+  attachmentLoading = false;
   attachButton.disabled = false;
-  imageFile.value = '';
+  attachmentFile.value = '';
   attachmentPreview.replaceChildren();
   attachmentPreview.hidden = true;
   attachmentStatus.hidden = true;
 }
 
-attachButton.addEventListener('click', () => imageFile.click());
-imageFile.addEventListener('change', async () => {
-  const file = imageFile.files?.[0];
-  if (!file) return;
+async function loadAttachment(file: File): Promise<void> {
   clearAttachment();
   const generation = attachmentGeneration;
-  imageLoading = true;
+  attachmentLoading = true;
   attachButton.disabled = true;
-  attachmentStatus.textContent = 'Loading image…';
+  attachmentStatus.textContent = 'Loading attachment…';
   attachmentStatus.hidden = false;
   try {
-    if (!IMAGE_TYPES.includes(file.type) || file.size > MAX_IMAGE_BYTES || file.size === 0) {
-      throw new Error('Choose a PNG, JPEG, WebP, or GIF image up to 5 MB.');
+    if (IMAGE_TYPES.includes(file.type)) {
+      if (file.size > MAX_IMAGE_BYTES || file.size === 0) {
+        throw new Error('Choose an image up to 5 MB, or attach a non-image file.');
+      }
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error('Could not read this image. Please try again.'));
+        reader.readAsDataURL(file);
+      });
+      const decoded = new Image();
+      decoded.src = dataUrl;
+      await decoded.decode();
+      if (generation !== attachmentGeneration) return;
+      attachedImage = { type: 'image', mimeType: file.type, data: dataUrl.slice(dataUrl.indexOf(',') + 1) };
+      appendImage(attachmentPreview, attachedImage, file.name);
+    } else {
+      const attachment: FileAttachment = { type: 'file', name: file.name, path: circe.filePath(file) };
+      if (!isFileAttachment(attachment)) throw new Error('Choose a file saved on this computer.');
+      attachedFile = attachment;
+      appendFile(attachmentPreview, attachment);
     }
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(new Error('Could not read this image. Please try again.'));
-      reader.readAsDataURL(file);
-    });
-    const decoded = new Image();
-    decoded.src = dataUrl;
-    await decoded.decode();
-    if (generation !== attachmentGeneration) return;
-    attachedImage = { type: 'image', mimeType: file.type, data: dataUrl.slice(dataUrl.indexOf(',') + 1) };
-    appendImage(attachmentPreview, attachedImage, file.name);
     const remove = document.createElement('button');
     remove.type = 'button';
-    remove.textContent = 'Remove image';
+    remove.textContent = 'Remove attachment';
     remove.addEventListener('click', clearAttachment);
     attachmentPreview.append(remove);
     attachmentPreview.hidden = false;
     attachmentStatus.hidden = true;
   } catch (error) {
     if (generation !== attachmentGeneration) return;
-    attachmentStatus.textContent = error instanceof Error ? error.message : 'Could not load this image.';
+    attachmentStatus.textContent = error instanceof Error ? error.message : 'Could not load this attachment.';
   } finally {
     if (generation === attachmentGeneration) {
-      imageLoading = false;
+      attachmentLoading = false;
       attachButton.disabled = false;
     }
   }
+}
+
+attachButton.addEventListener('click', () => attachmentFile.click());
+attachmentFile.addEventListener('change', () => {
+  const file = attachmentFile.files?.[0];
+  if (file) void loadAttachment(file);
+});
+
+document.addEventListener('dragover', (event) => {
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+});
+document.addEventListener('drop', (event) => {
+  event.preventDefault();
+  const files = event.dataTransfer?.files;
+  if (!files?.length) return;
+  if (files.length > 1) {
+    attachmentStatus.textContent = 'Attach one file at a time.';
+    attachmentStatus.hidden = false;
+    return;
+  }
+  void loadAttachment(files[0]!);
 });
 
 function sendCurrentInput(): void {
   const text = input.value.trim();
-  if (imageLoading || (!text && !attachedImage)) return;
+  if (attachmentLoading || (!text && !attachedImage && !attachedFile)) return;
   // A local convenience command, not an agent prompt. It replaces the Hermes
   // conversation behind this tab, so the tab count and selection stay put.
-  if (!attachedImage && text.toLowerCase() === '/clear') {
+  if (!attachedImage && !attachedFile && text.toLowerCase() === '/clear') {
     if (!tabsView?.supported || tabsView.busy) return;
     circe.clearTab();
     input.value = '';
@@ -773,7 +833,9 @@ function sendCurrentInput(): void {
   streaming = null;
   toolBubble = null;
   toolTitle = '';
-  const message: TilePrompt = attachedImage ? { text, images: [attachedImage] } : text;
+  const message: TilePrompt = attachedImage || attachedFile
+    ? { text, images: attachedImage ? [attachedImage] : [], ...(attachedFile ? { files: [attachedFile] } : {}) }
+    : text;
   appendUserPrompt(message);
   circe.send(message);
   clearAttachment();

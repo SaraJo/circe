@@ -375,6 +375,20 @@ describe('conversation tabs', () => {
     expect(prompt).toHaveBeenCalledWith('session-2', 'Describe this', [image]);
   });
 
+  it('routes non-image files to the active agent as readable local paths', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+    await h.registry.newTab('default');
+    const prompt = vi.spyOn(h.clients[0]!, 'prompt').mockResolvedValue();
+    const file = { type: 'file', name: 'notes.txt', path: '/tmp/My Notes/notes.txt' };
+    await h.registry.prompt('default', { text: '', images: [], files: [file] });
+    expect(prompt).toHaveBeenCalledWith('session-2',
+      'Attached local file (read it with your file tools):\n\n' + JSON.stringify({ name: file.name, path: file.path }), []);
+    expect(h.windows[0]!.sent.filter((event) => event.channel === 'tile:tabs').at(-1)?.payload).toMatchObject({
+      titles: ['', 'notes.txt'],
+    });
+  });
+
   it('delivers an image typed before the session finishes opening', async () => {
     const h = harness();
     const launch = h.registry.launch(character('default'), 'default');
@@ -1362,6 +1376,87 @@ describe('re-theming an open tile', () => {
 
 describe('permission requests', () => {
   const request = { id: 7, description: 'Delete build output', command: 'rm -rf build' };
+
+  it('retries a missed approval in its conversation and requires a fresh decision', async () => {
+    const h = harness();
+    await launched(h);
+    const client = h.clients[0]!;
+    const turn = h.registry.prompt('default', 'Clean up');
+    const answer = client.onPermission({ ...request, sessionId: 'session-1' });
+    client.finishTurn();
+    await turn;
+    await expect(answer).resolves.toBe('deny');
+    expect(h.windows[0]!.updates()).toContainEqual({
+      sessionUpdate: 'circe/permission-resolved', id: 7, outcome: 'deny', canRetry: true,
+    });
+
+    const retry = h.registry.retryPermission('default', 7);
+    expect(client.prompts.at(-1)).toEqual({
+      sessionId: 'session-1',
+      text: 'I missed the approval dialog. Please retry the following action and ask for approval again if needed:\n\nrm -rf build',
+    });
+    await h.registry.retryPermission('default', 7);
+    expect(client.prompts).toHaveLength(2);
+    const fresh = client.onPermission({ ...request, id: 8, sessionId: 'session-1' });
+    const resolved = vi.fn();
+    void fresh.then(resolved);
+    await flushMicrotasks();
+    expect(resolved).not.toHaveBeenCalled();
+    h.registry.answerPermission('default', 8, 'allow_once');
+    await expect(fresh).resolves.toBe('allow_once');
+    client.finishTurn();
+    await retry;
+  });
+
+  it('ignores retries for pending, allowed, unknown, or another tile’s approvals', async () => {
+    const h = harness();
+    await launched(h);
+    const answer = h.clients[0]!.onPermission(request);
+    await h.registry.retryPermission('default', 7);
+    await h.registry.retryPermission('default', 999);
+    await h.registry.retryPermission('ford', 7);
+    h.registry.answerPermission('default', 7, 'allow_once');
+    await answer;
+    await h.registry.retryPermission('default', 7);
+    expect(h.clients[0]!.prompts).toHaveLength(0);
+  });
+
+  it('does not retry old actions after a new message or a disconnected agent', async () => {
+    const h = harness();
+    await launched(h);
+    const client = h.clients[0]!;
+    const answer = client.onPermission(request);
+    h.registry.answerPermission('default', 7, 'deny');
+    await answer;
+    const turn = h.registry.prompt('default', 'Do something else');
+    await h.registry.retryPermission('default', 7);
+    expect(client.prompts).toHaveLength(1);
+    const next = client.onPermission({ ...request, id: 8 });
+    client.onExit(1);
+    await next;
+    await h.registry.retryPermission('default', 8);
+    expect(client.prompts).toHaveLength(1);
+    client.finishTurn();
+    await turn;
+  });
+
+  it('keeps retries in the original conversation when the user switches tabs', async () => {
+    const h = harness();
+    await launched(h);
+    const client = h.clients[0]!;
+    client.canLoadSession = true;
+    const answer = client.onPermission({ ...request, sessionId: 'session-1' });
+    h.registry.answerPermission('default', 7, 'deny');
+    await answer;
+    await h.registry.newTab('default');
+    await h.registry.retryPermission('default', 7);
+    expect(client.prompts).toHaveLength(0);
+    await h.registry.switchTab('default', 0);
+    const retry = h.registry.retryPermission('default', 7);
+    expect(client.prompts.at(-1)?.sessionId).toBe('session-1');
+    client.finishTurn();
+    await retry;
+  });
 
   it('auto-approves this task, including waiting requests, and resets for the next task', async () => {
     const h = harness();

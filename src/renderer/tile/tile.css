@@ -663,8 +663,8 @@ textarea:focus {
   display: none;
 }
 
-/* Image attachments stay compact in narrow desktop tiles. */
-#attach-image {
+/* Attachments stay compact in narrow desktop tiles. */
+#attach-file {
   flex-shrink: 0;
   border: 1px solid var(--tile-border);
   border-radius: 10px;
@@ -679,6 +679,7 @@ textarea:focus {
 #attachment-preview .conversation-image { width: 64px; height: 64px; object-fit: contain; }
 #attachment-preview button { color: var(--text); background: var(--input-bg); border: 1px solid var(--tile-border); border-radius: 6px; cursor: pointer; }
 #attachment-status { color: var(--muted); font-size: 12px; padding: 4px 0; }
+.file-attachment { min-width: 0; overflow-wrap: anywhere; font-size: 12px; padding: 6px 8px; border: 1px solid var(--tile-border); border-radius: 6px; }
 .conversation-image { display: block; max-width: 100%; max-height: 240px; object-fit: contain; border-radius: 6px; margin-top: 4px; }
 footer textarea { min-width: 0; }
 

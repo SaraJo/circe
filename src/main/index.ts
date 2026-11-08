@@ -441,6 +441,11 @@ function registerIpc(): void {
     if (profileId === null || !Number.isInteger(answer?.id) || !isPermissionChoice(answer?.choice)) return;
     tiles.answerPermission(profileId, answer.id as number, answer.choice);
   });
+  ipcMain.on('tile:permission-retry', (e, id: unknown) => {
+    const profileId = tiles.profileForSender(e.sender);
+    if (profileId === null || !Number.isInteger(id)) return;
+    void tiles.retryPermission(profileId, id as number);
+  });
 }
 
 /**

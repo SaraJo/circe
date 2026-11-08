@@ -1,5 +1,5 @@
 import type { TilePrompt } from '../shared/prompt';
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 contextBridge.exposeInMainWorld('circe', {
   onUpdate: (cb: (u: Record<string, unknown>) => void) =>
@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('circe', {
   onTabs: (cb: (tabs: Record<string, unknown>) => void) =>
     ipcRenderer.on('tile:tabs', (_e, tabs) => cb(tabs)),
   send: (text: TilePrompt) => ipcRenderer.send('tile:prompt', text),
+  filePath: (file: File) => webUtils.getPathForFile(file),
   newTab: () => ipcRenderer.send('tile:new-tab'),
   switchTab: (index: number) => ipcRenderer.send('tile:switch-tab', index),
   clearTab: () => ipcRenderer.send('tile:clear-tab'),
@@ -28,6 +29,7 @@ contextBridge.exposeInMainWorld('circe', {
   close: () => ipcRenderer.send('tile:close'),
   answerPermission: (id: number, choice: string) =>
     ipcRenderer.send('tile:permission-answer', { id, choice }),
+  retryPermission: (id: number) => ipcRenderer.send('tile:permission-retry', id),
   // The tile can no longer navigate itself (see `pinToItsOwnDocument`), so a
   // link in an agent reply reaches the user's browser through here, on the
   // same channel and the same https-only vetting the wizard's "Get Hermes"
