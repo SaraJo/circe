@@ -1666,6 +1666,20 @@ describe('permission requests', () => {
 });
 
 describe('personal memory in tile conversations', () => {
+  it('keeps attachment paths out of automatic capture and the recall query', async () => {
+    const memory: TileMemory = { recall: vi.fn(async () => ''), capture: vi.fn() };
+    const h = harness(null, memory); await launched(h);
+    const turn = h.registry.prompt('default', {
+      text: 'I prefer tea.', images: [],
+      files: [{ type: 'file', name: 'private.txt', path: '/tmp/private.txt' }],
+    });
+    await flushMicrotasks();
+    expect(h.clients[0]!.prompts[0]!.text).toContain('/tmp/private.txt');
+    expect(memory.recall).toHaveBeenCalledWith('I prefer tea.');
+    h.clients[0]!.finishTurn(); await turn;
+    expect(memory.capture).toHaveBeenCalledWith('I prefer tea.', { profileId: 'default', sessionId: 'session-1' });
+  });
+
   it('retrieves context but captures only original user text after completion', async () => {
     const memory: TileMemory = { recall: vi.fn(async () => 'A saved preference.'), capture: vi.fn() };
     const h = harness(null, memory); await launched(h);

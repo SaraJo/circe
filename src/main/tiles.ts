@@ -900,6 +900,7 @@ export class TileRegistry {
    */
   private send(tile: Tile, sessionId: string, message: TilePrompt, nameTab = true): Promise<void> {
     const text = promptText(message);
+    const userText = typeof message === 'string' ? message : message.text;
     const images = typeof message === 'string' ? undefined : message.images;
     const title = typeof message === 'string' ? message : message.text.trim() || message.files?.[0]?.name || text;
     if (nameTab && !tile.titles[sessionId] && title.trim()) {
@@ -922,13 +923,13 @@ export class TileRegistry {
     }
     this.emitTabs(tile);
     const completion = nameTab && this.deps.memory
-      ? this.promptWithMemory(tile, sessionId, text, images)
+      ? this.promptWithMemory(tile, sessionId, text, images, userText)
       : tile.client.prompt(sessionId, text, images);
     return completion.then(
       () => {
         // Only original user text, never injected recall, replay, or generated handoffs.
         if (nameTab) {
-          try { this.deps.memory?.capture(text, { profileId: tile.profileId, sessionId }); }
+          try { this.deps.memory?.capture(userText, { profileId: tile.profileId, sessionId }); }
           catch { /* A completed conversation remains successful if memory is unavailable. */ }
         }
         if (tile.session.activeSessionId === sessionId) {
@@ -959,7 +960,7 @@ export class TileRegistry {
     });
   }
 
-  private promptWithMemory(tile: Tile, sessionId: string, text: string, images?: ImageAttachment[]): Promise<void> {
+  private promptWithMemory(tile: Tile, sessionId: string, text: string, images?: ImageAttachment[], userText = text): Promise<void> {
     let preparations = this.memoryPreparations.get(tile);
     if (!preparations) { preparations = new Map(); this.memoryPreparations.set(tile, preparations); }
     const previous = preparations.get(sessionId) ?? Promise.resolve();
@@ -967,7 +968,7 @@ export class TileRegistry {
     return new Promise<void>((resolve, reject) => {
       const preparation = previous.catch(() => {}).then(async () => {
         let context = '';
-        try { context = await this.deps.memory!.recall(text); } catch { /* Memory never blocks chat. */ }
+        try { context = await this.deps.memory!.recall(userText); } catch { /* Memory never blocks chat. */ }
         if (this.tiles.get(tile.profileId) !== tile) throw new Error('This tile was closed.');
         const prompt = withPersonalContext(text, context);
         void tile.client.prompt(sessionId, prompt, images).then(resolve, reject);
