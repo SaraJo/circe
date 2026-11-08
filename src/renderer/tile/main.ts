@@ -1,5 +1,6 @@
 import { IMAGE_TYPES, MAX_IMAGE_BYTES, isFileAttachment, isImageAttachment, isTilePrompt, type FileAttachment, type ImageAttachment, type TilePrompt } from '../../shared/prompt';
 import type { Character, TileTabsView } from '../../shared/types';
+import { originalUserMessage } from '../../shared/memoryPrompt';
 import { DEFAULT_PALETTE, isPalette, paletteVars } from '../../main/palette';
 import { applyFace, initials } from '../face';
 import { nextToolTitle, toolLabel } from './toolLabel';
@@ -32,6 +33,7 @@ interface TileApi {
   clearTab(): void;
   rollover(): void;
   replaceAvatar(): void;
+  openMemory(): void;
   closeTab(index: number): void;
   close(): void;
   answerPermission(id: number, choice: string): void;
@@ -39,6 +41,7 @@ interface TileApi {
   openExternal(url: string): void;
 }
 const circe = (window as unknown as { circe: TileApi }).circe;
+document.getElementById('memory')!.addEventListener('click', () => circe.openMemory());
 
 /**
  * A character from either source, or null. Shared by the URL parse and the
@@ -546,7 +549,7 @@ circe.onUpdate((update) => {
     }
     case 'user_message_chunk': {
       if (!replaying) return; // live turns are drawn by the input handler
-      const piece = extractText(u.content);
+      const piece = originalUserMessage(extractText(u.content));
       const blocks = Array.isArray(u.content) ? u.content : [u.content];
       const images = blocks.filter(isImageAttachment);
       if (!piece && !images.length) return;

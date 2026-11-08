@@ -13,7 +13,8 @@ usable profile its own lightweight conversation tile.
 
 Hermes remains responsible for providers, profiles, sessions, tools, and agent
 data. Circe owns onboarding, desktop windows, presentation, and the small amount
-of state needed to reopen a conversation.
+of state needed to reopen a conversation. Circe also owns an optional local
+personal-fact store shared by its tiles; Hermes memory remains independent.
 
 ## What works now
 
@@ -50,6 +51,11 @@ of state needed to reopen a conversation.
 - Opens existing usable profiles as separate themed desktop tiles.
 - Notices profiles created while Circe is running and opens their tiles.
 - Streams messages and tool activity through Hermes ACP.
+- Automatically extracts durable personal facts from new user messages using
+  local Ollama models, stores facts and vectors in SQLite, and recalls relevant
+  context across its tiles. The **Memory** button and **Circe → Memory…** window
+  let users review sources, edit, search, forget, and disable memory. Local
+  models require setup; see [personal memory](USER_MEMORY.md).
 - Shows the active conversation model beneath each agent name, using the model
   reported by Hermes when that conversation is created or restored.
 - Gives each tile a persistent conversation tab strip when Hermes supports
@@ -87,6 +93,9 @@ after user feedback demonstrates the need.
 - Personas and profile configuration live in the Hermes home.
 - Circe-specific profile presentation lives beside the profile.
 - `circe/state.json` stores only window/session restoration facts.
+- `circe/memory.sqlite` stores Circe's shared personal facts, vectors, settings,
+  and hashed topic-key blocks for forgotten facts. Extraction and embeddings
+  stay local; recalled context goes to the configured Hermes conversation model.
 - `circe/last-launch.json` records the foreground profile, excluded tile
   profiles, and whether a profile was explicitly chosen as orchestrator.
 - The repository's `src/` and tests are authoritative when an old document

@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 export default defineConfig({
   main: {
     build: {
-      rollupOptions: { input: { index: resolve(__dirname, 'src/main/index.ts') } },
+      rollupOptions: { input: { index: resolve(__dirname, 'src/main/index.ts') }, external: ['sql.js'] },
     },
     plugins: [
       {
@@ -34,6 +34,7 @@ export default defineConfig({
         input: {
           wizard: resolve(__dirname, 'src/preload/wizard.ts'),
           tile: resolve(__dirname, 'src/preload/tile.ts'),
+          memory: resolve(__dirname, 'src/preload/memory.ts'),
         },
       },
     },
@@ -44,6 +45,7 @@ export default defineConfig({
         input: {
           wizard: resolve(__dirname, 'src/renderer/wizard/index.html'),
           tile: resolve(__dirname, 'src/renderer/tile/index.html'),
+          memory: resolve(__dirname, 'src/renderer/memory/index.html'),
         },
       },
     },

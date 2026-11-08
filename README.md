@@ -59,6 +59,11 @@ in the tab strip starts a new conversation.
 
 ## Powered by Hermes
 
+Circe can remember personal facts across its agent conversations using a local
+SQLite vector store and local Ollama models. Open **Memory** in a tile to review,
+edit, or forget facts and configure automatic capture. See the
+[local memory setup](docs/USER_MEMORY.md) for model downloads and privacy details.
+
 Hermes supplies the models, tools, and integrations; Circe gives that crew a
 visible home on your desktop. What your agents can do depends on your Hermes
 setup. Runtime installation, provider authentication, profile creation, and

@@ -6,6 +6,8 @@ import { readAvatarDataUrl } from './avatarStore';
 import type { HermesRuntime } from './hermes/runtime';
 import { restoreOrCreateSession, TileSession, type SessionClient } from './restore';
 import { readTileState, stateFor, withProfileTabs, writeTileState } from './tileState';
+import type { TileMemory } from './memory/service';
+import { withPersonalContext } from '../shared/memoryPrompt';
 
 /**
  * The slice of `BrowserWindow` a tile actually needs, narrowed to an interface
@@ -46,6 +48,7 @@ export interface TileClientOptions {
 
 export interface TileDeps {
   hermes: HermesRuntime;
+  memory?: TileMemory;
   createWindow(character: Character, profileId: string, index: number): TileWindow;
   createClient(opts: TileClientOptions): TileClient;
 }
@@ -112,6 +115,7 @@ interface Tile {
 
 export class TileRegistry {
   private readonly tiles = new Map<string, Tile>();
+  private readonly memoryPreparations = new WeakMap<Tile, Map<string, Promise<void>>>();
   /** Serializes read-modify-write updates shared by every profile's tab strip. */
   private stateWrite: Promise<void> = Promise.resolve();
   /**
@@ -917,8 +921,16 @@ export class TileRegistry {
       if (answer.sessionId === sessionId) answer('deny');
     }
     this.emitTabs(tile);
-    return tile.client.prompt(sessionId, text, images).then(
+    const completion = nameTab && this.deps.memory
+      ? this.promptWithMemory(tile, sessionId, text, images)
+      : tile.client.prompt(sessionId, text, images);
+    return completion.then(
       () => {
+        // Only original user text, never injected recall, replay, or generated handoffs.
+        if (nameTab) {
+          try { this.deps.memory?.capture(text, { profileId: tile.profileId, sessionId }); }
+          catch { /* A completed conversation remains successful if memory is unavailable. */ }
+        }
         if (tile.session.activeSessionId === sessionId) {
           this.emit(tile.win, { sessionUpdate: 'circe/turn-end' });
         }
@@ -944,6 +956,26 @@ export class TileRegistry {
       }
       tile.turnsInFlight = Math.max(0, tile.turnsInFlight - 1);
       this.emitTabs(tile);
+    });
+  }
+
+  private promptWithMemory(tile: Tile, sessionId: string, text: string, images?: ImageAttachment[]): Promise<void> {
+    let preparations = this.memoryPreparations.get(tile);
+    if (!preparations) { preparations = new Map(); this.memoryPreparations.set(tile, preparations); }
+    const previous = preparations.get(sessionId) ?? Promise.resolve();
+    // Serialize preparation, not whole turns: ACP must still receive follow-ups to interrupt work.
+    return new Promise<void>((resolve, reject) => {
+      const preparation = previous.catch(() => {}).then(async () => {
+        let context = '';
+        try { context = await this.deps.memory!.recall(text); } catch { /* Memory never blocks chat. */ }
+        if (this.tiles.get(tile.profileId) !== tile) throw new Error('This tile was closed.');
+        const prompt = withPersonalContext(text, context);
+        void tile.client.prompt(sessionId, prompt, images).then(resolve, reject);
+      });
+      preparations!.set(sessionId, preparation);
+      void preparation.catch(reject).finally(() => {
+        if (preparations!.get(sessionId) === preparation) preparations!.delete(sessionId);
+      });
     });
   }
 
