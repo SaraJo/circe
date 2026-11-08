@@ -128,8 +128,8 @@ export class OllamaMemoryModel implements LocalMemoryModel {
   async check(settings: MemorySettings): Promise<string> {
     await this.local(settings.extractionModel);
     await this.embed(['Local memory readiness check'], settings.embeddingModel, 30_000);
-    const facts = await this.extract('My preferred editor is Zed.', [], settings.extractionModel);
-    if (!facts.some((fact) => fact.text.toLowerCase().includes('zed'))) {
+    const facts = await this.extract('My favorite color is blue.', [], settings.extractionModel);
+    if (!facts.some((fact) => /\bblue\b/i.test(fact.text))) {
       throw new Error('The local extraction model did not capture the sample preference. Try another extraction model in Memory settings.');
     }
     return 'Local models are ready. Capture and semantic recall are available.';

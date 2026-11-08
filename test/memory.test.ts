@@ -189,7 +189,7 @@ describe('local Ollama boundary', () => {
   });
 
   it('checks real embedding and extraction responses rather than model presence alone', async () => {
-    const content = JSON.stringify({ facts: [{ key: 'user.editor.preference', text: 'The user prefers Zed.', evidence: 'My preferred editor is Zed.' }] });
+    const content = JSON.stringify({ facts: [{ key: 'user.color.preference', text: 'The user prefers blue.', evidence: 'My favorite color is blue.' }] });
     const request = http([{}, {}, { embeddings: [[1, 0]] }, {}, { message: { content } }]);
     await expect(new OllamaMemoryModel(request).check(DEFAULT_MEMORY_SETTINGS)).resolves.toContain('ready');
     expect(request.mock.calls.map(([url]) => new URL(url).pathname)).toEqual([
