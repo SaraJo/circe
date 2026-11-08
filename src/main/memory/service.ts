@@ -83,7 +83,9 @@ export class PersonalMemory implements TileMemory {
         known = [...new Map([...recent, ...relevant].map((f) => [f.key, f])).values()];
       }
       const extracted = await this.model.extract(text, known, settings.extractionModel);
-      if (!extracted.length || this.stopped || this.store.generation() !== generation) return;
+      if (this.stopped || this.store.generation() !== generation) return;
+      this.error = null;
+      if (!extracted.length) return;
       const vectors = await this.model.embed(extracted.map((f) => f.text), settings.embeddingModel, 30_000);
       const now = new Date().toISOString();
       const facts = extracted.map((f, i): StoredFact => ({

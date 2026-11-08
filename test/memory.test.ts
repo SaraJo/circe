@@ -115,6 +115,9 @@ describe('local vector memory', () => {
     await memory.idle();
     expect(memory.view().error).toBe('Ollama is offline');
     expect(memory.view().facts[0]?.text).toContain('New York');
+    memory.capture('Hello.', source);
+    await memory.idle();
+    expect(memory.view().error).toBeNull();
   });
 
   it('edits a fact and rebuilds its vector while protecting against concurrent deletion', async () => {
@@ -162,10 +165,52 @@ describe('local Ollama boundary', () => {
     ] }) } }]);
     const result = await new OllamaMemoryModel(request).extract('I live in Boston.', [], 'qwen3:4b');
     expect(result).toHaveLength(1);
+    const chat = JSON.parse(request.mock.calls[1]![1].body);
+    expect(chat.format).toMatchObject({
+      type: 'object', required: ['facts'],
+      properties: { facts: { type: 'array', items: { required: ['key', 'text', 'evidence'] } } },
+    });
+    expect(chat.format.properties.facts.items.properties.evidence.enum).toEqual(['I live in Boston.']);
     for (const [url, options] of request.mock.calls) {
       expect(url).toMatch(/^http:\/\/127\.0\.0\.1:11434\/api\//);
       expect(options.redirect).toBe('error');
     }
+  });
+
+  it('accepts an empty facts array for greetings and reports malformed responses clearly', async () => {
+    const empty = new OllamaMemoryModel(http([{}, { message: { content: '{"facts":[]}' } }]));
+    expect(await empty.extract('Hello.', [], 'local')).toEqual([]);
+    for (const content of ['null', '{}', '{"facts":null}']) {
+      const malformed = new OllamaMemoryModel(http([{}, { message: { content } }]));
+      await expect(malformed.extract('Hello.', [], 'local')).rejects.toThrow('required facts array');
+    }
+    const incomplete = new OllamaMemoryModel(http([{}, { message: { content: '{"facts":[' } }]));
+    await expect(incomplete.extract('Hello.', [], 'local')).rejects.toThrow('incomplete JSON');
+  });
+
+  it('checks real embedding and extraction responses rather than model presence alone', async () => {
+    const content = JSON.stringify({ facts: [{ key: 'user.editor.preference', text: 'The user prefers Zed.', evidence: 'My preferred editor is Zed.' }] });
+    const request = http([{}, {}, { embeddings: [[1, 0]] }, {}, { message: { content } }]);
+    await expect(new OllamaMemoryModel(request).check(DEFAULT_MEMORY_SETTINGS)).resolves.toContain('ready');
+    expect(request.mock.calls.map(([url]) => new URL(url).pathname)).toEqual([
+      '/api/show', '/api/show', '/api/embed', '/api/show', '/api/chat',
+    ]);
+    const empty = new OllamaMemoryModel(http([{}, {}, { embeddings: [[1, 0]] }, {}, { message: { content: '{"facts":[]}' } }]));
+    await expect(empty.check(DEFAULT_MEMORY_SETTINGS)).rejects.toThrow('did not capture the sample preference');
+  });
+
+  it('identifies the missing model and supplies the exact download command', async () => {
+    const missing = vi.fn(async () => new Response('{"error":"model not found"}', { status: 404 })) as unknown as typeof fetch;
+    await expect(new OllamaMemoryModel(missing).embed(['hello'], 'embeddinggemma')).rejects.toThrow(
+      'Local model "embeddinggemma" is not installed. Run ollama pull embeddinggemma',
+    );
+  });
+
+  it('explains offline and timeout failures', async () => {
+    const offline = vi.fn(async () => { throw new TypeError('fetch failed'); }) as unknown as typeof fetch;
+    await expect(new OllamaMemoryModel(offline).embed(['hello'], 'local')).rejects.toThrow('Start Ollama');
+    const timeout = vi.fn(async () => { throw new DOMException('timeout', 'TimeoutError'); }) as unknown as typeof fetch;
+    await expect(new OllamaMemoryModel(timeout).embed(['hello'], 'local')).rejects.toThrow('took too long');
   });
 
   it('refuses cloud aliases before sending personal data', async () => {

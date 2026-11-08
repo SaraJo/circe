@@ -15,7 +15,10 @@ ollama pull embeddinggemma
 ```
 
 Open **Memory** in a tile, or **Circe → Memory…** (`Cmd/Ctrl+Shift+M`). Use
-**Check local models** to verify both extraction and embedding. Other installed
+**Check local models** to verify both extraction and embedding.
+The check extracts a synthetic preference to verify the response format; that
+sample is never saved as a personal fact. Missing models are identified by name
+with the download command needed to install them. Other installed
 local model names can be selected in this window. Save settings before checking
 changed model names. Cloud model names and aliases reporting a remote model or
 host are refused. All memory requests use `127.0.0.1:11434`; redirects are refused.
@@ -125,7 +128,8 @@ original-text capture, and normal delivery when recall fails. Framing tests
 cover history display. Tests use temporary databases and synthetic facts.
 
 An Electron smoke check verifies SQLite loading, the built preload and renderer,
-review edits and deletion, and refusal of IPC from a different window. Real
-extraction quality and recall with downloaded Ollama models remain a manual
-acceptance check. No existing personal memories or profile configurations are
-changed during automated verification.
+review edits and deletion, and refusal of IPC from a different window. A live
+check with the default Ollama models verifies grounded extraction, persisted
+SQLite facts, paraphrased recall after reopening the database, keyed corrections,
+and forgetting. These checks use synthetic facts in temporary databases; no
+existing personal memories or profile configurations are changed.

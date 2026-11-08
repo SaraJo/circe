@@ -24,7 +24,12 @@ async function work(action: () => Promise<unknown>, success?: string): Promise<v
     el('message').textContent = success ?? (typeof result === 'string' ? result : '');
     signature = '';
     await refresh();
-  } catch (e) { el('message').textContent = e instanceof Error ? e.message : String(e); }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    // Show the current failure, not a stale background error beside an IPC wrapper.
+    try { await refresh(); } catch { /* Preserve the operation's useful error. */ }
+    el('message').textContent = view?.error === message ? '' : message;
+  }
   finally { busy = false; document.querySelectorAll<HTMLButtonElement>('button').forEach((b) => { b.disabled = false; }); }
 }
 
