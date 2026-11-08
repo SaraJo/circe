@@ -75,6 +75,21 @@ body {
   z-index: 10;
   -webkit-app-region: no-drag;
 }
+#memory {
+  position: absolute;
+  top: 16px;
+  right: 50px;
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid var(--tile-border);
+  border-radius: 11px;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.16);
+  font-size: 10px;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+#memory:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 2px; }
 #orchestrator-help-trigger {
   width: 22px;
   height: 22px;

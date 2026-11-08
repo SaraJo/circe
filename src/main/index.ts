@@ -10,6 +10,11 @@ import {
   type OpenDialogOptions,
 } from 'electron';
 import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { FactStore } from './memory/store';
+import { OllamaMemoryModel } from './memory/ollama';
+import { PersonalMemory } from './memory/service';
+import { MemoryWindow } from './memory/window';
 import { RealHermes } from './hermes/real';
 import { Wizard } from './wizard';
 import { adaptTileWindow, createTileWindow, createWizardWindow } from './windows';
@@ -27,6 +32,10 @@ import { replaceAvatarFromUpload } from './avatarReplacement';
 import { generateAvatar } from './generatedAvatar';
 
 app.setName('Circe');
+// A single owner prevents competing processes from replacing the same memory database.
+const ownsInstance = app.requestSingleInstanceLock();
+if (!ownsInstance) app.quit();
+app.on('second-instance', () => app.emit('activate'));
 
 // `contentType` is unused by `nativeImage`, which sniffs the bytes; it stays in
 // the injected signature shared with the test implementation.
@@ -61,6 +70,9 @@ function toPortraitPng(bytes: Uint8Array): Uint8Array | null {
 
 let wizardWin: BrowserWindow | null = null;
 let hermes: RealHermes;
+let memory: PersonalMemory | undefined;
+let memoryWindow: MemoryWindow | undefined;
+let memoryStartupError: string | null = null;
 let wizard: Wizard | null = null;
 let tiles: TileRegistry;
 let fleetWatch: (() => void) | null = null;
@@ -85,6 +97,14 @@ function installApplicationMenu(): void {
       submenu: [
         { role: 'about' },
         { type: 'separator' },
+        {
+          label: 'Memory…',
+          accelerator: 'CmdOrCtrl+Shift+M',
+          click: () => {
+            if (memoryWindow) memoryWindow.open();
+            else void dialog.showMessageBox({ message: 'Memory is unavailable', detail: memoryStartupError ?? 'Circe is still starting.' });
+          },
+        },
         {
           label: 'Run Onboarding Again…',
           click: () => void runOnboardingAgain(),
@@ -184,6 +204,7 @@ function openExternalSafely(url: string): void {
 function createRegistry(): TileRegistry {
   return new TileRegistry({
     hermes,
+    memory,
     createWindow: (character, profileId, index) =>
       adaptTileWindow(
         createTileWindow(character, profileId, index, profileId === orchestratorProfileId),
@@ -369,6 +390,9 @@ function registerIpc(): void {
     if (profileId === null) return;
     void tiles.prompt(profileId, text);
   });
+  ipcMain.on('tile:open-memory', (e) => {
+    if (tiles.profileForSender(e.sender) !== null) memoryWindow?.open();
+  });
   ipcMain.on('tile:close', (e) => {
     const profileId = tiles.profileForSender(e.sender);
     if (profileId === null) return;
@@ -478,6 +502,16 @@ async function doBoot(): Promise<void> {
   fleetWatch = null;
 
   hermes = new RealHermes();
+  if (!memory) {
+    try {
+      memory = new PersonalMemory(await FactStore.open(join(hermes.paths().home, 'circe', 'memory.sqlite')), new OllamaMemoryModel());
+      memoryWindow = new MemoryWindow(memory);
+      memoryStartupError = null;
+    } catch (e) {
+      memoryStartupError = e instanceof Error ? e.message : String(e);
+      console.warn('Could not open local personal memory.', memoryStartupError);
+    }
+  }
   tiles = createRegistry();
   registerIpc();
 
@@ -612,6 +646,7 @@ function startFleetWatch(
 }
 
 app.whenReady().then(() => {
+  if (!ownsInstance) return;
   installApplicationMenu();
   void boot();
 });
@@ -621,6 +656,7 @@ app.on('window-all-closed', () => {
 // Stops `hermes.watchHome`'s filesystem subscription so it doesn't outlive
 // the app it was watching for.
 app.on('will-quit', () => {
+  memory?.stop();
   fleetWatch?.();
   fleetWatch = null;
 });

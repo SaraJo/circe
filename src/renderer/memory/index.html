@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Circe — Memory</title>
+  <link rel="stylesheet" href="./memory.css" />
+</head>
+<body>
+  <main>
+    <header><p class="eyebrow">CIRCE · PERSONAL MEMORY</p><h1>A little less repeating yourself.</h1>
+      <p>Durable facts from your messages, remembered across Circe’s agents and conversations.</p></header>
+    <section aria-labelledby="settings-title">
+      <h2 id="settings-title">Keep it on this machine</h2>
+      <p>Extraction and embeddings use local Ollama models. Saved facts stay in a local SQLite database. Relevant facts are included in messages to your configured Hermes model.</p>
+      <form id="settings">
+        <label class="toggle"><input id="enabled" type="checkbox" /> Automatically save and recall personal facts</label>
+        <div class="models">
+          <label>Fact extraction model<input id="extraction-model" required maxlength="121" spellcheck="false" /></label>
+          <label>Embedding model<input id="embedding-model" required maxlength="121" spellcheck="false" /></label>
+        </div>
+        <div class="actions"><button type="submit">Save settings</button><button id="check" type="button" class="secondary">Check local models</button></div>
+      </form>
+      <details><summary>Set up local models</summary><p>Install and start Ollama from ollama.com, then download the two models in Terminal. The defaults use:</p>
+        <pre>ollama pull qwen3:4b
+ollama pull embeddinggemma</pre>
+        <p>You can choose other installed local models above. Cloud models are refused. Changing the embedding model rebuilds saved vectors and can take a moment.</p>
+      </details>
+      <p id="status" role="status" aria-live="polite">Loading memory…</p>
+      <p id="message" role="status" aria-live="polite"></p>
+    </section>
+    <section aria-labelledby="facts-title">
+      <div class="section-heading"><h2 id="facts-title">What Circe remembers <span id="count"></span></h2><button id="refresh" class="secondary" type="button">Refresh</button></div>
+      <label class="search-label">Search saved facts<input id="search" type="search" placeholder="A preference, a person, a place…" /></label>
+      <p class="muted">Review facts for accuracy. Forget removes the fact and blocks automatic saving under that topic key. It also cancels pending capture. Earlier chats and Hermes’s separate memory are unaffected.</p>
+      <div id="facts"></div>
+      <p id="empty" class="empty">No facts saved yet. Once local models are ready, Circe will pick up durable facts from new messages.</p>
+      <p id="limited" class="muted" hidden>Showing the first 100 matches. Search to narrow the list.</p>
+      <div class="forget-all"><button id="forget-all" type="button" class="danger">Forget all and turn memory off</button></div>
+      <p id="location" class="location"></p>
+    </section>
+  </main>
+  <dialog id="confirm-forget"><h2>Forget all saved facts?</h2><p>This removes Circe’s saved facts and vectors and turns off automatic memory. It does not delete conversations or Hermes memory.</p><div class="actions"><button id="cancel-forget" class="secondary">Cancel</button><button id="confirm-forget-all" class="danger">Forget all</button></div></dialog>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('circe', {
   clearTab: () => ipcRenderer.send('tile:clear-tab'),
   rollover: () => ipcRenderer.send('tile:rollover'),
   replaceAvatar: () => ipcRenderer.send('tile:choose-avatar'),
+  openMemory: () => ipcRenderer.send('tile:open-memory'),
   closeTab: (index: number) => ipcRenderer.send('tile:close-tab', index),
   close: () => ipcRenderer.send('tile:close'),
   answerPermission: (id: number, choice: string) =>

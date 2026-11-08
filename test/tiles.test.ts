@@ -9,6 +9,8 @@ import {
 import type { PermissionChoice, PermissionRequest } from '../src/main/acp';
 import { FakeHermes, INSTALLED_EMPTY } from './fake/hermes';
 import type { Character } from '../src/shared/types';
+import type { TileMemory } from '../src/main/memory/service';
+import { originalUserMessage } from '../src/shared/memoryPrompt';
 
 const PALETTE = { bg: '#1e2952', border: '#c7d2fe', accent: '#a5b4fc' };
 
@@ -253,7 +255,7 @@ interface Harness {
  * constructor argument for the existing "cannot reach its agent" tests.
  * `armNext` on the returned harness covers every other per-launch arming.
  */
-function harness(startError: Error | null = null): Harness {
+function harness(startError: Error | null = null, memory?: TileMemory): Harness {
   const windows: FakeWindow[] = [];
   const clients: FakeClient[] = [];
   const hermes = new FakeHermes(INSTALLED_EMPTY);
@@ -262,6 +264,7 @@ function harness(startError: Error | null = null): Harness {
   let nextHoldStart = false;
   const deps: TileDeps = {
     hermes,
+    memory,
     createWindow: (_character, _profileId, index) => {
       const w = new FakeWindow();
       windows.push(w);
@@ -1564,5 +1567,49 @@ describe('permission requests', () => {
     h.clients[0]!.finishTurn('session-1');
     h.clients[0]!.finishTurn('session-1');
     await Promise.all([first, followup]);
+  });
+});
+
+describe('personal memory in tile conversations', () => {
+  it('retrieves context but captures only original user text after completion', async () => {
+    const memory: TileMemory = { recall: vi.fn(async () => 'A saved preference.'), capture: vi.fn() };
+    const h = harness(null, memory); await launched(h);
+    const turn = h.registry.prompt('default', 'I prefer tea.');
+    await flushMicrotasks();
+    const prompt = h.clients[0]!.prompts[0]!.text;
+    expect(prompt).toContain('A saved preference.');
+    expect(originalUserMessage(prompt)).toBe('I prefer tea.');
+    expect(memory.capture).not.toHaveBeenCalled();
+    h.clients[0]!.finishTurn(); await turn;
+    expect(memory.capture).toHaveBeenCalledWith('I prefer tea.', { profileId: 'default', sessionId: 'session-1' });
+  });
+
+  it('delivers follow-ups while the first turn is running and keeps preparation in order', async () => {
+    let release!: (context: string) => void;
+    const memory: TileMemory = {
+      recall: vi.fn().mockImplementationOnce(() => new Promise<string>((r) => { release = r; }))
+        .mockResolvedValueOnce('Second recall'), capture: vi.fn(),
+    };
+    const h = harness(null, memory); await launched(h);
+    const first = h.registry.prompt('default', 'First request');
+    const second = h.registry.prompt('default', 'Second request');
+    await flushMicrotasks(); expect(h.clients[0]!.prompts).toHaveLength(0);
+    release('First recall'); await flushMicrotasks();
+    expect(h.clients[0]!.prompts.map((p) => originalUserMessage(p.text))).toEqual(['First request', 'Second request']);
+    h.clients[0]!.finishTurn(); h.clients[0]!.finishTurn(); await Promise.all([first, second]);
+  });
+
+  it('sends normally when recall is unavailable and does not send after a tile closes', async () => {
+    const memory: TileMemory = { recall: vi.fn(async () => { throw new Error('Offline'); }), capture: vi.fn() };
+    const h = harness(null, memory); await launched(h);
+    const turn = h.registry.prompt('default', 'Hello'); await flushMicrotasks();
+    expect(h.clients[0]!.prompts[0]!.text).toBe('Hello');
+    h.clients[0]!.finishTurn(); await turn;
+    let release!: (context: string) => void;
+    memory.recall = vi.fn(() => new Promise<string>((r) => { release = r; }));
+    const closing = h.registry.prompt('default', 'Another message'); await flushMicrotasks();
+    h.registry.close('default'); release('Saved fact'); await closing;
+    expect(h.clients[0]!.prompts).toHaveLength(1);
+    expect(memory.capture).toHaveBeenCalledTimes(1);
   });
 });
