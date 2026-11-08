@@ -78,7 +78,7 @@ body {
 #memory {
   position: absolute;
   top: 16px;
-  right: 50px;
+  right: 16px;
   height: 22px;
   padding: 0 9px;
   border: 1px solid var(--tile-border);
@@ -89,6 +89,7 @@ body {
   cursor: pointer;
   -webkit-app-region: no-drag;
 }
+.tile:has(#orchestrator-help:not([hidden])) #memory { right: 50px; }
 #memory:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 2px; }
 #orchestrator-help-trigger {
   width: 22px;
