@@ -34,6 +34,13 @@ describe('avatar provenance (spec §10.7)', () => {
       'docs/images/circe-header.png',
       // Captioned edit of the user-provided recording, approved for the README.
       'docs/media/circe-demo.gif',
+      // Documentation-site derivatives of the same screenshots, demo, and app icon.
+      'website/static/img/circe-demo-poster.jpg',
+      'website/static/img/circe-desktop.jpg',
+      'website/static/img/circe-icon.png',
+      'website/static/img/circe-social.jpg',
+      'website/static/img/circe-tile-closeup.jpg',
+      'website/static/img/favicon.png',
     ];
 
     const images = files.filter((file) => /\.(png|jpe?g|gif|webp)$/i.test(file));

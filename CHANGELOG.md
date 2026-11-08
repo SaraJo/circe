@@ -8,6 +8,10 @@ builds from [GitHub Releases](https://github.com/SaraJo/circe/releases).
 
 ### Added
 
+- Automatically remember durable personal facts across Circe conversations with
+  local Ollama extraction and embeddings and a local SQLite vector store. Use
+  **Memory** in a tile to check models, review sources, search, edit, forget, or
+  disable memory. See [local memory setup](docs/USER_MEMORY.md).
 - Retry missed or denied tool approvals from their resolved card, asking the
   agent to try again with a fresh approval request.
 - Attach local files with the attachment button or drag and drop. Non-image

@@ -5,9 +5,9 @@ https://sarajo.github.io/circe/.
 
 Pages are generated from the repository's Markdown, so edit the original files
 (`INSTALL.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `docs/ONBOARDING.md`,
-`docs/WINDOWS.md`, `docs/BETA_TEST.md`). `scripts/sync-docs.mjs` copies them
+`docs/USER_MEMORY.md`, `docs/WINDOWS.md`, `docs/BETA_TEST.md`). `scripts/sync-docs.mjs` copies them
 into `website/docs/` and rewrites their links before every `start` and `build`.
-Only `docs/intro.md` and the homepage in `src/pages/` live here.
+Only `docs/intro.mdx` and the homepage in `src/pages/` live here.
 
 ```bash
 cd website
@@ -19,3 +19,9 @@ npm run serve    # serve the production build
 
 `.github/workflows/pages.yml` builds the site on pull requests and deploys it
 on pushes to `main`.
+
+The repository must have **Settings → Pages → Build and deployment → Source**
+set to **GitHub Actions**. A successful build alone does not publish the site;
+if Pages is disabled, deployment returns HTTP 404. The workflow checks the Pages
+configuration before deploying. After deployment, check the homepage and
+`/circe/docs/memory` at the public URL above.

@@ -87,6 +87,7 @@ const config: Config = {
           items: [
             {label: 'Install Circe', to: '/docs/install'},
             {label: 'Onboarding and agent behavior', to: '/docs/onboarding'},
+            {label: 'Personal memory', to: '/docs/memory'},
             {label: 'Windows beta', to: '/docs/windows'},
           ],
         },

@@ -13,3 +13,8 @@ the README supplies the destination links.
 
 The desktop screenshots and demo recording are user-provided views of Circe
 in use. Documentation artwork is separate from runtime avatar sourcing.
+
+`website/static/img/` contains optimized documentation-site derivatives: the
+desktop and tile screenshots, a poster frame from the demo recording, and app
+icon, favicon, and social-preview treatments. These are documentation assets,
+not bundled runtime character portraits.

@@ -2,6 +2,7 @@
 
 - [Install Circe](../INSTALL.md): downloads, platform requirements, and first launch.
 - [Onboarding and agent behavior](ONBOARDING.md): fleet selection, identities, portraits, approvals, and image attachments.
+- [Personal memory](USER_MEMORY.md): local model setup, automatic capture, shared recall, and reviewing or forgetting facts.
 - [Windows beta setup](WINDOWS.md): Windows paths, troubleshooting, and limitations.
 - [Release notes](../CHANGELOG.md): published changes and work awaiting release.
 - [Current build](CURRENT_BUILD.md): the source of truth for what is implemented and what comes next.

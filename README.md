@@ -15,6 +15,7 @@
   <a href="#running-from-source">Run from source</a> ·
   <a href="CHANGELOG.md">Release notes</a> ·
   <a href="docs/README.md">Docs</a> ·
+  <a href="https://sarajo.github.io/circe/">Documentation site</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
@@ -42,7 +43,7 @@ to keep or change.
 | **Keep separate tasks in view** | Put one agent on trip planning, another on research, and another on everyday logistics. Keep their tiles beside your notes, browser, or editor. |
 | **Make room for ongoing work** | Use separate conversation tabs, switch tabs while an agent is thinking, and start a fresh conversation with a handoff when a chat gets too long. |
 | **Respond where work happens** | Review tool approval requests in the agent's tile. Allow an action once, allow it for the session, or choose **YOLO this task** to approve subsequent actions until the task finishes or you send a new message. |
-| **Share what you're looking at** | Attach an image to a conversation when your Hermes agent and model support image input. |
+| **Share what you're looking at** | Attach an image when your model supports it, or give an agent a local file to read. |
 
 ## Your desktop, with company
 
@@ -54,15 +55,32 @@ its own space, with a familiar face, task tabs, and tool approvals within reach.
 <img src="docs/images/circe-tile-closeup.png" alt="Scully and Mulder's Circe tiles side by side, discussing packing and home logistics, with pixel-art avatars, conversation tabs, context meters, and image attachment buttons." width="800" />
 
 Each tile keeps an agent's conversations, context meter, and message composer
-within reach. The **＋** beside the message field attaches an image; the **+**
+within reach. The **＋** beside the message field attaches an image or local file; the **+**
 in the tab strip starts a new conversation.
 
-## Powered by Hermes
+## Personal memory
 
-Circe can remember personal facts across its agent conversations using a local
-SQLite vector store and local Ollama models. Open **Memory** in a tile to review,
-edit, or forget facts and configure automatic capture. See the
-[local memory setup](docs/USER_MEMORY.md) for model downloads and privacy details.
+Current source builds automatically remember durable personal facts across agent
+conversations using a local SQLite vector store and local Ollama models. Open
+**Memory** in any tile to review sources, search, edit, or forget facts, or turn
+automatic memory off. This feature is not included in the 0.2.12 installers.
+
+To enable local extraction and semantic search, install and start
+[Ollama](https://ollama.com), then download both models:
+
+```sh
+ollama pull qwen3:4b
+ollama pull embeddinggemma
+```
+
+Click **Memory → Check local models**. A successful check confirms both models
+work without saving its sample fact. Normal chat works without Ollama. Facts,
+extraction, and search stay local; relevant facts are included in prompts to your
+configured Hermes model, which may be hosted. Forgetting a fact does not remove
+earlier conversations or Hermes's separate memory. See the
+[personal memory guide](docs/USER_MEMORY.md) for details.
+
+## Powered by Hermes
 
 Hermes supplies the models, tools, and integrations; Circe gives that crew a
 visible home on your desktop. What your agents can do depends on your Hermes

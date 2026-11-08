@@ -16,10 +16,11 @@ const githubBlob = 'https://github.com/SaraJo/circe/blob/main/';
 const pages = [
   { src: 'INSTALL.md', out: 'install.md', position: 2 },
   { src: 'docs/ONBOARDING.md', out: 'onboarding.md', position: 3 },
-  { src: 'docs/WINDOWS.md', out: 'windows.md', position: 4 },
-  { src: 'docs/BETA_TEST.md', out: 'beta-test.md', position: 5 },
-  { src: 'CHANGELOG.md', out: 'release-notes.md', position: 6 },
-  { src: 'CONTRIBUTING.md', out: 'contributing.md', position: 7 },
+  { src: 'docs/USER_MEMORY.md', out: 'memory.md', position: 4 },
+  { src: 'docs/WINDOWS.md', out: 'windows.md', position: 5 },
+  { src: 'docs/BETA_TEST.md', out: 'beta-test.md', position: 6 },
+  { src: 'CHANGELOG.md', out: 'release-notes.md', position: 7 },
+  { src: 'CONTRIBUTING.md', out: 'contributing.md', position: 8 },
 ];
 const routes = new Map(pages.map((p) => [p.src, p.out]));
 routes.set('README.md', 'intro.mdx');
