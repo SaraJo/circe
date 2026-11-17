@@ -16,7 +16,8 @@ builds from [GitHub Releases](https://github.com/SaraJo/circe/releases).
   agent to try again with a fresh approval request.
 - Attach local files with the attachment button or drag and drop. Non-image
   attachments show their filename and give the agent a local path to read;
-  images retain their previews. Attach one file at a time.
+  images retain their previews. Select or drop multiple files and images, add
+  more before sending, and remove individual attachments.
 
 ## 0.2.12 — 2026-09-26
 

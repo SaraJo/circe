@@ -419,17 +419,18 @@ describe('AcpClient session lifecycle', () => {
     await expect(c.newSession()).resolves.toBe('sess-9');
   });
 
-  it.each(['Describe this', ''])('sends image blocks with optional text: %s', async (text) => {
+  it.each(['Describe this', ''])('sends multiple image blocks with optional text: %s', async (text) => {
     const c = running(client());
     const request = vi.spyOn(c as unknown as WithRequest, 'request').mockResolvedValue({
       agentCapabilities: { promptCapabilities: { image: true } },
     });
     await (c as unknown as WithHandshake).handshake();
     const image = { type: 'image' as const, mimeType: 'image/png', data: 'aGVsbG8=' };
-    await c.prompt('image-session', text, [image]);
+    const second = { ...image, mimeType: 'image/jpeg' };
+    await c.prompt('image-session', text, [image, second]);
     expect(request).toHaveBeenLastCalledWith('session/prompt', {
       sessionId: 'image-session',
-      prompt: [...(text ? [{ type: 'text', text }] : []), image],
+      prompt: [...(text ? [{ type: 'text', text }] : []), image, second],
     });
   });
 

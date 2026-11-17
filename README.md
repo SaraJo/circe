@@ -43,7 +43,7 @@ to keep or change.
 | **Keep separate tasks in view** | Put one agent on trip planning, another on research, and another on everyday logistics. Keep their tiles beside your notes, browser, or editor. |
 | **Make room for ongoing work** | Use separate conversation tabs, switch tabs while an agent is thinking, and start a fresh conversation with a handoff when a chat gets too long. |
 | **Respond where work happens** | Review tool approval requests in the agent's tile. Allow an action once, allow it for the session, or choose **YOLO this task** to approve subsequent actions until the task finishes or you send a new message. |
-| **Share what you're looking at** | Attach an image when your model supports it, or give an agent a local file to read. |
+| **Share what you're looking at** | Attach multiple local files and images in one message; images require a model with image support. |
 
 ## Your desktop, with company
 
@@ -55,8 +55,12 @@ its own space, with a familiar face, task tabs, and tool approvals within reach.
 <img src="docs/images/circe-tile-closeup.png" alt="Scully and Mulder's Circe tiles side by side, discussing packing and home logistics, with pixel-art avatars, conversation tabs, context meters, and image attachment buttons." width="800" />
 
 Each tile keeps an agent's conversations, context meter, and message composer
-within reach. The **＋** beside the message field attaches an image or local file; the **+**
-in the tab strip starts a new conversation.
+within reach. In current source builds, use the **＋** beside the message field to
+select multiple files, or drag and drop them into a tile. You can mix local files
+and images, add more before sending, and remove individual attachments from the
+preview. Images have a 5 MB limit each; other files stay on disk and the agent
+receives their local paths to read. Multiple attachments are not included in the
+0.2.12 installers. The **+** in the tab strip starts a new conversation.
 
 ## Personal memory
 

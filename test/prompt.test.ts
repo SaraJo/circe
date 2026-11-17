@@ -20,10 +20,24 @@ describe('file attachments', () => {
     expect(isTilePrompt({ text: 'Read this', images: [], files: [value] })).toBe(false);
   });
 
-  it('enforces one attachment across images and files', () => {
-    expect(isTilePrompt({ text: '', images: [], files: [file, file] })).toBe(false);
-    expect(isTilePrompt({ text: '', images: [image], files: [file] })).toBe(false);
+  it('accepts multiple files, images, and mixed attachments without text', () => {
+    expect(isTilePrompt({ text: '', images: [], files: [file, { ...file, name: 'notes.txt', path: '/tmp/notes.txt' }] })).toBe(true);
+    expect(isTilePrompt({ text: '', images: [image, image] })).toBe(true);
+    expect(isTilePrompt({ text: '', images: [image, image], files: [file, file] })).toBe(true);
+  });
+
+  it('validates every attachment in a batch', () => {
     expect(isTilePrompt({ text: 'hello', images: [], files: {} })).toBe(false);
+    expect(isTilePrompt({ text: '', images: [image], files: [file, { ...file, path: '../invalid' }] })).toBe(false);
+    expect(isTilePrompt({ text: '', images: [image, { ...image, data: 'bad' }], files: [file] })).toBe(false);
+  });
+
+  it('includes every local path in a multiple-file prompt', () => {
+    const second = { ...file, name: 'notes.txt', path: '/tmp/notes.txt' };
+    expect(promptText({ text: 'Compare these', images: [], files: [file, second] })).toBe(
+      'Compare these\n\nAttached local files (read them with your file tools):\n\n' +
+      [file, second].map(({ name, path }) => JSON.stringify({ name, path })).join('\n\n'),
+    );
   });
 
   it('passes paths as quoted data without embedding binary contents', () => {
@@ -36,7 +50,7 @@ describe('file attachments', () => {
 
   it('preserves files while the agent starts', () => {
     const session = new TileSession<TilePrompt>();
-    const message: TilePrompt = { text: '', images: [], files: [file] };
+    const message: TilePrompt = { text: '', images: [{ ...image, type: 'image' }], files: [file, file] };
     session.beginLaunch();
     expect(session.route(message)).toEqual({ kind: 'held' });
     expect(session.openSession('new-session')).toEqual([message]);
@@ -50,7 +64,7 @@ describe('image prompt validation', () => {
     expect(isTilePrompt({ text: '', images: [image] })).toBe(true);
   });
   it.each([
-    null, '', {}, { text: '', images: [] }, { text: 'hi', images: [image, image] },
+    null, '', {}, { text: '', images: [] },
     { text: 'hi', images: [{ ...image, mimeType: 'image/svg+xml' }] },
     { text: 'hi', images: [{ ...image, data: 'https://example.com/image.png' }] },
     { text: 'hi', images: [{ ...image, data: 'a===' }] },
