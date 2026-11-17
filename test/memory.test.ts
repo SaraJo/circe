@@ -62,6 +62,24 @@ describe('local vector memory', () => {
     expect(await memory.recall('Where do I live?')).not.toContain('New York');
   });
 
+  it('keeps unrelated attributes across captures and restart while updating a corrected attribute', async () => {
+    const db = await store(); const model = fakeModel();
+    const extractCity = model.extract;
+    model.extract = vi.fn(async (text, existing, name) => text === 'My favorite color is blue.'
+      ? [{ key: 'user.color.preference', text: "The user's favorite color is blue.", evidence: text }]
+      : extractCity(text, existing, name));
+    const memory = new PersonalMemory(db, model);
+    memory.capture('I live in New York.', source);
+    memory.capture('My favorite color is blue.', source);
+    memory.capture('I moved to Boston.', source);
+    await memory.idle();
+    const reopened = new PersonalMemory(await FactStore.open(db.path), model);
+    expect(reopened.view().facts.map(({ key, text }) => ({ key, text }))).toEqual([
+      { key: 'user.color.preference', text: "The user's favorite color is blue." },
+      { key: 'user.home.city', text: 'The user lives in Boston.' },
+    ]);
+  });
+
   it('discards in-flight and queued capture after forgetting, and retains the block across restart', async () => {
     const db = await store(); await db.put([fact()], db.generation());
     const model = fakeModel(); const started = gate<void>(); const extraction = gate<ExtractedFact[]>();
@@ -175,6 +193,17 @@ describe('local Ollama boundary', () => {
       expect(url).toMatch(/^http:\/\/127\.0\.0\.1:11434\/api\//);
       expect(options.redirect).toBe('error');
     }
+  });
+
+  it('rejects placeholder keys and excludes legacy placeholder facts from extraction context', async () => {
+    const request = http([{}, { message: { content: JSON.stringify({ facts: [
+      { key: 'user.topic.attribute', text: 'The user lives in Boston.', evidence: 'I live in Boston.' },
+    ] }) } }]);
+    const legacy = { ...fact(), key: 'user.topic.attribute' };
+    const model = new OllamaMemoryModel(request);
+    await expect(model.extract('I live in Boston.', [legacy], 'local')).rejects.toThrow('placeholder topic key');
+    const chat = JSON.parse(request.mock.calls[1]![1].body);
+    expect(JSON.parse(chat.messages[1].content).existing).toEqual([]);
   });
 
   it('accepts an empty facts array for greetings and reports malformed responses clearly', async () => {
