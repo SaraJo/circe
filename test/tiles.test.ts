@@ -393,6 +393,26 @@ describe('conversation tabs', () => {
     });
   });
 
+  it('routes a mixed batch of files and images together to the active session', async () => {
+    const h = harness();
+    await launchedWithTabs(h);
+    await h.registry.newTab('default');
+    const prompt = vi.spyOn(h.clients[0]!, 'prompt').mockResolvedValue();
+    const images = [
+      { type: 'image' as const, mimeType: 'image/png', data: 'aGVsbG8=' },
+      { type: 'image' as const, mimeType: 'image/jpeg', data: 'aGVsbG8=' },
+    ];
+    const files = [
+      { type: 'file' as const, name: 'notes.txt', path: '/tmp/notes.txt' },
+      { type: 'file' as const, name: 'report.pdf', path: '/tmp/report.pdf' },
+    ];
+    await h.registry.prompt('default', { text: 'Compare these', images, files });
+    expect(prompt).toHaveBeenCalledTimes(1);
+    expect(prompt).toHaveBeenCalledWith('session-2',
+      'Compare these\n\nAttached local files (read them with your file tools):\n\n' +
+      files.map(({ name, path }) => JSON.stringify({ name, path })).join('\n\n'), images);
+  });
+
   it('delivers an image typed before the session finishes opening', async () => {
     const h = harness();
     const launch = h.registry.launch(character('default'), 'default');

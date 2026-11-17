@@ -24,7 +24,9 @@ export function isFileAttachment(value: unknown): value is FileAttachment {
 export function promptText(message: TilePrompt): string {
   if (typeof message === 'string') return message;
   if (!message.files?.length) return message.text;
-  return [message.text, 'Attached local file (read it with your file tools):',
+  return [message.text, message.files.length === 1
+    ? 'Attached local file (read it with your file tools):'
+    : 'Attached local files (read them with your file tools):',
     ...message.files.map(({ name, path }) => JSON.stringify({ name, path })),
   ].filter(Boolean).join('\n\n');
 }
@@ -46,6 +48,6 @@ export function isTilePrompt(value: unknown): value is TilePrompt {
   if (prompt.files !== undefined && (!Array.isArray(prompt.files) || !prompt.files.every(isFileAttachment))) return false;
   const files = (prompt.files ?? []) as FileAttachment[];
   return typeof prompt.text === 'string' && Array.isArray(prompt.images) &&
-    prompt.images.length + files.length <= 1 && prompt.images.every(isImageAttachment) &&
+    prompt.images.every(isImageAttachment) &&
     (prompt.text.trim().length > 0 || prompt.images.length + files.length > 0);
 }

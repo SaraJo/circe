@@ -717,8 +717,8 @@ const attachmentFile = document.getElementById('attachment-file') as HTMLInputEl
 const attachButton = document.getElementById('attach-file') as HTMLButtonElement;
 const attachmentPreview = document.getElementById('attachment-preview')!;
 const attachmentStatus = document.getElementById('attachment-status')!;
-let attachedImage: ImageAttachment | null = null;
-let attachedFile: FileAttachment | null = null;
+let attachments: { name: string; content: ImageAttachment | FileAttachment }[] = [];
+let pendingAttachments: File[] = [];
 let attachmentLoading = false;
 let attachmentGeneration = 0;
 
@@ -747,70 +747,90 @@ function appendFile(parent: HTMLElement, file: FileAttachment): void {
   parent.append(label);
 }
 
+function renderAttachments(): void {
+  attachmentPreview.replaceChildren();
+  for (const entry of attachments) {
+    const item = document.createElement('div');
+    item.className = 'attachment-item';
+    if (entry.content.type === 'image') appendImage(item, entry.content, entry.name);
+    else appendFile(item, entry.content);
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = 'Remove';
+    remove.setAttribute('aria-label', `Remove ${entry.name}`);
+    remove.addEventListener('click', () => {
+      attachments = attachments.filter((attachment) => attachment !== entry);
+      renderAttachments();
+    });
+    item.append(remove);
+    attachmentPreview.append(item);
+  }
+  attachmentPreview.hidden = attachments.length === 0;
+}
+
 function clearAttachment(): void {
   attachmentGeneration++;
-  attachedImage = null;
-  attachedFile = null;
+  attachments = [];
+  pendingAttachments = [];
   attachmentLoading = false;
-  attachButton.disabled = false;
   attachmentFile.value = '';
-  attachmentPreview.replaceChildren();
-  attachmentPreview.hidden = true;
+  renderAttachments();
   attachmentStatus.hidden = true;
 }
 
-async function loadAttachment(file: File): Promise<void> {
-  clearAttachment();
+async function loadAttachments(files: File[]): Promise<void> {
+  pendingAttachments.push(...files);
+  if (attachmentLoading) return;
   const generation = attachmentGeneration;
+  const errors: string[] = [];
   attachmentLoading = true;
-  attachButton.disabled = true;
-  attachmentStatus.textContent = 'Loading attachment…';
+  attachmentStatus.textContent = 'Loading attachments…';
   attachmentStatus.hidden = false;
   try {
-    if (IMAGE_TYPES.includes(file.type)) {
-      if (file.size > MAX_IMAGE_BYTES || file.size === 0) {
-        throw new Error('Choose an image up to 5 MB, or attach a non-image file.');
+    while (pendingAttachments.length) {
+      const file = pendingAttachments.shift()!;
+      try {
+        let content: ImageAttachment | FileAttachment;
+        if (IMAGE_TYPES.includes(file.type)) {
+          if (file.size > MAX_IMAGE_BYTES || file.size === 0) {
+            throw new Error('Choose an image up to 5 MB, or attach a non-image file.');
+          }
+          const dataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result));
+            reader.onerror = () => reject(new Error('Could not read this image. Please try again.'));
+            reader.readAsDataURL(file);
+          });
+          const decoded = new Image();
+          decoded.src = dataUrl;
+          await decoded.decode();
+          if (generation !== attachmentGeneration) return;
+          content = { type: 'image', mimeType: file.type, data: dataUrl.slice(dataUrl.indexOf(',') + 1) };
+        } else {
+          content = { type: 'file', name: file.name, path: circe.filePath(file) };
+          if (!isFileAttachment(content)) throw new Error('Choose a file saved on this computer.');
+        }
+        attachments.push({ name: file.name, content });
+        renderAttachments();
+      } catch (error) {
+        if (generation !== attachmentGeneration) return;
+        errors.push(`${file.name}: ${error instanceof Error ? error.message : 'Could not load this attachment.'}`);
       }
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(new Error('Could not read this image. Please try again.'));
-        reader.readAsDataURL(file);
-      });
-      const decoded = new Image();
-      decoded.src = dataUrl;
-      await decoded.decode();
-      if (generation !== attachmentGeneration) return;
-      attachedImage = { type: 'image', mimeType: file.type, data: dataUrl.slice(dataUrl.indexOf(',') + 1) };
-      appendImage(attachmentPreview, attachedImage, file.name);
-    } else {
-      const attachment: FileAttachment = { type: 'file', name: file.name, path: circe.filePath(file) };
-      if (!isFileAttachment(attachment)) throw new Error('Choose a file saved on this computer.');
-      attachedFile = attachment;
-      appendFile(attachmentPreview, attachment);
     }
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.textContent = 'Remove attachment';
-    remove.addEventListener('click', clearAttachment);
-    attachmentPreview.append(remove);
-    attachmentPreview.hidden = false;
-    attachmentStatus.hidden = true;
-  } catch (error) {
-    if (generation !== attachmentGeneration) return;
-    attachmentStatus.textContent = error instanceof Error ? error.message : 'Could not load this attachment.';
   } finally {
     if (generation === attachmentGeneration) {
       attachmentLoading = false;
-      attachButton.disabled = false;
+      attachmentStatus.textContent = errors.join('\n');
+      attachmentStatus.hidden = errors.length === 0;
     }
   }
 }
 
 attachButton.addEventListener('click', () => attachmentFile.click());
 attachmentFile.addEventListener('change', () => {
-  const file = attachmentFile.files?.[0];
-  if (file) void loadAttachment(file);
+  const files = Array.from(attachmentFile.files ?? []);
+  attachmentFile.value = '';
+  if (files.length) void loadAttachments(files);
 });
 
 document.addEventListener('dragover', (event) => {
@@ -821,20 +841,15 @@ document.addEventListener('drop', (event) => {
   event.preventDefault();
   const files = event.dataTransfer?.files;
   if (!files?.length) return;
-  if (files.length > 1) {
-    attachmentStatus.textContent = 'Attach one file at a time.';
-    attachmentStatus.hidden = false;
-    return;
-  }
-  void loadAttachment(files[0]!);
+  void loadAttachments(Array.from(files));
 });
 
 function sendCurrentInput(): void {
   const text = input.value.trim();
-  if (attachmentLoading || (!text && !attachedImage && !attachedFile)) return;
+  if (attachmentLoading || (!text && !attachments.length)) return;
   // A local convenience command, not an agent prompt. It replaces the Hermes
   // conversation behind this tab, so the tab count and selection stay put.
-  if (!attachedImage && !attachedFile && text.toLowerCase() === '/clear') {
+  if (!attachments.length && text.toLowerCase() === '/clear') {
     if (!tabsView?.supported || tabsView.busy) return;
     circe.clearTab();
     input.value = '';
@@ -847,8 +862,11 @@ function sendCurrentInput(): void {
   streaming = null;
   toolBubble = null;
   toolTitle = '';
-  const message: TilePrompt = attachedImage || attachedFile
-    ? { text, images: attachedImage ? [attachedImage] : [], ...(attachedFile ? { files: [attachedFile] } : {}) }
+  const message: TilePrompt = attachments.length
+    ? { text,
+      images: attachments.map(({ content }) => content).filter((content): content is ImageAttachment => content.type === 'image'),
+      files: attachments.map(({ content }) => content).filter((content): content is FileAttachment => content.type === 'file'),
+    }
     : text;
   appendUserPrompt(message);
   circe.send(message);
