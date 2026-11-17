@@ -41,14 +41,20 @@ corrects a fact and rebuilds its embedding. Changing the embedding model in
 settings reindexes the existing facts before publishing the new configuration.
 A failed reindex leaves the previous configuration intact.
 
+Editing or forgetting a personal fact also clears its source task's Circe
+history and other saved tasks known to have been supplied that fact. Context
+receipts containing personal-fact snapshots are cleared too. This prevents
+known derived task interpretations from reintroducing an outdated or forgotten
+fact. Hermes's separate conversation store is unaffected.
+
 **Forget** removes the fact and its vector. A one-way hash of its topic key
 prevents later automatic capture under that same key. Pending captures begun
 before the review action are discarded, and in-flight recall is invalidated.
 A model can express the same topic under a different key, so this is not a
 semantic guarantee that a topic will never be learned again from a new message.
 
-**Forget all and turn memory off** removes saved facts and vectors and disables
-both capture and recall. The setting persists after restart. Enabling memory
+**Forget all and turn memory off** removes saved facts, vectors, task sources,
+checkpoints, and context receipts and disables capture and recall. The setting persists after restart. Enabling memory
 again resumes capture from new messages; existing topic-key blocks remain.
 
 Forgetting does not delete earlier chats, context already sent to a model,
@@ -57,6 +63,9 @@ Circe does not mirror its saved facts into those stores. If a fact is present in
 one of those independent sources, the agent may still know it.
 
 ## Capture and recall
+
+This section describes personal-fact capture. Task history, described below,
+separately saves original user and assistant text.
 
 Only original user text from completed Circe turns is submitted for capture.
 Assistant output, tool results, session replay, generated handoffs, and injected
@@ -88,6 +97,71 @@ messages and excess jobs are skipped. The UI reports queue overflow and the
 fact limit. Capture prompts include at most 16 existing facts. Large lists in
 the review window show 100 matches at a time; search narrows the full list.
 
+## Task history, checkpoints, and context used
+
+With memory on, **Keep task history, checkpoints, and source lookup** controls
+automatic task capture independently of personal-fact capture. Only new Circe
+turns are captured. No older Hermes history is imported. Original user messages
+are saved when sent; assistant messages are saved on successful completion.
+Interrupted partial assistant output and generated handoffs are excluded.
+Attachment paths, images, and tool results are not archived as source messages.
+
+Each conversation starts its own task. **Start fresh with handoff** links the
+new session to the same task before delivering queued prompts. A blank tab
+starts a separate task. Task sources remain private to the originating agent;
+personal facts are shared across the Circe crew as before.
+
+A background local model maintains a versioned checkpoint: goal, constraints,
+decisions and reasons, reported progress, open questions, and next steps. Every
+item cites stable source IDs. Original messages remain available after a
+checkpoint is replaced. Unknown source citations or invalid output leave the
+previous valid checkpoint intact and show an error in Memory. A checkpoint is
+an interpretation, not independently verified truth. Assistant-only proposals
+are labeled unconfirmed; assistant-only progress is labeled reported. The
+original explicit task request is retained as a fallback when a model omits
+the goal. Common explicit directives such as "keep the hotel refundable" are
+retained as user-source quotes through short follow-ups. Explicit corrections
+can supersede earlier quoted constraints. Natural-language interpretation is
+still fallible; review important decisions and corrections against their sources.
+Checkpoints are bounded to eight constraints and four entries per other field.
+
+Before a user turn, Circe supplies matching personal facts, the current task's
+checkpoint, and up to four source excerpts. Recent messages remain available
+for vague follow-ups while checkpoint generation is pending. Source search
+uses keyword matching within the task; it does not embed whole transcripts.
+No full proxy compression or automatic rewriting of Hermes history is added.
+
+Expand **Context used** in a tile to inspect the exact context prepared for that
+turn. It shows what Circe supplied, rather than claiming to observe the model's
+reasoning. Sources fetched through Circe tools during the turn are recorded
+under the same receipt, with up to eight source/page excerpts shown. Recent saved receipts
+can also be reviewed under **Memory → Task history & context used**. Source
+buttons open the original message. Supplied receipts can be restored alongside
+replayed prompts that include Circe's receipt marker.
+
+Supported Hermes sessions receive three read-only MCP tools: `search_context`,
+`read_context`, and `task_checkpoint`. They search the agent's recorded history,
+return exact source pages, and read checkpoint state. The local server binds to
+`127.0.0.1` on a random port, requires a per-agent token, rejects browser origins,
+and grants access only to that agent's records. Credentials are passed through
+session-scoped ACP configuration and never change permanent Hermes settings.
+Tool calls include the current context receipt ID so source reads can be
+attributed to their turn and included in deletion lineage.
+If Hermes rejects the HTTP MCP configuration, Circe retries ordinary chat;
+automatic context injection and the review window remain available.
+
+Use **Delete this task's Circe history** to remove original sources, all checkpoint
+versions, and receipts for a conversation and its continuations. Pending updates
+and late pre-deletion turns cannot restore them. New post-deletion turns may
+start recording again. Personal facts and original Hermes conversations remain.
+
+Bounds: 5,000 source messages and approximately 20 million stored JSON characters
+across tasks, 120,000 characters per source message, 20 pending checkpoint jobs,
+20 checkpoint versions per task, and 1,000 receipts globally. When a limit is
+reached, capture reports a failure instead of silently evicting original sources.
+The review window shows up to 30 sources and 30 receipts per selected task.
+Source tools page exact text in chunks up to 12,000 characters.
+
 ## Architecture and ownership
 
 - `src/main/memory/store.ts` owns a SQLite database via `sql.js`, avoiding native
@@ -97,6 +171,9 @@ the review window show 100 matches at a time; search narrows the full list.
   quote grounding, and checks against cloud model aliases.
 - `src/main/memory/service.ts` owns capture ordering, recall, reindexing, review,
   status, and invalidation of background work after edits or deletion.
+- `src/main/memory/tasks.ts` owns source capture, checkpoint updates, search,
+  handoff continuity, and context receipts. `contextServer.ts` exposes the
+  read-only MCP transport; the SQLite store remains the single writer.
 - `TileRegistry` adds context immediately before dispatch and submits original
   user text after completion. Preparation preserves prompt order without
   blocking ACP follow-up interruption until the previous turn finishes.

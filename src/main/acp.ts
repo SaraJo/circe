@@ -2,6 +2,7 @@ import type { ImageAttachment } from '../shared/prompt';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { homedir } from 'node:os';
 import { hermesPaths } from './hermes/runtime';
+import type { ContextMcpServer } from './memory/contextServer';
 
 export interface AcpUpdate {
   /**
@@ -48,6 +49,7 @@ export function optionIdFor(
 
 export interface AcpOptions {
   profileId: string;
+  mcpServers?: ContextMcpServer[];
   cwd?: string;
   /**
    * `sessionId` is the *outer* `params.sessionId` of the notification; `update`
@@ -100,6 +102,7 @@ export function sessionModelName(response: unknown): string | null {
 }
 
 export class AcpClient {
+  private contextToolsRejected = false;
   private readonly promptRuns = new Map<string, {
     blocks: Array<Record<string, string>>;
     interrupting: boolean;
@@ -306,10 +309,9 @@ export class AcpClient {
     this.assertRunning();
     const started = performance.now();
     try {
-      const session = (await this.request(
+      const session = (await this.sessionRequest(
         'session/new',
-        { cwd: this.cwd, mcpServers: [] },
-        HANDSHAKE_TIMEOUT_MS,
+        { cwd: this.cwd },
       )) as { sessionId: string };
       this.sessionModels.set(session.sessionId, sessionModelName(session));
       return session.sessionId;
@@ -340,10 +342,9 @@ export class AcpClient {
     if (!this.loadSessionSupported) return false;
     this.assertRunning();
     try {
-      const result = await this.request(
+      const result = await this.sessionRequest(
         'session/load',
-        { cwd: this.cwd, sessionId, mcpServers: [] },
-        HANDSHAKE_TIMEOUT_MS,
+        { cwd: this.cwd, sessionId },
       );
       this.sessionModels.set(sessionId, sessionModelName(result));
       return true;
@@ -351,6 +352,18 @@ export class AcpClient {
       this.sessionModels.delete(sessionId);
       console.warn(`Could not resume ACP session ${sessionId}; starting a new one.`, err);
       return false;
+    }
+  }
+
+  private async sessionRequest(method: string, params: Record<string, unknown>): Promise<unknown> {
+    const servers = this.contextToolsRejected ? [] : this.opts.mcpServers ?? [];
+    try { return await this.request(method, { ...params, mcpServers: servers }, HANDSHAKE_TIMEOUT_MS); }
+    catch (error) {
+      if (!servers.length || !(error instanceof Error) || !/mcp|invalid.*param|unsupported/i.test(error.message)) throw error;
+      this.contextToolsRejected = true;
+      // Validation errors can echo headers, so never log their payload or token.
+      console.warn('This Hermes version declined Circe context tools. Continuing without agent source tools.');
+      return this.request(method, { ...params, mcpServers: [] }, HANDSHAKE_TIMEOUT_MS);
     }
   }
 
@@ -454,6 +467,8 @@ export class AcpClient {
       const params = (msg.params ?? {}) as { sessionId?: unknown; update?: unknown };
       const { sessionId, update } = params;
       if (typeof sessionId === 'string' && update && typeof update === 'object') {
+        // Only Circe can attest which context it supplied or resolve its UI state.
+        if (typeof (update as AcpUpdate).sessionUpdate === 'string' && String((update as AcpUpdate).sessionUpdate).startsWith('circe/')) return;
         if (this.promptRuns.get(sessionId)?.interrupting) return;
         this.opts.onUpdate(sessionId, update as AcpUpdate);
       }

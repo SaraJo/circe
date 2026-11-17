@@ -8,6 +8,11 @@ builds from [GitHub Releases](https://github.com/SaraJo/circe/releases).
 
 ### Added
 
+- Structured task checkpoints with source citations, original-message search,
+  and a **Context used** inspector. Task history follows handoffs, remains scoped
+  to each agent, and can be disabled or deleted from Memory. Supported Hermes
+  sessions receive read-only source search and lookup tools without permanent
+  configuration changes.
 - Automatically remember durable personal facts across Circe conversations with
   local Ollama extraction and embeddings and a local SQLite vector store. Use
   **Memory** in a tile to check models, review sources, search, edit, forget, or

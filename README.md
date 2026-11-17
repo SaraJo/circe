@@ -65,6 +65,14 @@ conversations using a local SQLite vector store and local Ollama models. Open
 **Memory** in any tile to review sources, search, edit, or forget facts, or turn
 automatic memory off. This feature is not included in the 0.2.12 installers.
 
+Source builds also keep structured task checkpoints: goals, constraints,
+decisions and reasons, reported progress, open questions, and next steps, each
+linked to original messages. Handoffs retain that task history; blank tabs start
+separate tasks. Expand **Context used** beside a response to inspect what Circe
+supplied, or open **Memory → Task history & context used** to search original
+messages and review checkpoints. Agents receive read-only source lookup tools
+through Hermes when supported. Task history can be disabled independently.
+
 To enable local extraction and semantic search, install and start
 [Ollama](https://ollama.com), then download both models:
 

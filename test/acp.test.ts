@@ -40,6 +40,38 @@ afterEach(() => {
 });
 
 describe('parseFrames', () => {
+  it('does not let an agent impersonate a Circe context receipt', () => {
+    const onUpdate = vi.fn();
+    const c = new AcpClient({ profileId: 'test', onUpdate, onExit: () => {} });
+    (c as unknown as WithHandle).handle({ method: 'session/update', params: { sessionId: 'test-session', update: { sessionUpdate: 'circe/context-used', receipt: { facts: ['fabricated'] } } } });
+    expect(onUpdate).not.toHaveBeenCalled();
+  });
+
+  it('falls back to ordinary chat when an older Hermes rejects HTTP context servers', async () => {
+    const c = running(new AcpClient({ profileId: 'test', mcpServers: [{ type: 'http', name: 'circe-context', url: 'http://127.0.0.1:1234/mcp', headers: [] }], onUpdate: () => {}, onExit: () => {} }));
+    const request = vi.spyOn(c as unknown as WithRequest, 'request').mockImplementation(async (_method, params) => {
+      if ((params as { mcpServers: unknown[] }).mcpServers.length) throw new Error('Unsupported MCP transport');
+      return { sessionId: 'fallback' };
+    });
+    await expect(c.newSession()).resolves.toBe('fallback');
+    await c.newSession();
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(request.mock.calls[2]![1]).toMatchObject({ mcpServers: [] });
+  });
+
+  it('passes per-agent context tools to new and restored sessions without changing Hermes configuration', async () => {
+    const servers = [{ type: 'http' as const, name: 'circe-context', url: 'http://127.0.0.1:1234/mcp', headers: [{ name: 'Authorization', value: 'Bearer test' }] }];
+    const c = running(new AcpClient({ profileId: 'test', mcpServers: servers, onUpdate: () => {}, onExit: () => {} }));
+    const request = vi.spyOn(c as unknown as WithRequest, 'request').mockImplementation(async (method) => {
+      if (method === 'initialize') return { agentCapabilities: { loadSession: true } };
+      return { sessionId: 'session-test' };
+    });
+    await (c as unknown as WithHandshake).handshake();
+    await c.newSession(); await c.loadSession('restored');
+    expect(request).toHaveBeenCalledWith('session/new', expect.objectContaining({ mcpServers: servers }), 30_000);
+    expect(request).toHaveBeenCalledWith('session/load', expect.objectContaining({ sessionId: 'restored', mcpServers: servers }), 30_000);
+  });
+
   it('reads one complete line as one frame', () => {
     const { frames, rest } = parseFrames('{"jsonrpc":"2.0","id":1}\n');
     expect(frames).toEqual([{ jsonrpc: '2.0', id: 1 }]);

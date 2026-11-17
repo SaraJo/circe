@@ -91,6 +91,11 @@ body {
 }
 .tile:has(#orchestrator-help:not([hidden])) #memory { right: 50px; }
 #memory:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 2px; }
+.context-receipt { margin: 8px 0; padding: 8px 10px; border: 1px solid var(--tile-border); border-radius: 8px; font-size: 11px; -webkit-app-region: no-drag; overflow-wrap: anywhere; }
+.context-receipt summary { cursor: pointer; opacity: .8; }
+.context-receipt p, .context-receipt blockquote { white-space: pre-wrap; }
+.context-receipt button { font-size: 10px; color: var(--text); background: transparent; border: 1px solid var(--tile-border); border-radius: 5px; margin: 3px; cursor: pointer; }
+.checkpoint h3 { font-size: 12px; margin-bottom: 4px; }
 #orchestrator-help-trigger {
   width: 22px;
   height: 22px;

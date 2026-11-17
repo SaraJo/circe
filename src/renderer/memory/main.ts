@@ -1,8 +1,12 @@
 import type { MemoryBridge, MemoryView, PersonalFact } from '../../shared/memory';
+import type { ContextFocus, TaskHistoryView } from '../../shared/context';
+import { checkpointPanel, contextReceiptPanel } from '../contextView';
 
 declare global { interface Window { circeMemory: MemoryBridge } }
 const api = window.circeMemory;
 const el = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
+el('show-facts').addEventListener('click', () => el('facts-title').scrollIntoView({ behavior: 'smooth' }));
+el('show-history').addEventListener('click', () => el('task-history-title').scrollIntoView({ behavior: 'smooth' }));
 let view: MemoryView | undefined;
 let signature = '';
 let editing = false;
@@ -53,7 +57,7 @@ function factRow(fact: PersonalFact): HTMLElement {
     input.focus();
   }), button('Forget', () => {
     if (editing) return;
-    void work(() => api.forget(fact.key), 'Forgotten. Automatic capture is blocked for this topic key.');
+    void work(async () => { await api.forget(fact.key); await loadHistory(); }, 'Forgotten. Its source task history was cleared; automatic capture is blocked for this topic key.');
   }, 'danger'));
   row.append(actions); return row;
 }
@@ -75,6 +79,7 @@ async function refresh(): Promise<void> {
   view = await api.read();
   if (!settingsLoaded) {
     el<HTMLInputElement>('enabled').checked = view.settings.enabled;
+    el<HTMLInputElement>('context-enabled').checked = view.settings.contextEnabled !== false;
     el<HTMLInputElement>('extraction-model').value = view.settings.extractionModel;
     el<HTMLInputElement>('embedding-model').value = view.settings.embeddingModel;
     settingsLoaded = true;
@@ -89,6 +94,7 @@ el('settings').addEventListener('submit', (e) => {
   e.preventDefault();
   void work(() => api.configure({
     enabled: el<HTMLInputElement>('enabled').checked,
+    contextEnabled: el<HTMLInputElement>('context-enabled').checked,
     extractionModel: el<HTMLInputElement>('extraction-model').value.trim(),
     embeddingModel: el<HTMLInputElement>('embedding-model').value.trim(),
   }), 'Settings saved.');
@@ -101,7 +107,68 @@ el('forget-all').addEventListener('click', () => { if (!editing) confirmation.sh
 el('cancel-forget').addEventListener('click', () => confirmation.close());
 el('confirm-forget-all').addEventListener('click', () => {
   confirmation.close();
-  void work(async () => { await api.forgetAll(); settingsLoaded = false; }, 'All Circe facts forgotten. Memory is off.');
+  void work(async () => { await api.forgetAll(); settingsLoaded = false; await loadHistory(); }, 'All Circe facts and task history forgotten. Memory is off.');
 });
 void refresh().catch((e) => { el('message').textContent = String(e); });
 setInterval(() => { if (!busy) void refresh().catch((e) => { el('status').textContent = String(e); }); }, 2000);
+
+let history: TaskHistoryView | undefined;
+let historyRequest = 0;
+const profile = el<HTMLSelectElement>('history-profile');
+const session = el<HTMLSelectElement>('history-session');
+function options(select: HTMLSelectElement, entries: { value: string; label: string }[], value: string): void {
+  select.replaceChildren(...entries.map((entry) => { const option = document.createElement('option'); option.value = entry.value; option.textContent = entry.label; return option; }));
+  if (entries.some((entry) => entry.value === value)) select.value = value;
+}
+async function readSource(id: string): Promise<void> {
+  const source = await api.source(profile.value, id);
+  if (!source) { el('history-status').textContent = 'This source was deleted or is no longer available.'; return; }
+  el('source-heading').textContent = source.role === 'user' ? 'Original user message' : 'Original assistant message';
+  el('source-meta').textContent = `${source.profileId} · ${new Date(source.createdAt).toLocaleString()} · Conversation ${source.sessionId}`;
+  el('source-text').textContent = source.text;
+  const dialog = el<HTMLDialogElement>('source-dialog');
+  if (!dialog.open) dialog.showModal();
+}
+async function loadHistory(focus?: ContextFocus): Promise<void> {
+  const request = ++historyRequest;
+  try {
+    const selectedProfile = focus?.profileId ?? profile.value;
+    const selectedSession = focus?.sessionId ?? session.value;
+    const next = await api.history(selectedProfile, selectedSession, el<HTMLInputElement>('history-search').value);
+    if (request !== historyRequest) return;
+    history = next;
+    const profiles = [...new Set(next.sessions.map((s) => s.profileId))];
+    if (selectedProfile && !profiles.includes(selectedProfile)) profiles.push(selectedProfile);
+    options(profile, profiles.map((value) => ({ value, label: value })), selectedProfile);
+    const sessions = next.sessions.filter((s) => s.profileId === profile.value);
+    if (selectedSession && !sessions.some((s) => s.sessionId === selectedSession)) sessions.push({ profileId: profile.value, sessionId: selectedSession, title: 'Current conversation · no saved sources yet' });
+    options(session, sessions.map((s) => ({ value: s.sessionId, label: s.title || `Conversation ${s.sessionId.slice(0, 12)}` })), selectedSession);
+    // The initial discovery call may choose a different scope; fetch that scope before rendering.
+    if (profile.value !== selectedProfile || session.value !== selectedSession) { await loadHistory(); return; }
+    el('history-status').textContent = sessions.length ? 'Showing up to 30 matching sources and 30 recent context receipts. Refresh after a turn completes to see its checkpoint.' : 'No task history saved yet. New turns will appear here when task history is on.';
+    const open = (id: string) => { void readSource(id).catch((e) => { el('history-status').textContent = String(e); }); };
+    el('checkpoint').replaceChildren(...(next.checkpoint ? [checkpointPanel(next.checkpoint, open)] : []));
+    el('history-sources').replaceChildren(...next.sources.map((source) => {
+      const article = document.createElement('article'); article.className = 'fact';
+      const p = document.createElement('p'); p.textContent = source.text.slice(0, 240);
+      article.append(button(`Read ${source.role} message · ${new Date(source.createdAt).toLocaleString()}`, () => open(source.id)), p); return article;
+    }));
+    el('context-receipts').replaceChildren(...next.receipts.map((receipt) => contextReceiptPanel(receipt, open)));
+    if (focus?.sourceId) await readSource(focus.sourceId);
+  } catch (e) { if (request === historyRequest) el('history-status').textContent = String(e); }
+}
+profile.addEventListener('change', () => { session.value = ''; void loadHistory(); });
+session.addEventListener('change', () => void loadHistory());
+el('history-search-form').addEventListener('submit', (e) => { e.preventDefault(); void loadHistory(); });
+el('history-refresh').addEventListener('click', () => void loadHistory());
+el('close-source').addEventListener('click', () => el<HTMLDialogElement>('source-dialog').close());
+const deleteDialog = el<HTMLDialogElement>('confirm-task-delete');
+el('forget-task').addEventListener('click', () => { if (profile.value && session.value) deleteDialog.showModal(); });
+el('cancel-task-delete').addEventListener('click', () => deleteDialog.close());
+el('delete-task').addEventListener('click', () => {
+  deleteDialog.close();
+  void work(async () => { await api.forgetTask(profile.value, session.value); await loadHistory(); }, 'Task history deleted.');
+});
+api.onFocus((focus) => { void loadHistory(focus); });
+const parameters = new URLSearchParams(location.search);
+void loadHistory(parameters.get('profile') ? { profileId: parameters.get('profile')!, sessionId: parameters.get('session') ?? '', sourceId: parameters.get('source') || undefined } : undefined);

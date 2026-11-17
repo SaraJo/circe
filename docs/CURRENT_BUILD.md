@@ -15,6 +15,8 @@ Hermes remains responsible for providers, profiles, sessions, tools, and agent
 data. Circe owns onboarding, desktop windows, presentation, and the small amount
 of state needed to reopen a conversation. Circe also owns an optional local
 personal-fact store shared by its tiles; Hermes memory remains independent.
+It also keeps agent-scoped task history, cited checkpoints, and context receipts
+for new conversations captured while memory is enabled.
 
 ## What works now
 
@@ -51,6 +53,16 @@ personal-fact store shared by its tiles; Hermes memory remains independent.
 - Opens existing usable profiles as separate themed desktop tiles.
 - Notices profiles created while Circe is running and opens their tiles.
 - Streams messages and tool activity through Hermes ACP.
+- Saves original user and assistant text in agent-scoped task history and builds
+  local structured checkpoints with cited sources. Handoffs link continuations;
+  blank tabs start separate tasks. **Context used** exposes the context supplied
+  for a turn, and **Memory → Task history & context used** provides checkpoint
+  review, source search, exact message viewing, and task deletion.
+- Supplies read-only `search_context`, `read_context`, and `task_checkpoint`
+  tools through an authenticated loopback MCP endpoint passed to Hermes at
+  session creation/restoration. Older Hermes versions that reject the MCP
+  configuration fall back to normal chat. No permanent Hermes configuration is
+  changed. Task capture and lookup can be disabled in Memory settings.
 - Automatically extracts durable personal facts from new user messages using
   local Ollama models, stores facts and vectors in SQLite, and recalls relevant
   context across its tiles. The **Memory** button and **Circe → Memory…** window
@@ -94,7 +106,8 @@ after user feedback demonstrates the need.
 - Circe-specific profile presentation lives beside the profile.
 - `circe/state.json` stores only window/session restoration facts.
 - `circe/memory.sqlite` stores Circe's shared personal facts, vectors, settings,
-  and hashed topic-key blocks for forgotten facts. Extraction and embeddings
+  hashed topic-key blocks for forgotten facts, task sources and handoff lineage,
+  checkpoint revisions, and context receipts. Extraction and embeddings
   stay local; recalled context goes to the configured Hermes conversation model.
 - `circe/last-launch.json` records the foreground profile, excluded tile
   profiles, and whether a profile was explicitly chosen as orchestrator.

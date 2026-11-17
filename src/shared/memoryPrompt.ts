@@ -13,3 +13,9 @@ export function originalUserMessage(text: string): string {
   const end = header[0].length + Number(header[1]);
   return text.slice(end, end + USER.length) === USER ? text.slice(end + USER.length) : text;
 }
+
+export function contextReceiptId(text: string): string | null {
+  if (originalUserMessage(text) === text) return null;
+  const header = /^\[circe-personal-context-v1:\d{1,6}\]\nCirce context receipt: ([a-f0-9-]{36})\n/.exec(text);
+  return header?.[1] ?? null;
+}

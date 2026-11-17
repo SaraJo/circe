@@ -1,6 +1,8 @@
 import { IMAGE_TYPES, MAX_IMAGE_BYTES, isFileAttachment, isImageAttachment, isTilePrompt, type FileAttachment, type ImageAttachment, type TilePrompt } from '../../shared/prompt';
 import type { Character, TileTabsView } from '../../shared/types';
 import { originalUserMessage } from '../../shared/memoryPrompt';
+import { contextReceiptPanel } from '../contextView';
+import type { ContextReceipt } from '../../shared/context';
 import { DEFAULT_PALETTE, isPalette, paletteVars } from '../../main/palette';
 import { applyFace, initials } from '../face';
 import { nextToolTitle, toolLabel } from './toolLabel';
@@ -33,7 +35,7 @@ interface TileApi {
   clearTab(): void;
   rollover(): void;
   replaceAvatar(): void;
-  openMemory(): void;
+  openMemory(sourceId?: string): void;
   closeTab(index: number): void;
   close(): void;
   answerPermission(id: number, choice: string): void;
@@ -506,6 +508,15 @@ function resetTranscript(): void {
 circe.onUpdate((update) => {
   const u = update as { sessionUpdate?: string; content?: unknown; title?: string };
   switch (u.sessionUpdate) {
+    case 'circe/context-used': {
+      const receipt = update.receipt as ContextReceipt | undefined;
+      if (!receipt || !Array.isArray(receipt.facts) || !Array.isArray(receipt.sources)) return;
+      const previous = Array.from(log.querySelectorAll<HTMLElement>('[data-context-receipt]')).find((node) => node.dataset.contextReceipt === receipt.id);
+      const panel = contextReceiptPanel(receipt, (id) => circe.openMemory(id));
+      if (previous) { panel.open = (previous as HTMLDetailsElement).open; previous.replaceWith(panel); }
+      else log.append(panel);
+      return;
+    }
     case 'usage_update': {
       const update = contextPressure(
         (u as { size?: unknown }).size,

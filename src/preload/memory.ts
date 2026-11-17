@@ -16,5 +16,9 @@ const bridge: MemoryBridge = {
   forget: (key) => invoke('memory:forget', key),
   forgetAll: () => invoke('memory:forget-all'),
   edit: (key, text) => invoke('memory:edit', key, text),
+  history: (profileId, sessionId, query) => invoke('memory:history', profileId, sessionId, query),
+  source: (profileId, id) => invoke('memory:source', profileId, id),
+  forgetTask: (profileId, sessionId) => invoke('memory:forget-task', profileId, sessionId),
+  onFocus: (cb) => { ipcRenderer.on('memory:focus', (_event, focus) => cb(focus)); },
 };
 contextBridge.exposeInMainWorld('circeMemory', bridge);

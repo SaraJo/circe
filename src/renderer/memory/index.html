@@ -11,11 +11,14 @@
   <main>
     <header><p class="eyebrow">CIRCE · PERSONAL MEMORY</p><h1>A little less repeating yourself.</h1>
       <p>Durable facts from your messages, remembered across Circe’s agents and conversations.</p></header>
+    <nav class="memory-nav" aria-label="Memory sections"><button id="show-facts" class="secondary" type="button">Personal facts</button><button id="show-history" class="secondary" type="button">Task history &amp; context used</button></nav>
     <section aria-labelledby="settings-title">
       <h2 id="settings-title">Keep it on this machine</h2>
       <p>Extraction and embeddings use local Ollama models. Saved facts stay in a local SQLite database. Relevant facts are included in messages to your configured Hermes model.</p>
       <form id="settings">
-        <label class="toggle"><input id="enabled" type="checkbox" /> Automatically save and recall personal facts</label>
+        <label class="toggle"><input id="enabled" type="checkbox" /> Enable saved memory and context</label>
+        <label class="toggle"><input id="context-enabled" type="checkbox" /> Keep task history, checkpoints, and source lookup</label>
+        <p class="muted">With memory on, task history saves new user and assistant text locally. Each agent can search its own history. Handoffs keep the same task; blank conversations start a new task.</p>
         <div class="models">
           <label>Fact extraction model<input id="extraction-model" required maxlength="121" spellcheck="false" /></label>
           <label>Embedding model<input id="embedding-model" required maxlength="121" spellcheck="false" /></label>
@@ -33,15 +36,28 @@ ollama pull embeddinggemma</pre>
     <section aria-labelledby="facts-title">
       <div class="section-heading"><h2 id="facts-title">What Circe remembers <span id="count"></span></h2><button id="refresh" class="secondary" type="button">Refresh</button></div>
       <label class="search-label">Search saved facts<input id="search" type="search" placeholder="A preference, a person, a place…" /></label>
-      <p class="muted">Review facts for accuracy. Forget removes the fact and blocks automatic saving under that topic key. It also cancels pending capture. Earlier chats and Hermes’s separate memory are unaffected.</p>
+      <p class="muted">Forget removes the fact, blocks saving under that topic key, and clears its source task history and saved tasks that were supplied that fact. Earlier Hermes chats and Hermes’s separate memory are unaffected. Editing a fact also clears those saved task interpretations.</p>
       <div id="facts"></div>
       <p id="empty" class="empty">No facts saved yet. Once local models are ready, Circe will pick up durable facts from new messages.</p>
       <p id="limited" class="muted" hidden>Showing the first 100 matches. Search to narrow the list.</p>
       <div class="forget-all"><button id="forget-all" type="button" class="danger">Forget all and turn memory off</button></div>
       <p id="location" class="location"></p>
     </section>
+    <section aria-labelledby="task-history-title">
+      <h2 id="task-history-title">Task history and context used</h2>
+      <div class="models"><label>Agent<select id="history-profile"></select></label><label>Conversation<select id="history-session"></select></label></div>
+      <form id="history-search-form" class="actions"><input id="history-search" type="search" maxlength="500" aria-label="Search original messages" placeholder="Search original messages…" /><button type="submit" class="secondary">Search sources</button><button id="history-refresh" type="button" class="secondary">Refresh history</button></form>
+      <p class="muted">Checkpoints are local model interpretations with source citations. Assistant sources contain reported actions and proposals. No older Hermes conversations are imported automatically.</p>
+      <p id="history-status" role="status"></p>
+      <div id="checkpoint"></div>
+      <h3>Original messages</h3><div id="history-sources"></div>
+      <h3>Context supplied for recent turns</h3><div id="context-receipts"></div>
+      <button id="forget-task" class="danger" type="button">Delete this task’s Circe history</button>
+    </section>
   </main>
-  <dialog id="confirm-forget"><h2>Forget all saved facts?</h2><p>This removes Circe’s saved facts and vectors and turns off automatic memory. It does not delete conversations or Hermes memory.</p><div class="actions"><button id="cancel-forget" class="secondary">Cancel</button><button id="confirm-forget-all" class="danger">Forget all</button></div></dialog>
+  <dialog id="confirm-forget"><h2>Forget all saved memory?</h2><p>This removes Circe’s facts, vectors, task history, checkpoints, and context receipts and turns off automatic memory. It does not delete Hermes conversations or Hermes memory.</p><div class="actions"><button id="cancel-forget" class="secondary">Cancel</button><button id="confirm-forget-all" class="danger">Forget all</button></div></dialog>
+  <dialog id="source-dialog"><h2 id="source-heading">Original message</h2><p id="source-meta"></p><pre id="source-text"></pre><button id="close-source" type="button">Close</button></dialog>
+  <dialog id="confirm-task-delete"><h2>Delete this task’s saved history?</h2><p>This removes Circe’s source messages, checkpoint versions, and context receipts for this conversation and its handoff continuations. Future messages can start recording again. Hermes conversations and personal facts remain.</p><div class="actions"><button id="cancel-task-delete" type="button" class="secondary">Cancel</button><button id="delete-task" type="button" class="danger">Delete task history</button></div></dialog>
   <script type="module" src="./main.ts"></script>
 </body>
 </html>

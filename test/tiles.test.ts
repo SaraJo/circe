@@ -10,7 +10,8 @@ import type { PermissionChoice, PermissionRequest } from '../src/main/acp';
 import { FakeHermes, INSTALLED_EMPTY } from './fake/hermes';
 import type { Character } from '../src/shared/types';
 import type { TileMemory } from '../src/main/memory/service';
-import { originalUserMessage } from '../src/shared/memoryPrompt';
+import { originalUserMessage, withPersonalContext } from '../src/shared/memoryPrompt';
+import type { PreparedContext } from '../src/shared/context';
 
 const PALETTE = { bg: '#1e2952', border: '#c7d2fe', accent: '#a5b4fc' };
 
@@ -1666,6 +1667,44 @@ describe('permission requests', () => {
 });
 
 describe('personal memory in tile conversations', () => {
+  const prepared = (sessionId = 'session-1'): PreparedContext => ({
+    text: 'A checkpoint with evidence.', generation: 0, userSourceId: 'source-user',
+    receipt: { profileId: 'default', sessionId, id: '11111111-1111-4111-8111-111111111111', createdAt: 'now', facts: [], checkpoint: null, sources: [], outcome: 'prepared' },
+  });
+
+  it('captures original user and assistant text separately and emits the actual supplied receipt', async () => {
+    const memory: TileMemory = { recall: vi.fn(async () => ''), capture: vi.fn(), prepare: vi.fn(async () => prepared()), startTurn: vi.fn(async () => {}), completeTurn: vi.fn() };
+    const h = harness(null, memory); await launched(h);
+    const turn = h.registry.prompt('default', 'Plan a garden.'); await flushMicrotasks();
+    h.clients[0]!.onUpdate('session-1', { sessionUpdate: 'agent_message_chunk', content: { text: 'I propose basil.' } });
+    h.clients[0]!.finishTurn(); await turn;
+    expect(memory.completeTurn).toHaveBeenCalledWith('Plan a garden.', 'I propose basil.', prepared());
+    expect(memory.capture).not.toHaveBeenCalled();
+    expect(h.windows[0]!.updates().find((u) => u.sessionUpdate === 'circe/context-used')?.receipt).toEqual(prepared().receipt);
+  });
+
+  it('does not misattribute interrupted assistant output to a follow-up', async () => {
+    const memory: TileMemory = { recall: vi.fn(async () => ''), capture: vi.fn(), prepare: vi.fn(async () => prepared()), completeTurn: vi.fn(), failedTurn: vi.fn(async () => {}) };
+    const h = harness(null, memory); await launched(h);
+    const first = h.registry.prompt('default', 'Plan a garden.'); await flushMicrotasks();
+    h.clients[0]!.onUpdate('session-1', { sessionUpdate: 'agent_message_chunk', content: { text: 'Old partial output.' } });
+    const second = h.registry.prompt('default', 'Change the budget.'); await flushMicrotasks();
+    h.clients[0]!.onUpdate('session-1', { sessionUpdate: 'agent_message_chunk', content: { text: 'New answer.' } });
+    h.clients[0]!.finishTurn(); h.clients[0]!.finishTurn(); await Promise.all([first, second]);
+    expect(memory.completeTurn).toHaveBeenCalledTimes(1);
+    expect(memory.completeTurn).toHaveBeenCalledWith('Change the budget.', 'New answer.', prepared());
+    expect(memory.failedTurn).toHaveBeenCalledTimes(1);
+  });
+
+  it('restores an archived context receipt when Hermes replays the framed user message', async () => {
+    const memory: TileMemory = { recall: vi.fn(async () => ''), capture: vi.fn(), receipt: vi.fn(() => prepared().receipt) };
+    const h = harness(null, memory); await launched(h);
+    const prompt = withPersonalContext('My question', `Circe context receipt: ${prepared().receipt.id}\nSaved facts`);
+    h.clients[0]!.onUpdate('session-1', { sessionUpdate: 'user_message_chunk', content: { text: prompt } });
+    expect(memory.receipt).toHaveBeenCalledWith('default', prepared().receipt.id);
+    expect(h.windows[0]!.updates().at(-1)?.receipt).toEqual(prepared().receipt);
+  });
+
   it('keeps attachment paths out of automatic capture and the recall query', async () => {
     const memory: TileMemory = { recall: vi.fn(async () => ''), capture: vi.fn() };
     const h = harness(null, memory); await launched(h);

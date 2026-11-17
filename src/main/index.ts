@@ -15,6 +15,7 @@ import { FactStore } from './memory/store';
 import { OllamaMemoryModel } from './memory/ollama';
 import { PersonalMemory } from './memory/service';
 import { MemoryWindow } from './memory/window';
+import { ContextServer } from './memory/contextServer';
 import { RealHermes } from './hermes/real';
 import { Wizard } from './wizard';
 import { adaptTileWindow, createTileWindow, createWizardWindow } from './windows';
@@ -72,6 +73,7 @@ let wizardWin: BrowserWindow | null = null;
 let hermes: RealHermes;
 let memory: PersonalMemory | undefined;
 let memoryWindow: MemoryWindow | undefined;
+let contextServer: ContextServer | undefined;
 let memoryStartupError: string | null = null;
 let wizard: Wizard | null = null;
 let tiles: TileRegistry;
@@ -209,7 +211,7 @@ function createRegistry(): TileRegistry {
       adaptTileWindow(
         createTileWindow(character, profileId, index, profileId === orchestratorProfileId),
       ),
-    createClient: (opts) => new AcpClient(opts),
+    createClient: (opts) => new AcpClient({ ...opts, mcpServers: contextServer?.config(opts.profileId) }),
   });
 }
 
@@ -390,8 +392,12 @@ function registerIpc(): void {
     if (profileId === null) return;
     void tiles.prompt(profileId, text);
   });
-  ipcMain.on('tile:open-memory', (e) => {
-    if (tiles.profileForSender(e.sender) !== null) memoryWindow?.open();
+  ipcMain.on('tile:open-memory', (e, sourceId: unknown) => {
+    const profileId = tiles.profileForSender(e.sender);
+    if (profileId === null) return;
+    const source = typeof sourceId === 'string' && sourceId.length <= 100 ? memory?.source(profileId, sourceId) : null;
+    const sessionId = tiles.activeSessionId(profileId);
+    memoryWindow?.open(source ? { profileId, sessionId: source.sessionId, sourceId: source.id } : sessionId ? { profileId, sessionId } : undefined);
   });
   ipcMain.on('tile:close', (e) => {
     const profileId = tiles.profileForSender(e.sender);
@@ -511,6 +517,8 @@ async function doBoot(): Promise<void> {
     try {
       memory = new PersonalMemory(await FactStore.open(join(hermes.paths().home, 'circe', 'memory.sqlite')), new OllamaMemoryModel());
       memoryWindow = new MemoryWindow(memory);
+      try { contextServer = new ContextServer(memory); await contextServer.start(); }
+      catch (e) { console.warn('Agent context tools are unavailable; local recall and review remain available.', e); contextServer = undefined; }
       memoryStartupError = null;
     } catch (e) {
       memoryStartupError = e instanceof Error ? e.message : String(e);
@@ -661,6 +669,7 @@ app.on('window-all-closed', () => {
 // Stops `hermes.watchHome`'s filesystem subscription so it doesn't outlive
 // the app it was watching for.
 app.on('will-quit', () => {
+  void contextServer?.close();
   memory?.stop();
   fleetWatch?.();
   fleetWatch = null;

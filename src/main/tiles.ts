@@ -7,7 +7,10 @@ import type { HermesRuntime } from './hermes/runtime';
 import { restoreOrCreateSession, TileSession, type SessionClient } from './restore';
 import { readTileState, stateFor, withProfileTabs, writeTileState } from './tileState';
 import type { TileMemory } from './memory/service';
-import { withPersonalContext } from '../shared/memoryPrompt';
+import { withPersonalContext, contextReceiptId } from '../shared/memoryPrompt';
+import type { PreparedContext } from '../shared/context';
+
+interface ContextTurn { chunks: string[]; characters: number; prepared?: PreparedContext }
 
 /**
  * The slice of `BrowserWindow` a tile actually needs, narrowed to an interface
@@ -111,6 +114,7 @@ interface Tile {
   startingTab?: boolean;
   turnsInFlight: number;
   handoff: { sessionId: string; chunks: string[] } | null;
+  contextTurns: Map<string, ContextTurn>;
 }
 
 export class TileRegistry {
@@ -140,6 +144,8 @@ export class TileRegistry {
   has(profileId: string): boolean {
     return this.tiles.has(profileId);
   }
+
+  activeSessionId(profileId: string): string | null { return this.tiles.get(profileId)?.session.activeSessionId ?? null; }
 
   /**
    * Which profile an IPC event belongs to, or null.
@@ -199,6 +205,11 @@ export class TileRegistry {
       profileId,
       onUpdate: (sessionId, update) => {
         if (!isCurrent()) return; // this launch has been superseded
+        const capture = tile?.contextTurns.get(sessionId);
+        if (capture && update.sessionUpdate === 'agent_message_chunk' && capture.characters < 120_001) {
+          const piece = updateText(update.content).slice(0, 120_001 - capture.characters);
+          capture.chunks.push(piece); capture.characters += piece.length;
+        }
         // One client can serve several sessions; only the one on screen is drawn.
         if (sessionId !== session.activeSessionId) return;
         if (
@@ -209,6 +220,11 @@ export class TileRegistry {
           if (piece) tile.handoff.chunks.push(piece);
         }
         this.emit(win, update);
+        if (update.sessionUpdate === 'user_message_chunk') {
+          const id = contextReceiptId(updateText(update.content));
+          const receipt = id ? this.deps.memory?.receipt?.(profileId, id) : null;
+          if (receipt) this.emit(win, { sessionUpdate: 'circe/context-used', receipt });
+        }
       },
       onExit: (code) => {
         if (!isCurrent()) return; // the exit belongs to an already-replaced client
@@ -243,6 +259,7 @@ export class TileRegistry {
       tabBusy: true,
       turnsInFlight: 0,
       handoff: null,
+      contextTurns: new Map(),
     };
     tile = newTile;
     this.tiles.set(profileId, newTile);
@@ -394,7 +411,7 @@ export class TileRegistry {
       return;
     }
 
-    await this.newTab(profileId);
+    await this.newTab(profileId, sourceSessionId);
     if (this.tiles.get(profileId) !== tile) return;
     const targetSessionId = tile.session.activeSessionId;
     if (!targetSessionId || targetSessionId === sourceSessionId) {
@@ -424,7 +441,7 @@ export class TileRegistry {
   }
 
   /** Starts a blank Hermes conversation and adds it to this tile's tab strip. */
-  async newTab(profileId: string): Promise<void> {
+  async newTab(profileId: string, continueFrom?: string): Promise<void> {
     const tile = this.tiles.get(profileId);
     if (!tile || !this.canCreateTab(tile)) return;
     const previousId = tile.session.activeSessionId;
@@ -437,6 +454,11 @@ export class TileRegistry {
     try {
       const sessionId = await tile.client.newSession();
       if (this.tiles.get(profileId) !== tile) return;
+      if (continueFrom) {
+        try { await this.deps.memory?.linkTask?.(profileId, continueFrom, sessionId); }
+        catch { this.say(tile, 'The handoff is ready, but its saved task history could not be linked.'); }
+        if (this.tiles.get(profileId) !== tile) return;
+      }
       tile.startingTab = false;
       tile.tabs.push(sessionId);
       tile.activeIndex = tile.tabs.length - 1;
@@ -899,6 +921,7 @@ export class TileRegistry {
    * time, and a rejection there is not a launch failure.
    */
   private send(tile: Tile, sessionId: string, message: TilePrompt, nameTab = true): Promise<void> {
+    const contextTurn: ContextTurn = { chunks: [], characters: 0 };
     const text = promptText(message);
     const userText = typeof message === 'string' ? message : message.text;
     const images = typeof message === 'string' ? undefined : message.images;
@@ -923,13 +946,21 @@ export class TileRegistry {
     }
     this.emitTabs(tile);
     const completion = nameTab && this.deps.memory
-      ? this.promptWithMemory(tile, sessionId, text, images, userText)
+      ? this.promptWithMemory(tile, sessionId, text, images, userText, contextTurn)
       : tile.client.prompt(sessionId, text, images);
     return completion.then(
       () => {
         // Only original user text, never injected recall, replay, or generated handoffs.
         if (nameTab) {
-          try { this.deps.memory?.capture(userText, { profileId: tile.profileId, sessionId }); }
+          try {
+            if (contextTurn.prepared && this.deps.memory?.completeTurn) {
+              if (tile.contextTurns.get(sessionId) === contextTurn) {
+                this.deps.memory.completeTurn(userText, contextTurn.chunks.join(''), contextTurn.prepared);
+                if (tile.session.activeSessionId === sessionId) this.emit(tile.win, { sessionUpdate: 'circe/context-used', receipt: { ...(this.deps.memory.receipt?.(tile.profileId, contextTurn.prepared.receipt.id) ?? contextTurn.prepared.receipt), outcome: 'completed' } });
+              }
+              else void this.deps.memory.failedTurn?.(contextTurn.prepared).catch(() => {});
+            } else this.deps.memory?.capture(userText, { profileId: tile.profileId, sessionId });
+          }
           catch { /* A completed conversation remains successful if memory is unavailable. */ }
         }
         if (tile.session.activeSessionId === sessionId) {
@@ -937,6 +968,7 @@ export class TileRegistry {
         }
       },
       (err: unknown) => {
+        if (contextTurn.prepared) void this.deps.memory?.failedTurn?.(contextTurn.prepared).catch(() => {});
         if (tile.session.activeSessionId === sessionId) {
           this.emit(tile.win, { sessionUpdate: 'circe/turn-end' });
         }
@@ -949,6 +981,7 @@ export class TileRegistry {
         this.say(tile, `${context}Your message wasn't sent. (${message})`);
       },
     ).finally(() => {
+      if (tile.contextTurns.get(sessionId) === contextTurn) tile.contextTurns.delete(sessionId);
       if (tile.approvalTasks.get(sessionId) === task) {
         tile.approvalTasks.delete(sessionId);
         for (const answer of tile.pendingPermissions.values()) {
@@ -960,7 +993,7 @@ export class TileRegistry {
     });
   }
 
-  private promptWithMemory(tile: Tile, sessionId: string, text: string, images?: ImageAttachment[], userText = text): Promise<void> {
+  private promptWithMemory(tile: Tile, sessionId: string, text: string, images?: ImageAttachment[], userText = text, turn?: ContextTurn): Promise<void> {
     let preparations = this.memoryPreparations.get(tile);
     if (!preparations) { preparations = new Map(); this.memoryPreparations.set(tile, preparations); }
     const previous = preparations.get(sessionId) ?? Promise.resolve();
@@ -968,8 +1001,22 @@ export class TileRegistry {
     return new Promise<void>((resolve, reject) => {
       const preparation = previous.catch(() => {}).then(async () => {
         let context = '';
-        try { context = await this.deps.memory!.recall(userText); } catch { /* Memory never blocks chat. */ }
+        try {
+          if (this.deps.memory!.prepare && turn) {
+            turn.prepared = await this.deps.memory!.prepare(userText, { profileId: tile.profileId, sessionId });
+            context = turn.prepared.text;
+            await this.deps.memory!.startTurn?.(userText, turn.prepared);
+          } else context = await this.deps.memory!.recall(userText);
+        } catch { /* Memory never blocks chat. */ }
+        if (turn?.prepared && this.deps.memory!.isCurrent?.(turn.prepared) === false) {
+          context = '';
+          turn.prepared.receipt = { ...turn.prepared.receipt, facts: [], checkpoint: null, sources: [] };
+        }
         if (this.tiles.get(tile.profileId) !== tile) throw new Error('This tile was closed.');
+        if (turn?.prepared) {
+          tile.contextTurns.set(sessionId, turn);
+          if (tile.session.activeSessionId === sessionId) this.emit(tile.win, { sessionUpdate: 'circe/context-used', receipt: turn.prepared.receipt });
+        }
         const prompt = withPersonalContext(text, context);
         void tile.client.prompt(sessionId, prompt, images).then(resolve, reject);
       });
