@@ -6,6 +6,10 @@ builds from [GitHub Releases](https://github.com/SaraJo/circe/releases).
 
 ## Unreleased
 
+### Fixed
+
+- Attachment Remove buttons respond to mouse clicks instead of dragging the tile.
+
 ### Added
 
 - Structured task checkpoints with source citations, original-message search,
