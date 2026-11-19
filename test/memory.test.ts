@@ -219,13 +219,16 @@ describe('local Ollama boundary', () => {
 
   it('checks real embedding and extraction responses rather than model presence alone', async () => {
     const content = JSON.stringify({ facts: [{ key: 'user.color.preference', text: 'The user prefers blue.', evidence: 'My favorite color is blue.' }] });
-    const request = http([{}, {}, { embeddings: [[1, 0]] }, {}, { message: { content } }]);
+    const biography = JSON.stringify({ facts: [{ key: 'user.marriage.date', text: 'The user married Alex on June 14, 2020.', evidence: 'Alex and I got married on June 14, 2020.' }] });
+    const request = http([{}, {}, { embeddings: [[1, 0]] }, {}, { message: { content } }, {}, { message: { content: biography } }]);
     await expect(new OllamaMemoryModel(request).check(DEFAULT_MEMORY_SETTINGS)).resolves.toContain('ready');
     expect(request.mock.calls.map(([url]) => new URL(url).pathname)).toEqual([
-      '/api/show', '/api/show', '/api/embed', '/api/show', '/api/chat',
+      '/api/show', '/api/show', '/api/embed', '/api/show', '/api/chat', '/api/show', '/api/chat',
     ]);
     const empty = new OllamaMemoryModel(http([{}, {}, { embeddings: [[1, 0]] }, {}, { message: { content: '{"facts":[]}' } }]));
     await expect(empty.check(DEFAULT_MEMORY_SETTINGS)).rejects.toThrow('did not capture the sample preference');
+    const preferenceOnly = new OllamaMemoryModel(http([{}, {}, { embeddings: [[1, 0]] }, {}, { message: { content } }, {}, { message: { content: '{"facts":[]}' } }]));
+    await expect(preferenceOnly.check(DEFAULT_MEMORY_SETTINGS)).rejects.toThrow('missed a personal fact inside a request');
   });
 
   it('identifies the missing model and supplies the exact download command', async () => {

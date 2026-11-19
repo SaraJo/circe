@@ -16,8 +16,9 @@ ollama pull embeddinggemma
 
 Open **Memory** in a tile, or **Circe → Memory…** (`Cmd/Ctrl+Shift+M`). Use
 **Check local models** to verify both extraction and embedding.
-The check extracts a synthetic preference to verify the response format; that
-sample is never saved as a personal fact. Missing models are identified by name
+The check extracts a synthetic preference and a biographical fact embedded in a
+request to verify extraction beyond simple preference statements. These samples
+are never saved as personal facts. Missing models are identified by name
 with the download command needed to install them. Other installed
 local model names can be selected in this window. Save settings before checking
 changed model names. Cloud model names and aliases reporting a remote model or
@@ -203,6 +204,12 @@ recapture, paused settings, edits, model changes, failed writes, grounding,
 cloud alias refusal, and invalid vectors. The tile tests verify prompt ordering,
 original-text capture, and normal delivery when recall fails. Framing tests
 cover history display. Tests use temporary databases and synthetic facts.
+
+Run `CIRCE_LIVE_MEMORY_TEST=1 npm test -- test/memory.live.test.ts` with the default
+local Ollama models installed to check biographical facts, classes, facts within
+requests, negative examples, and the completed-turn capture path through SQLite,
+corrections, reopening, and semantic recall. It uses fictional facts in temporary
+databases and never imports or modifies existing personal memories.
 
 An Electron smoke check verifies SQLite loading, the built preload and renderer,
 review edits and deletion, and refusal of IPC from a different window. A live

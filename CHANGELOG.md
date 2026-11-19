@@ -8,6 +8,9 @@ builds from [GitHub Releases](https://github.com/SaraJo/circe/releases).
 
 ### Fixed
 
+- Personal-fact extraction captures biographical facts and facts within requests
+  instead of silently treating them as ineligible. Local-model checks now probe
+  a biographical fact inside a request as well as a simple preference.
 - Attachment Remove buttons respond to mouse clicks instead of dragging the tile.
 
 ### Added
