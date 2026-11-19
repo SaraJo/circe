@@ -29,6 +29,33 @@ Automatic capture and recall default to on. If local models are unavailable,
 normal chat continues; the Memory window reports failures. No old conversations
 are imported or replayed into capture when the models become available.
 
+## Telegram fact capture
+
+Enable **Include new Telegram direct messages while Circe is running** in
+Memory and save settings. This is off by default. It reads the local Hermes
+gateway history using the Python SQLite library already available with Hermes;
+no additional bot, login, or Telegram credentials are needed. The Memory window
+shows the last check and any reader or extraction error.
+
+Capture starts at the time it is enabled. Earlier Telegram history stays out
+of the store. Circe checks roughly every 15 seconds while open, across Hermes
+profiles, and catches up on messages received during app downtime after the
+next launch. Disabling and re-enabling capture starts a new time boundary;
+messages received while capture was disabled are not imported later.
+
+Only original user messages in Telegram direct chats are eligible. Group chats,
+assistant messages, compressed summaries, other channels, and scheduled jobs
+are excluded. Personal facts use the same extraction, embedding, keyed updates,
+and forget controls as window messages, and show **Telegram** in their source
+details. Full Telegram conversations are not copied into Circe task history.
+Telegram prompt construction remains owned by Hermes.
+
+Each profile's cursor is saved atomically with its facts, including messages
+that contain no personal facts. Model and disk failures leave the message for
+retry. Pages contain at most 20 messages per profile per sweep. Empty messages
+and messages longer than 12,000 characters are skipped. Turning memory off
+also pauses Telegram capture. Forgetting cancels pending extraction.
+
 Storage, fact extraction, and semantic search run locally. Retrieved facts are
 included in prompts sent to the user's configured Hermes conversation model,
 which may be a hosted model. Hermes may retain that context in conversation
@@ -217,3 +244,9 @@ check with the default Ollama models verifies grounded extraction, persisted
 SQLite facts, paraphrased recall after reopening the database, keyed corrections,
 and forgetting. These checks use synthetic facts in temporary databases; no
 existing personal memories or profile configurations are changed.
+
+`test/telegramMemory.test.ts` and `test/telegramReader.test.ts` cover durable
+cursors, retry and deletion races, time boundaries, profile isolation, paging,
+and reading committed SQLite WAL data without modifying gateway history. The
+live suite also checks Telegram ingestion through the reader, local models,
+fact storage, and restart deduplication using a temporary synthetic history.

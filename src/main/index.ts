@@ -16,6 +16,8 @@ import { OllamaMemoryModel } from './memory/ollama';
 import { PersonalMemory } from './memory/service';
 import { MemoryWindow } from './memory/window';
 import { ContextServer } from './memory/contextServer';
+import { TelegramCapture } from './memory/telegram';
+import { LocalTelegramReader } from './hermes/telegram';
 import { RealHermes } from './hermes/real';
 import { Wizard } from './wizard';
 import { adaptTileWindow, createTileWindow, createWizardWindow } from './windows';
@@ -74,6 +76,7 @@ let hermes: RealHermes;
 let memory: PersonalMemory | undefined;
 let memoryWindow: MemoryWindow | undefined;
 let contextServer: ContextServer | undefined;
+let telegramCapture: TelegramCapture | undefined;
 let memoryStartupError: string | null = null;
 let wizard: Wizard | null = null;
 let tiles: TileRegistry;
@@ -515,7 +518,11 @@ async function doBoot(): Promise<void> {
   hermes = new RealHermes();
   if (!memory) {
     try {
-      memory = new PersonalMemory(await FactStore.open(join(hermes.paths().home, 'circe', 'memory.sqlite')), new OllamaMemoryModel());
+      const store = await FactStore.open(join(hermes.paths().home, 'circe', 'memory.sqlite'));
+      memory = new PersonalMemory(store, new OllamaMemoryModel());
+      telegramCapture = new TelegramCapture(store, memory, new LocalTelegramReader(hermes.paths()), async () =>
+        (await hermes.listProfiles()).map((profile) => profile.id));
+      telegramCapture.start();
       memoryWindow = new MemoryWindow(memory);
       try { contextServer = new ContextServer(memory); await contextServer.start(); }
       catch (e) { console.warn('Agent context tools are unavailable; local recall and review remain available.', e); contextServer = undefined; }
@@ -670,6 +677,7 @@ app.on('window-all-closed', () => {
 // the app it was watching for.
 app.on('will-quit', () => {
   void contextServer?.close();
+  telegramCapture?.stop();
   memory?.stop();
   fleetWatch?.();
   fleetWatch = null;

@@ -17,6 +17,9 @@
       <p>Extraction and embeddings use local Ollama models. Saved facts stay in a local SQLite database. Relevant facts are included in messages to your configured Hermes model.</p>
       <form id="settings">
         <label class="toggle"><input id="enabled" type="checkbox" /> Enable saved memory and context</label>
+        <label class="toggle"><input id="telegram-enabled" type="checkbox" /> Include new Telegram direct messages while Circe is running</label>
+        <p class="muted">Uses local Hermes history. Older messages are not imported when enabled. Groups, assistant replies, and scheduled jobs are excluded.</p>
+        <p id="telegram-status" class="muted" role="status"></p>
         <label class="toggle"><input id="context-enabled" type="checkbox" /> Keep task history, checkpoints, and source lookup</label>
         <p class="muted">With memory on, task history saves new user and assistant text locally. Each agent can search its own history. Handoffs keep the same task; blank conversations start a new task.</p>
         <div class="models">

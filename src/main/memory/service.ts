@@ -25,8 +25,8 @@ function cosine(a: number[], b: number[]): number {
 }
 
 function publicFact(fact: StoredFact): PersonalFact {
-  const { key, text, evidence, profileId, sessionId, createdAt, updatedAt } = fact;
-  return { key, text, evidence, profileId, sessionId, createdAt, updatedAt };
+  const { key, text, evidence, profileId, sessionId, createdAt, updatedAt, channel } = fact;
+  return { key, text, evidence, profileId, sessionId, createdAt, updatedAt, ...(channel ? { channel } : {}) };
 }
 
 export class PersonalMemory implements TileMemory {
@@ -35,6 +35,7 @@ export class PersonalMemory implements TileMemory {
   private pending = 0;
   private error: string | null = null;
   private stopped = false;
+  telegram = { checkedAt: null as string | null, error: null as string | null };
 
   constructor(private store: FactStore, private model: LocalMemoryModel) { this.tasks = new TaskMemory(store, model); }
 
@@ -42,6 +43,7 @@ export class PersonalMemory implements TileMemory {
     return {
       settings: this.store.settings(), facts: this.store.facts().map(publicFact),
       pending: this.pending + this.tasks.pending, error: this.error ?? this.tasks.error, location: this.store.path,
+      telegram: this.telegram,
     };
   }
 
@@ -55,7 +57,8 @@ export class PersonalMemory implements TileMemory {
       throw new Error('Choose valid local Ollama model names. Cloud models are not supported.');
     }
     if (s.contextEnabled !== undefined && typeof s.contextEnabled !== 'boolean') throw new Error('Invalid task history setting.');
-    const settings: MemorySettings = { enabled: s.enabled, contextEnabled: s.contextEnabled ?? this.store.settings().contextEnabled, extractionModel: s.extractionModel, embeddingModel: s.embeddingModel };
+    if (s.telegramEnabled !== undefined && typeof s.telegramEnabled !== 'boolean') throw new Error('Invalid Telegram memory setting.');
+    const settings: MemorySettings = { enabled: s.enabled, contextEnabled: s.contextEnabled ?? this.store.settings().contextEnabled, telegramEnabled: s.telegramEnabled ?? this.store.settings().telegramEnabled, extractionModel: s.extractionModel, embeddingModel: s.embeddingModel };
     const revision = this.store.revision();
     let reindexed: StoredFact[] | undefined;
     if (settings.embeddingModel !== this.store.settings().embeddingModel) {
@@ -78,14 +81,23 @@ export class PersonalMemory implements TileMemory {
   }
 
   capture(text: string, source: MemorySource): void {
+    void this.enqueueCapture(text, source);
+  }
+
+  captureTelegram(text: string, source: MemorySource, id: number): Promise<boolean> {
+    return this.enqueueCapture(text, source, { profileId: source.profileId, id });
+  }
+
+  private enqueueCapture(text: string, source: MemorySource, telegram?: { profileId: string; id: number }): Promise<boolean> {
     source = { profileId: source.profileId, sessionId: source.sessionId };
-    if (this.stopped || !this.store.settings().enabled || !text.trim() || text.length > 12_000) return;
-    // Bound background work. Never persist raw transcripts or replay missed messages.
-    if (this.pending >= 20) { this.error = 'Memory capture is busy. A message was skipped.'; return; }
+    if (this.stopped || !this.store.settings().enabled || !text.trim() || text.length > 12_000) return Promise.resolve(false);
+    // Bound background work. Window capture is best effort; Telegram retains
+    // its cursor on failure so the importer can retry without losing a message.
+    if (this.pending >= 20) { this.error = 'Memory capture is busy. A message was skipped.'; return Promise.resolve(false); }
     const generation = this.store.generation();
     this.pending++;
-    this.queue = this.queue.then(async () => {
-      if (this.stopped || this.store.generation() !== generation || !this.store.settings().enabled) return;
+    const work = this.queue.then(async () => {
+      if (this.stopped || this.store.generation() !== generation || !this.store.settings().enabled) return false;
       const settings = this.store.settings();
       const existing = this.store.facts();
       if (existing.length >= 2000) throw new Error('Memory has reached 2,000 facts. Review and forget unused facts to resume capture.');
@@ -98,18 +110,21 @@ export class PersonalMemory implements TileMemory {
         known = [...new Map([...recent, ...relevant].map((f) => [f.key, f])).values()];
       }
       const extracted = await this.model.extract(text, known, settings.extractionModel);
-      if (this.stopped || this.store.generation() !== generation) return;
+      if (this.stopped || this.store.generation() !== generation) return false;
       this.error = null;
-      if (!extracted.length) return;
+      if (!extracted.length) return telegram ? this.store.put([], generation, telegram) : true;
       const vectors = await this.model.embed(extracted.map((f) => f.text), settings.embeddingModel, 30_000);
       const now = new Date().toISOString();
       const facts = extracted.map((f, i): StoredFact => ({
-        ...f, ...source, vector: vectors[i]!, model: settings.embeddingModel,
+        ...f, ...source, channel: telegram ? 'telegram' : undefined, vector: vectors[i]!, model: settings.embeddingModel,
         createdAt: existing.find((old) => old.key === f.key)?.createdAt ?? now, updatedAt: now,
       }));
-      if (!this.stopped) await this.store.put(facts, generation);
+      const saved = !this.stopped && await this.store.put(facts, generation, telegram);
       this.error = null;
-    }).catch((e) => this.report(e)).finally(() => { this.pending--; });
+      return saved;
+    }).catch((e) => { this.report(e); return false; }).finally(() => { this.pending--; });
+    this.queue = work.then(() => {});
+    return work;
   }
 
   private async matchingFacts(text: string): Promise<import('../../shared/memory').PersonalFact[]> {

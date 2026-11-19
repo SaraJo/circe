@@ -52,6 +52,14 @@ export class FactStore {
       .map((row) => JSON.parse(String(row[0])) as StoredFact);
   }
 
+  telegramSince(): number {
+    return Number(this.db.exec("SELECT value FROM metadata WHERE key = 'telegram_since'")[0]?.values[0]?.[0] ?? 0);
+  }
+
+  telegramCursor(profileId: string): number {
+    return Number(this.db.exec('SELECT value FROM metadata WHERE key = ?', [`telegram_cursor:${profileId}`])[0]?.values[0]?.[0] ?? 0);
+  }
+
   task(scope: ContextScope): string {
     return String(this.db.exec('SELECT task FROM context_sessions WHERE profile = ? AND session = ?', [scope.profileId, scope.sessionId])[0]?.values[0]?.[0] ?? scope.sessionId);
   }
@@ -169,19 +177,20 @@ export class FactStore {
     db.run('DELETE FROM context_receipts');
   }
 
-  private mutate(change: (db: Database) => void): Promise<void> {
+  private mutate<T>(change: (db: Database) => T): Promise<T> {
     const work = this.tail.then(async () => {
       const next = new this.sql.Database(this.db.export());
       // SQLite normally leaves deleted text in free pages of the exported file.
       next.run('PRAGMA secure_delete = ON');
       const temp = `${this.path}.${randomUUID()}.tmp`;
       try {
-        change(next);
+        const result = change(next);
         await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
         await writeFile(temp, next.export(), { mode: 0o600 });
         await rename(temp, this.path);
         this.db.close();
         this.db = next;
+        return result;
       } catch (e) {
         next.close();
         await rm(temp, { force: true }).catch(() => {});
@@ -200,6 +209,11 @@ export class FactStore {
   configure(settings: MemorySettings, reindexed?: StoredFact[], expectedRevision?: number): Promise<void> {
     return this.mutate((db) => {
       if (expectedRevision !== undefined && this.revision() !== expectedRevision) throw new Error('Memory changed. Refresh and try again.');
+      const previous = this.settings();
+      if (settings.enabled !== previous.enabled || !!settings.telegramEnabled !== !!previous.telegramEnabled) {
+        db.run("DELETE FROM metadata WHERE key LIKE 'telegram_cursor:%'");
+        db.run("INSERT OR REPLACE INTO metadata VALUES ('telegram_since', ?)", [String(Date.now() / 1000)]);
+      }
       for (const fact of reindexed ?? []) db.run('UPDATE facts SET data = ? WHERE key = ?', [JSON.stringify(fact), fact.key]);
       db.run("INSERT OR REPLACE INTO metadata VALUES ('settings', ?)", [JSON.stringify(settings)]);
       this.bump(db);
@@ -207,15 +221,17 @@ export class FactStore {
   }
 
   /** A review action invalidates every in-flight capture, even across profiles. */
-  put(facts: StoredFact[], expectedGeneration: number): Promise<void> {
+  put(facts: StoredFact[], expectedGeneration: number, telegram?: { profileId: string; id: number }): Promise<boolean> {
     return this.mutate((db) => {
-      if (this.generation() !== expectedGeneration || !this.settings().enabled) return;
+      if (this.generation() !== expectedGeneration || !this.settings().enabled || (telegram && !this.settings().telegramEnabled)) return false;
       for (const fact of facts) {
         const blocked = db.exec('SELECT 1 FROM blocked WHERE hash = ?', [digest(fact.key)]);
         if (blocked.length) continue;
         db.run('INSERT OR REPLACE INTO facts VALUES (?, ?)', [fact.key, JSON.stringify(fact)]);
       }
+      if (telegram) db.run('INSERT OR REPLACE INTO metadata VALUES (?, ?)', [`telegram_cursor:${telegram.profileId}`, String(Math.max(this.telegramCursor(telegram.profileId), telegram.id))]);
       this.bump(db, false);
+      return true;
     });
   }
 
@@ -236,6 +252,7 @@ export class FactStore {
       for (const fact of this.facts()) db.run('INSERT OR IGNORE INTO blocked VALUES (?)', [digest(fact.key)]);
       db.run('DELETE FROM facts');
       db.run('DELETE FROM context_sources; DELETE FROM context_checkpoints; DELETE FROM context_receipts; DELETE FROM context_sessions;');
+      db.run("DELETE FROM metadata WHERE key LIKE 'telegram_cursor:%' OR key = 'telegram_since'");
       // Stop future capture too; otherwise a clean slate would refill immediately.
       db.run("INSERT OR REPLACE INTO metadata VALUES ('settings', ?)", [JSON.stringify({ ...this.settings(), enabled: false })]);
       this.bump(db);

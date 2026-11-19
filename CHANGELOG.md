@@ -15,6 +15,9 @@ builds from [GitHub Releases](https://github.com/SaraJo/circe/releases).
 
 ### Added
 
+- Optional personal-fact capture from new Telegram direct messages in local
+  Hermes history, with restart catch-up, source labels, and capture status in
+  Memory. Existing history, groups, bot replies, and scheduled jobs are excluded.
 - Structured task checkpoints with source citations, original-message search,
   and a **Context used** inspector. Task history follows handoffs, remains scoped
   to each agent, and can be disabled or deleted from Memory. Supported Hermes

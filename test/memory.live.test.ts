@@ -6,6 +6,10 @@ import { FactStore } from '../src/main/memory/store';
 import { PersonalMemory } from '../src/main/memory/service';
 import { OllamaMemoryModel, type LocalMemoryModel } from '../src/main/memory/ollama';
 import { DEFAULT_MEMORY_SETTINGS } from '../src/shared/memory';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { LocalTelegramReader } from '../src/main/hermes/telegram';
+import { TelegramCapture } from '../src/main/memory/telegram';
 
 // Opt in: CIRCE_LIVE_MEMORY_TEST=1 npm test -- test/memory.live.test.ts
 // Uses installed local Ollama models and disposable databases, never user data.
@@ -62,5 +66,37 @@ describe.skipIf(process.env.CIRCE_LIVE_MEMORY_TEST !== '1')('live personal memor
     expect(reopened.view().facts).toHaveLength(2);
     expect(await reopened.recall('When did I get married?')).toContain('2020');
     expect(db.sources(scope.profileId, scope.sessionId).filter((source) => source.role === 'user')).toHaveLength(2);
+  }, 180_000);
+
+  it('captures Telegram facts through the SQLite reader and real local model exactly once', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'circe-live-telegram-')); dirs.push(home);
+    const store = await FactStore.open(join(home, 'memory.sqlite'));
+    await store.configure({ ...DEFAULT_MEMORY_SETTINGS, telegramEnabled: true });
+    await promisify(execFile)(process.platform === 'win32' ? 'python' : 'python3', ['-I', '-c', `
+import json, pathlib, sqlite3, sys, time
+root = pathlib.Path(sys.argv[1]); (root / 'sessions').mkdir()
+(root / 'sessions' / 'sessions.json').write_text(json.dumps({'dm':{'platform':'telegram','chat_type':'dm','session_id':'dm'}}))
+db = sqlite3.connect(root / 'state.db')
+db.executescript('CREATE TABLE sessions (id TEXT PRIMARY KEY, source TEXT); CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT, timestamp REAL);')
+db.execute("INSERT INTO sessions VALUES ('dm','telegram')")
+db.executemany('INSERT INTO messages VALUES (?, ?, ?, ?, ?)', [
+ (1,'dm','user','Alex and I got married on June 14, 2020',time.time()),
+ (2,'dm','user','I joined a class with Robin called Drawing for Beginners.',time.time()),
+ (3,'dm','assistant','I live on Mars.',time.time())])
+db.commit()
+`, home]);
+    const memory = new PersonalMemory(store, local);
+    const reader = new LocalTelegramReader({ home, bin: join(home, 'bin', 'hermes') });
+    const importer = new TelegramCapture(store, memory, reader, async () => ['default']);
+    await importer.sweep();
+    expect(memory.telegram.error).toBeNull();
+    expect(store.facts()).toHaveLength(2);
+    expect(store.facts().every((fact) => fact.channel === 'telegram' && fact.vector.length > 0)).toBe(true);
+    const snapshot = store.facts();
+    const reopened = await FactStore.open(store.path);
+    const restarted = new TelegramCapture(reopened, new PersonalMemory(reopened, local), reader, async () => ['default']);
+    await restarted.sweep();
+    expect(reopened.facts()).toEqual(snapshot);
+    expect(reopened.telegramCursor('default')).toBe(2);
   }, 180_000);
 });

@@ -1,6 +1,7 @@
 export interface MemorySettings {
   enabled: boolean;
   contextEnabled?: boolean;
+  telegramEnabled?: boolean;
   extractionModel: string;
   embeddingModel: string;
 }
@@ -8,11 +9,13 @@ export interface MemorySettings {
 export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
   enabled: true,
   contextEnabled: true,
+  telegramEnabled: false,
   extractionModel: 'qwen3:4b',
   embeddingModel: 'embeddinggemma',
 };
 
 export interface PersonalFact {
+  channel?: 'telegram';
   key: string;
   text: string;
   evidence: string;
@@ -28,6 +31,7 @@ export interface MemoryView {
   pending: number;
   error: string | null;
   location: string;
+  telegram?: { checkedAt: string | null; error: string | null };
 }
 
 export interface MemoryBridge {

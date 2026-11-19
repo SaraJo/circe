@@ -41,7 +41,7 @@ function factRow(fact: PersonalFact): HTMLElement {
   const row = document.createElement('article'); row.className = 'fact';
   const text = document.createElement('p'); text.textContent = fact.text; row.append(text);
   const details = document.createElement('details');
-  const summary = document.createElement('summary'); summary.textContent = `From ${fact.profileId} · ${new Date(fact.updatedAt).toLocaleDateString()}`;
+  const summary = document.createElement('summary'); summary.textContent = `From ${fact.profileId}${fact.channel === 'telegram' ? ' · Telegram' : ''} · ${new Date(fact.updatedAt).toLocaleDateString()}`;
   const evidence = document.createElement('p'); evidence.textContent = `Source: ${fact.evidence}`;
   const source = document.createElement('p'); source.textContent = `Topic: ${fact.key}\nConversation: ${fact.sessionId}\nFirst saved: ${new Date(fact.createdAt).toLocaleString()}`;
   details.append(summary, evidence, source); row.append(details);
@@ -80,6 +80,7 @@ async function refresh(): Promise<void> {
   if (!settingsLoaded) {
     el<HTMLInputElement>('enabled').checked = view.settings.enabled;
     el<HTMLInputElement>('context-enabled').checked = view.settings.contextEnabled !== false;
+    el<HTMLInputElement>('telegram-enabled').checked = view.settings.telegramEnabled === true;
     el<HTMLInputElement>('extraction-model').value = view.settings.extractionModel;
     el<HTMLInputElement>('embedding-model').value = view.settings.embeddingModel;
     settingsLoaded = true;
@@ -87,6 +88,11 @@ async function refresh(): Promise<void> {
   el('status').textContent = view.error ? `Memory needs attention: ${view.error}` :
     view.settings.enabled ? `Automatic capture and recall on · ${view.pending} pending. Use “Check local models” to verify readiness.` : 'Automatic capture and recall off.';
   el('location').textContent = `Stored locally at ${view.location}`;
+  el('telegram-status').textContent = view.settings.enabled && view.settings.telegramEnabled
+    ? view.telegram?.error ? `Telegram capture needs attention: ${view.telegram.error}`
+      : view.telegram?.checkedAt ? `Telegram capture on · Last checked ${new Date(view.telegram.checkedAt).toLocaleString()}.`
+        : 'Telegram capture on · Waiting for the first check.'
+    : 'Telegram capture off.';
   renderFacts();
 }
 
@@ -94,6 +100,7 @@ el('settings').addEventListener('submit', (e) => {
   e.preventDefault();
   void work(() => api.configure({
     enabled: el<HTMLInputElement>('enabled').checked,
+    telegramEnabled: el<HTMLInputElement>('telegram-enabled').checked,
     contextEnabled: el<HTMLInputElement>('context-enabled').checked,
     extractionModel: el<HTMLInputElement>('extraction-model').value.trim(),
     embeddingModel: el<HTMLInputElement>('embedding-model').value.trim(),
